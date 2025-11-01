@@ -1,4 +1,4 @@
-# 🧩 SignSense
+
 **Interactive Learning and Multilingual Sign Recognition System with Emotion Detection and Safety Support**
 
 > An AI-powered educational and assistive platform for hearing-impaired children — integrating sign recognition, real-time emotion detection, and environmental safety alerts.
