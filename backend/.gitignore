@@ -1,0 +1,13 @@
+node_modules/
+.env
+uploads/
+*.log
+.DS_Store
+dist/
+build/
+coverage/
+models/*.json
+models/*.h5
+models/*.pb
+
+
