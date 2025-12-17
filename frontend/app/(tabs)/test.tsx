@@ -25,6 +25,8 @@ export default function HazardDetectionScreen() {
   const processingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const recordingRef = useRef<Audio.Recording | null>(null);
   const isListeningRef = useRef<boolean>(false);
+  const isRestartingRef = useRef<boolean>(false); // Lock to prevent concurrent restarts
+  const restartPromiseRef = useRef<Promise<Audio.Recording | null> | null>(null);
   const flashAnimation = useRef(new Animated.Value(0)).current;
 
   const checkBackendHealth = async () => {
@@ -124,13 +126,33 @@ export default function HazardDetectionScreen() {
         console.log('🎧 isListening state:', isListening);
         
         if (!currentRecording) {
-          console.warn('⚠️ No recording ref available');
+          console.warn('⚠️ No recording ref available, trying to restart...');
+          // Try to restart recording if it's missing
+          if (isListeningRef.current) {
+            try {
+              const restarted = await restartRecording();
+              if (restarted) {
+                setRecording(restarted);
+                recordingRef.current = restarted;
+                console.log('✅ Recording restarted (was missing)');
+              } else {
+                console.error('❌ Failed to restart missing recording');
+              }
+            } catch (restartError) {
+              console.error('❌ Error restarting missing recording:', restartError);
+            }
+          }
           return;
         }
         
         // Use a ref to track listening state instead of closure
         if (!isListeningRef.current) {
-          console.warn('⚠️ Not listening (ref), skipping chunk processing');
+          console.warn('⚠️ Not listening (ref), clearing interval');
+          // Stop the interval if we're not listening anymore
+          if (processingIntervalRef.current) {
+            clearInterval(processingIntervalRef.current);
+            processingIntervalRef.current = null;
+          }
           return;
         }
         
@@ -142,20 +164,37 @@ export default function HazardDetectionScreen() {
             console.log('✅ Recording is active, processing chunk...');
             await processAudioChunk(currentRecording);
           } else {
-            console.warn('⚠️ Recording is not active, clearing interval');
-            // Recording stopped, clear interval
-            if (processingIntervalRef.current) {
-              clearInterval(processingIntervalRef.current);
-              processingIntervalRef.current = null;
+            console.warn('⚠️ Recording is not active, trying to restart...');
+            // Recording stopped unexpectedly - restart it instead of stopping
+            try {
+              const restarted = await restartRecording();
+              if (restarted) {
+                setRecording(restarted);
+                recordingRef.current = restarted;
+                console.log('✅ Recording restarted successfully');
+              } else {
+                console.error('❌ Failed to restart recording');
+              }
+            } catch (restartError) {
+              console.error('❌ Error restarting recording:', restartError);
             }
           }
         } catch (error: any) {
           console.error('❌ Error checking recording status:', error);
           console.error('❌ Error details:', error.message, error.stack);
-          // If there's an error, stop the interval
-          if (processingIntervalRef.current) {
-            clearInterval(processingIntervalRef.current);
-            processingIntervalRef.current = null;
+          // Don't stop the interval - try to restart recording instead
+          if (isListeningRef.current) {
+            try {
+              console.log('🔄 Attempting to restart recording after error...');
+              const restarted = await restartRecording();
+              if (restarted) {
+                setRecording(restarted);
+                recordingRef.current = restarted;
+                console.log('✅ Recording restarted after error');
+              }
+            } catch (restartError) {
+              console.error('❌ Failed to restart recording after error:', restartError);
+            }
           }
         }
       }, 3000);
@@ -218,7 +257,20 @@ export default function HazardDetectionScreen() {
       // Stop the current recording to access the file
       const status = await recording.getStatusAsync();
       if (!status.isRecording) {
-        console.warn('⚠️ Recording is not active');
+        console.warn('⚠️ Recording is not active, trying to restart...');
+        // CRITICAL: If recording stopped, restart it to keep listening
+        if (isListeningRef.current) {
+          try {
+            newRecording = await restartRecording();
+            if (newRecording) {
+              setRecording(newRecording);
+              recordingRef.current = newRecording;
+              console.log('✅ Recording restarted (was not active)');
+            }
+          } catch (restartError) {
+            console.error('❌ Failed to restart inactive recording:', restartError);
+          }
+        }
         return;
       }
 
@@ -232,11 +284,14 @@ export default function HazardDetectionScreen() {
       
       if (!uri) {
         console.warn('⚠️ No audio URI available after stopping recording');
-        // Restart recording
-        newRecording = await restartRecording();
-        if (newRecording) {
-          setRecording(newRecording);
-          recordingRef.current = newRecording;
+        // CRITICAL: Always restart recording even if URI is missing to keep listening
+        if (isListeningRef.current) {
+          newRecording = await restartRecording();
+          if (newRecording) {
+            setRecording(newRecording);
+            recordingRef.current = newRecording;
+            console.log('✅ Recording restarted after missing URI');
+          }
         }
         return;
       }
@@ -275,24 +330,62 @@ export default function HazardDetectionScreen() {
         }
       }
 
-      // Restart recording for the next chunk
-      newRecording = await restartRecording();
-      if (newRecording) {
-        setRecording(newRecording);
-        recordingRef.current = newRecording;
+      // ALWAYS restart recording for the next chunk - this is critical for continuous listening
+      console.log('🔄 Restarting recording for next chunk...');
+      let retries = 3;
+      while (retries > 0 && isListeningRef.current) {
+        try {
+          newRecording = await restartRecording();
+          if (newRecording) {
+            setRecording(newRecording);
+            recordingRef.current = newRecording;
+            console.log('✅ Recording restarted successfully for next chunk');
+            break;
+          } else {
+            console.warn(`⚠️ Restart failed, ${retries - 1} retries left`);
+            retries--;
+            await new Promise(resolve => setTimeout(resolve, 500)); // Wait before retry
+          }
+        } catch (restartError: any) {
+          console.error(`❌ Error restarting recording (${retries} retries left):`, restartError);
+          retries--;
+          if (retries > 0) {
+            await new Promise(resolve => setTimeout(resolve, 500)); // Wait before retry
+          }
+        }
+      }
+      
+      if (!newRecording && isListeningRef.current) {
+        console.error('❌ Failed to restart recording after all retries');
+        setError('Failed to keep listening. Please try stopping and starting again.');
       }
     } catch (error: any) {
       console.error('❌ Error processing audio:', error);
       setError(`Processing failed: ${error.message}`);
-      // Try to restart recording even on error
-      try {
-        newRecording = await restartRecording();
-        if (newRecording) {
-          setRecording(newRecording);
-          recordingRef.current = newRecording;
+      // CRITICAL: Always try to restart recording even on error to keep listening
+      if (isListeningRef.current) {
+        console.log('🔄 Attempting to restart recording after processing error...');
+        let retries = 3;
+        while (retries > 0 && isListeningRef.current) {
+          try {
+            newRecording = await restartRecording();
+            if (newRecording) {
+              setRecording(newRecording);
+              recordingRef.current = newRecording;
+              console.log('✅ Recording restarted after error');
+              break;
+            } else {
+              retries--;
+              await new Promise(resolve => setTimeout(resolve, 500));
+            }
+          } catch (restartError: any) {
+            console.error(`❌ Error restarting after processing error (${retries} retries left):`, restartError);
+            retries--;
+            if (retries > 0) {
+              await new Promise(resolve => setTimeout(resolve, 500));
+            }
+          }
         }
-      } catch (restartError) {
-        console.error('❌ Failed to restart recording:', restartError);
       }
     } finally {
       setIsProcessing(false);
@@ -300,31 +393,78 @@ export default function HazardDetectionScreen() {
   };
 
   const restartRecording = async (): Promise<Audio.Recording | null> => {
-    try {
-      if (!isListeningRef.current) {
-        console.warn('⚠️ Cannot restart recording - not listening');
-        return null;
+    // If already restarting, wait for the existing restart to complete
+    if (isRestartingRef.current && restartPromiseRef.current) {
+      console.log('⏳ Already restarting, waiting for existing restart...');
+      try {
+        return await restartPromiseRef.current;
+      } catch (error) {
+        // If the existing restart failed, try again
+        console.log('⚠️ Existing restart failed, will try again');
       }
-
-      // Configure audio mode
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: true,
-        playsInSilentModeIOS: true,
-        staysActiveInBackground: true,
-        shouldDuckAndroid: false,
-      });
-
-      // Start new recording
-      const { recording: newRec } = await Audio.Recording.createAsync(
-        Audio.RecordingOptionsPresets.HIGH_QUALITY
-      );
-
-      console.log('🔄 Recording restarted');
-      return newRec;
-    } catch (error: any) {
-      console.error('❌ Error restarting recording:', error);
-      throw error;
     }
+
+    // Set lock to prevent concurrent restarts
+    isRestartingRef.current = true;
+    
+    const restartPromise = (async (): Promise<Audio.Recording | null> => {
+      try {
+        if (!isListeningRef.current) {
+          console.warn('⚠️ Cannot restart recording - not listening');
+          return null;
+        }
+
+        // Clean up old recording first if it exists
+        const oldRecording = recordingRef.current;
+        if (oldRecording) {
+          try {
+            const status = await oldRecording.getStatusAsync();
+            if (status.isRecording || status.canRecord) {
+              console.log('🛑 Stopping old recording before restart...');
+              await oldRecording.stopAndUnloadAsync();
+            }
+          } catch (cleanupError: any) {
+            // Ignore cleanup errors (already stopped, etc.)
+            if (!cleanupError.message?.includes('already been unloaded')) {
+              console.warn('⚠️ Error cleaning up old recording:', cleanupError.message);
+            }
+          }
+          // Clear the ref
+          recordingRef.current = null;
+        }
+
+        // Small delay to ensure cleanup is complete
+        await new Promise(resolve => setTimeout(resolve, 100));
+
+        // Configure audio mode
+        await Audio.setAudioModeAsync({
+          allowsRecordingIOS: true,
+          playsInSilentModeIOS: true,
+          staysActiveInBackground: true,
+          shouldDuckAndroid: false,
+        });
+
+        // Start new recording
+        const { recording: newRec } = await Audio.Recording.createAsync(
+          Audio.RecordingOptionsPresets.HIGH_QUALITY
+        );
+
+        console.log('🔄 Recording restarted successfully');
+        return newRec;
+      } catch (error: any) {
+        console.error('❌ Error restarting recording:', error);
+        throw error;
+      } finally {
+        // Release lock
+        isRestartingRef.current = false;
+        restartPromiseRef.current = null;
+      }
+    })();
+
+    // Store the promise so other calls can wait for it
+    restartPromiseRef.current = restartPromise;
+    
+    return restartPromise;
   };
 
   const triggerFlashAnimation = (urgency: 'low' | 'medium' | 'high' | 'critical') => {
@@ -346,7 +486,11 @@ export default function HazardDetectionScreen() {
 
   const stopListening = async () => {
     try {
-    console.log('🛑 Stopping...');
+      console.log('🛑 Stopping...');
+      
+      // Set listening flag to false FIRST to stop all processing
+      setIsListening(false);
+      isListeningRef.current = false;
       
       // Clear processing interval
       if (processingIntervalRef.current) {
@@ -375,8 +519,6 @@ export default function HazardDetectionScreen() {
       // Stop alerts
       hazardAlertService.stopAlert();
 
-      setIsListening(false);
-      isListeningRef.current = false;
       setAlertMessage(null);
       setIsProcessing(false);
     } catch (error: any) {
@@ -392,36 +534,71 @@ export default function HazardDetectionScreen() {
   };
 
   const getStatusColor = () => {
-    if (error) return '#FF0000';
-    if (detections?.critical) return '#FF0000';
+    if (error) return '#FF6B6B'; // Friendly red
+    if (detections?.critical) return '#FF4444'; // Bright red for danger
     if (detections?.highestPriority) {
-      return hazardAlertService.getAlertColor(detections.highestPriority.urgency);
+      const urgency = detections.highestPriority.urgency;
+      if (urgency === 'critical') return '#FF4444'; // Bright red
+      if (urgency === 'high') return '#FF9800'; // Orange
+      if (urgency === 'medium') return '#FFC107'; // Yellow/Amber
+      return '#4CAF50'; // Green
     }
-    if (isListening) return '#00FF00';
-    return '#888888';
+    if (isListening) return '#4CAF50'; // Friendly green
+    return '#9E9E9E'; // Light gray
+  };
+
+  const getStatusEmoji = () => {
+    if (error) return '😟';
+    if (detections?.critical) return '🚨';
+    if (detections?.highestPriority) {
+      const urgency = detections.highestPriority.urgency;
+      if (urgency === 'critical') return '🚨';
+      if (urgency === 'high') return '⚠️';
+      if (urgency === 'medium') return '⚡';
+      return '💡';
+    }
+    if (isListening) return isProcessing ? '👂' : '👂';
+    return '😊';
+  };
+
+  const getStatusMessage = () => {
+    if (error) return 'Something went wrong';
+    if (detections?.critical) return 'DANGER! Be careful!';
+    if (detections?.highestPriority) {
+      const urgency = detections.highestPriority.urgency;
+      if (urgency === 'critical') return 'DANGER! Be careful!';
+      if (urgency === 'high') return 'Watch out!';
+      if (urgency === 'medium') return 'Be aware!';
+      return 'Something to notice';
+    }
+    if (isListening) return isProcessing ? 'Listening...' : 'I\'m listening!';
+    return 'Ready to listen!';
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>🚨 Hazard Detection</Text>
+    <ScrollView 
+      style={styles.scrollContainer}
+      contentContainerStyle={styles.container}
+      showsVerticalScrollIndicator={true}
+    >
+      <Text style={styles.title}>👂 Sound Helper</Text>
+      <Text style={styles.subtitle}>I help you know about sounds around you!</Text>
       
-      {/* Status Indicator */}
+      {/* Large Status Indicator */}
       <View style={[styles.statusIndicator, { backgroundColor: getStatusColor() }]}>
-        <Text style={styles.statusText}>
-          {error ? '⚠️ Error' : 
-           isListening ? (isProcessing ? '🔄 Processing...' : '🎤 Listening') : 
-           '⏸️ Stopped'}
-        </Text>
+        <Text style={styles.statusEmoji}>{getStatusEmoji()}</Text>
+        <Text style={styles.statusText}>{getStatusMessage()}</Text>
       </View>
 
-      {/* Control Buttons */}
+      {/* Large Control Buttons */}
       <View style={styles.controls}>
         <TouchableOpacity
           style={[styles.button, styles.startButton, isListening && styles.buttonDisabled]}
           onPress={startListening}
           disabled={isListening}
         >
-          <Text style={styles.buttonText}>▶️ Start Listening</Text>
+          <Text style={styles.buttonEmoji}>▶️</Text>
+          <Text style={styles.buttonText}>Start Listening</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -429,18 +606,21 @@ export default function HazardDetectionScreen() {
           onPress={stopListening}
           disabled={!isListening}
         >
-          <Text style={styles.buttonText}>⏹️ Stop</Text>
+          <Text style={styles.buttonEmoji}>⏸️</Text>
+          <Text style={styles.buttonText}>Stop</Text>
         </TouchableOpacity>
       </View>
 
-      {/* Error Message */}
+      {/* Error Message - Child Friendly */}
       {error && (
         <View style={styles.errorContainer}>
-          <Text style={styles.errorText}>{error}</Text>
+          <Text style={styles.errorEmoji}>😟</Text>
+          <Text style={styles.errorText}>Oops! Something went wrong.</Text>
+          <Text style={styles.errorHelpText}>Ask a grown-up for help!</Text>
         </View>
       )}
 
-      {/* Alert Message */}
+      {/* Big Alert Message - Child Friendly */}
       {alertMessage && detections?.highestPriority && (
         <Animated.View
           style={[
@@ -449,175 +629,272 @@ export default function HazardDetectionScreen() {
               backgroundColor: hazardAlertService.getAlertColor(detections.highestPriority.urgency),
               opacity: flashAnimation.interpolate({
                 inputRange: [0, 1],
-                outputRange: [1, 0.5],
+                outputRange: [1, 0.7],
               }),
             },
           ]}
         >
+          <Text style={styles.alertEmoji}>
+            {detections.highestPriority.urgency === 'critical' ? '🚨' :
+             detections.highestPriority.urgency === 'high' ? '⚠️' :
+             detections.highestPriority.urgency === 'medium' ? '⚡' : '💡'}
+          </Text>
           <Text style={styles.alertText}>{alertMessage}</Text>
           <TouchableOpacity onPress={dismissAlert} style={styles.dismissButton}>
-            <Text style={styles.dismissText}>✓ Dismiss</Text>
+            <Text style={styles.dismissText}>✓ Got it!</Text>
           </TouchableOpacity>
         </Animated.View>
       )}
 
-      {/* Detection Results */}
+      {/* Detection Results - Simplified for Kids */}
       {detections && detections.detections.length > 0 && (
-        <ScrollView style={styles.resultsContainer}>
-          <Text style={styles.resultsTitle}>Detected Hazards:</Text>
-          {detections.detections.map((detection, index) => (
-            <View key={index} style={styles.detectionItem}>
-              <Text style={styles.detectionType}>
-                {detection.type.replace('_', ' ').toUpperCase()}
-              </Text>
-              <Text style={styles.detectionConfidence}>
-                Confidence: {(detection.confidence * 100).toFixed(1)}%
-              </Text>
-              <Text style={styles.detectionUrgency}>
-                Urgency: {detection.urgency.toUpperCase()} (Priority: {detection.priority}/10)
-              </Text>
-            </View>
-          ))}
-        </ScrollView>
-      )}
-
-      {/* Processing Indicator */}
-      {isProcessing && (
-        <View style={styles.processingContainer}>
-          <ActivityIndicator size="large" color="#FFD700" />
-          <Text style={styles.processingText}>Analyzing audio...</Text>
+        <View style={styles.resultsContainer}>
+          <Text style={styles.resultsTitle}>🔍 What I Found:</Text>
+          <ScrollView 
+            style={styles.detectionsList}
+            nestedScrollEnabled={true}
+          >
+            {detections.detections.map((detection, index) => (
+              <View key={index} style={styles.detectionItem}>
+                <Text style={styles.detectionEmoji}>
+                  {detection.urgency === 'critical' ? '🚨' :
+                   detection.urgency === 'high' ? '⚠️' :
+                   detection.urgency === 'medium' ? '⚡' : '💡'}
+                </Text>
+                <View style={styles.detectionContent}>
+                  <Text style={styles.detectionType}>
+                    {detection.type.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                  </Text>
+                  <Text style={styles.detectionUrgency}>
+                    {detection.urgency === 'critical' ? 'Very Important!' :
+                     detection.urgency === 'high' ? 'Important!' :
+                     detection.urgency === 'medium' ? 'Notice!' : 'Info'}
+                  </Text>
+                </View>
+              </View>
+            ))}
+          </ScrollView>
         </View>
       )}
-    </View>
+
+      {/* Processing Indicator - Fun for Kids */}
+      {isProcessing && (
+        <View style={styles.processingContainer}>
+          <ActivityIndicator size="large" color="#4CAF50" />
+          <Text style={styles.processingText}>👂 Listening to sounds...</Text>
+          <Text style={styles.processingSubtext}>This will just take a moment!</Text>
+        </View>
+      )}
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  scrollContainer: {
     flex: 1,
+    backgroundColor: '#F0F8FF', // Light blue background - friendly and bright
+  },
+  container: {
     padding: 20,
-    backgroundColor: '#000',
+    paddingBottom: 40, // Extra padding at bottom for better scrolling
   },
   title: {
-    fontSize: 28,
+    fontSize: 36,
     fontWeight: 'bold',
-    color: '#FFD700',
+    color: '#4A90E2', // Friendly blue
     textAlign: 'center',
     marginTop: 20,
-    marginBottom: 20,
+    marginBottom: 10,
+  },
+  subtitle: {
+    fontSize: 18,
+    color: '#666',
+    textAlign: 'center',
+    marginBottom: 30,
+    fontStyle: 'italic',
   },
   statusIndicator: {
-    padding: 15,
-    borderRadius: 10,
-    marginBottom: 20,
+    padding: 25,
+    borderRadius: 20,
+    marginBottom: 30,
     alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  statusEmoji: {
+    fontSize: 60,
+    marginBottom: 10,
   },
   statusText: {
-    color: '#000',
-    fontSize: 16,
+    color: '#FFF',
+    fontSize: 24,
     fontWeight: 'bold',
+    textAlign: 'center',
   },
   controls: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    marginBottom: 20,
+    marginBottom: 30,
+    gap: 15,
   },
   button: {
-    paddingVertical: 15,
-    paddingHorizontal: 30,
-    borderRadius: 10,
-    minWidth: 150,
+    flex: 1,
+    paddingVertical: 25,
+    paddingHorizontal: 20,
+    borderRadius: 20,
     alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.2,
+    shadowRadius: 5,
+    elevation: 5,
+    minHeight: 100,
   },
   startButton: {
-    backgroundColor: '#00FF00',
+    backgroundColor: '#4CAF50', // Friendly green
   },
   stopButton: {
-    backgroundColor: '#FF0000',
+    backgroundColor: '#FF6B6B', // Friendly red
   },
   buttonDisabled: {
-    opacity: 0.5,
+    opacity: 0.4,
+  },
+  buttonEmoji: {
+    fontSize: 40,
+    marginBottom: 8,
   },
   buttonText: {
-    color: '#000',
-    fontSize: 16,
+    color: '#FFF',
+    fontSize: 20,
     fontWeight: 'bold',
   },
   errorContainer: {
-    backgroundColor: '#FF0000',
-    padding: 15,
-    borderRadius: 10,
-    marginBottom: 15,
+    backgroundColor: '#FFE5E5',
+    padding: 20,
+    borderRadius: 15,
+    marginBottom: 20,
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#FF6B6B',
+  },
+  errorEmoji: {
+    fontSize: 50,
+    marginBottom: 10,
   },
   errorText: {
-    color: '#FFF',
-    fontSize: 14,
-  },
-  alertContainer: {
-    padding: 20,
-    borderRadius: 10,
-    marginBottom: 15,
-    alignItems: 'center',
-  },
-  alertText: {
-    color: '#000',
+    color: '#D32F2F',
     fontSize: 18,
     fontWeight: 'bold',
     textAlign: 'center',
-    marginBottom: 10,
+    marginBottom: 5,
+  },
+  errorHelpText: {
+    color: '#666',
+    fontSize: 16,
+    textAlign: 'center',
+  },
+  alertContainer: {
+    padding: 25,
+    borderRadius: 20,
+    marginBottom: 20,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 8,
+  },
+  alertEmoji: {
+    fontSize: 60,
+    marginBottom: 15,
+  },
+  alertText: {
+    color: '#FFF',
+    fontSize: 24,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    marginBottom: 15,
   },
   dismissButton: {
-    backgroundColor: 'rgba(0,0,0,0.3)',
-    paddingVertical: 8,
-    paddingHorizontal: 15,
-    borderRadius: 5,
+    backgroundColor: 'rgba(255,255,255,0.3)',
+    paddingVertical: 12,
+    paddingHorizontal: 25,
+    borderRadius: 15,
+    borderWidth: 2,
+    borderColor: '#FFF',
   },
   dismissText: {
     color: '#FFF',
-    fontSize: 14,
+    fontSize: 18,
     fontWeight: 'bold',
   },
   resultsContainer: {
-    maxHeight: 200,
-    backgroundColor: '#1a1a1a',
-    borderRadius: 10,
-    padding: 15,
-    marginBottom: 15,
+    maxHeight: 300,
+    backgroundColor: '#FFF',
+    borderRadius: 20,
+    padding: 20,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   resultsTitle: {
-    color: '#FFD700',
-    fontSize: 16,
+    color: '#4A90E2',
+    fontSize: 22,
     fontWeight: 'bold',
-    marginBottom: 10,
+    marginBottom: 15,
+    textAlign: 'center',
+  },
+  detectionsList: {
+    maxHeight: 250,
   },
   detectionItem: {
-    backgroundColor: '#2a2a2a',
-    padding: 10,
-    borderRadius: 5,
-    marginBottom: 8,
+    backgroundColor: '#F5F5F5',
+    padding: 15,
+    borderRadius: 15,
+    marginBottom: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#E0E0E0',
+  },
+  detectionEmoji: {
+    fontSize: 40,
+    marginRight: 15,
+  },
+  detectionContent: {
+    flex: 1,
   },
   detectionType: {
-    color: '#FFD700',
-    fontSize: 14,
+    color: '#333',
+    fontSize: 18,
     fontWeight: 'bold',
     marginBottom: 5,
   },
-  detectionConfidence: {
-    color: '#FFF',
-    fontSize: 12,
-    marginBottom: 3,
-  },
   detectionUrgency: {
-    color: '#AAA',
-    fontSize: 12,
+    color: '#666',
+    fontSize: 16,
   },
   processingContainer: {
     alignItems: 'center',
-    marginTop: 20,
+    marginTop: 30,
+    padding: 20,
   },
   processingText: {
-    color: '#FFD700',
-    fontSize: 14,
-    marginTop: 10,
+    color: '#4CAF50',
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginTop: 15,
+  },
+  processingSubtext: {
+    color: '#999',
+    fontSize: 16,
+    marginTop: 5,
   },
 });
