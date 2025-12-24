@@ -197,7 +197,7 @@ export default function HazardDetectionScreen() {
             }
           }
         }
-      }, 3000);
+      }, 8000);
       
       console.log('✅ Interval set up, will trigger every 3 seconds');
       

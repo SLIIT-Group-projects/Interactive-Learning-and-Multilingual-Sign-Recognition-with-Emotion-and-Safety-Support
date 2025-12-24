@@ -8,11 +8,74 @@ import { audioToLogMelSpectrogram, prepareSpectrogramForModel } from '../utils/a
 import { prioritizeHazards, getHazardPriority } from '../utils/hazardPriority.js';
 import { convertToWav } from "../utils/audioConverter.js";
 import { predictWithModel } from '../utils/modelIntegration.js';
+import { db } from '../firebase/admin.js';
+import { createSoundDocument, validateSoundData } from '../models/sound.model.js';
 
 
 const router = express.Router();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+const SOUNDS_COLLECTION = 'sounds';
+
+/**
+ * Save detected sounds to database
+ * @param {Array} detections - Array of detection objects
+ * @param {Object} context - Context information (userId, location, etc.)
+ * @param {string} audioFileUrl - Optional URL/path to audio file
+ * @param {Object} metadata - Additional metadata
+ * @returns {Promise<Array>} Array of saved sound document IDs
+ */
+async function saveSoundsToDatabase(detections, context = {}, audioFileUrl = null, metadata = {}) {
+  const savedSoundIds = [];
+  
+  try {
+    for (const detection of detections) {
+      // Clean context to remove undefined values
+      const cleanContext = {};
+      for (const [key, value] of Object.entries(context)) {
+        if (value !== undefined) {
+          cleanContext[key] = value;
+        }
+      }
+      
+      const soundData = {
+        userId: context.userId || null,
+        type: detection.type || 'unknown',
+        confidence: detection.confidence || 0,
+        timestamp: detection.timestamp || new Date().toISOString(),
+        location: context.location || null,
+        context: {
+          ...cleanContext,
+          detectionId: detection.id || null,
+        },
+        audioFileUrl: audioFileUrl || null,
+        metadata: {
+          ...metadata,
+          ...(detection.metadata || {}),
+        },
+        priority: detection.priority || getHazardPriority(detection.type),
+        isHazard: true, // All detections from hazard endpoint are hazards
+        status: 'detected',
+      };
+      
+      // Validate before saving
+      const validation = validateSoundData(soundData);
+      if (validation.valid) {
+        const soundDoc = createSoundDocument(soundData);
+        const docRef = await db.collection(SOUNDS_COLLECTION).add(soundDoc);
+        savedSoundIds.push(docRef.id);
+        console.log(`💾 Saved sound detection: ${detection.type} (ID: ${docRef.id})`);
+      } else {
+        console.warn(`⚠️ Skipped saving invalid sound data:`, validation.errors);
+      }
+    }
+  } catch (error) {
+    console.error('❌ Error saving sounds to database:', error);
+    // Don't throw - we don't want to fail the detection if storage fails
+  }
+  
+  return savedSoundIds;
+}
 
 // Ensure uploads directory exists
 const uploadsDir = join(__dirname, '../../uploads');
@@ -69,13 +132,25 @@ const upload = multer({
 router.post('/detect', upload.single('audio'), async (req, res, next) => {
   try {
     console.log('📥 Received hazard detection request');
+    console.log('📦 Request headers:', {
+      'content-type': req.headers['content-type'],
+      'content-length': req.headers['content-length'],
+    });
     console.log('📦 Request body keys:', Object.keys(req.body));
     console.log('📁 File:', req.file ? `${req.file.filename} (${req.file.size} bytes)` : 'No file');
+    console.log('📁 Files:', req.files ? Object.keys(req.files) : 'No files');
     
     if (!req.file) {
       console.error('❌ No audio file provided');
+      console.error('📋 Request details:', {
+        method: req.method,
+        url: req.url,
+        headers: req.headers,
+        body: req.body,
+      });
       return res.status(400).json({
-        error: 'No audio file provided'
+        error: 'No audio file provided',
+        details: 'Make sure the file is sent with field name "audio"'
       });
     }
 
@@ -86,23 +161,55 @@ router.post('/detect', upload.single('audio'), async (req, res, next) => {
 
     const wavPath = req.file.path + "-converted.wav";
 
-    await convertToWav(req.file.path, wavPath);
+    console.log('🔄 Converting audio to WAV format...');
+    try {
+      await convertToWav(req.file.path, wavPath);
+      console.log('✅ Audio converted to WAV:', wavPath);
+    } catch (convertError) {
+      console.error('❌ Audio conversion error:', convertError);
+      // Clean up uploaded file
+      await fs.unlink(req.file.path).catch(console.error);
+      return res.status(500).json({
+        error: 'Failed to convert audio file',
+        details: convertError.message
+      });
+    }
 
     // Use the real trained model for prediction
     // The model expects WAV files and uses YAMNet embeddings internally
     let detections = [];
     try {
       console.log('🤖 Running model inference...');
+      console.log('📁 WAV file path:', wavPath);
+      console.log('📊 File exists:', await fs.access(wavPath).then(() => true).catch(() => false));
+      
+      const startTime = Date.now();
       detections = await predictWithModel(wavPath, context);
-      console.log(`✅ Model returned ${detections.length} detections`);
+      const inferenceTime = Date.now() - startTime;
+      
+      console.log(`✅ Model returned ${detections.length} detections in ${inferenceTime}ms`);
+      console.log('📋 Detections:', JSON.stringify(detections, null, 2));
     } catch (error) {
       console.error('❌ Model inference error:', error);
+      console.error('❌ Error stack:', error.stack);
       // Fallback to mock if model fails (for development/testing)
       console.warn('⚠️ Falling back to mock inference');
-      const wavBuffer = await fs.readFile(wavPath);
-      const result = await audioToLogMelSpectrogram(wavBuffer);
-      const prepared = prepareSpectrogramForModel(result.spectrogram);
-      detections = await mockModelInference(prepared.data, context);
+      try {
+        const wavBuffer = await fs.readFile(wavPath);
+        const result = await audioToLogMelSpectrogram(wavBuffer);
+        const prepared = prepareSpectrogramForModel(result.spectrogram);
+        detections = await mockModelInference(prepared.data, context);
+        console.log(`✅ Mock inference returned ${detections.length} detections`);
+      } catch (mockError) {
+        console.error('❌ Mock inference also failed:', mockError);
+        // Clean up files
+        await fs.unlink(wavPath).catch(console.error);
+        await fs.unlink(req.file.path).catch(console.error);
+        return res.status(500).json({
+          error: 'Model inference failed',
+          details: error.message
+        });
+      }
     }
 
     // Cleanup converted WAV file
@@ -118,7 +225,22 @@ router.post('/detect', upload.single('audio'), async (req, res, next) => {
     const criticalHazards = prioritized.filter(h => getHazardPriority(h.type) >= 9);
     const needsImmediateAlert = criticalHazards.length > 0;
     
-    res.json({
+    // Save detected sounds to database
+    const audioMetadata = {
+      processingTime: Date.now() - new Date(timestamp).getTime(),
+      detectionsCount: detections.length,
+    };
+    
+    // Note: audioFileUrl is null since we delete the file after processing
+    // If you want to store audio files, upload them to Firebase Storage first
+    const savedSoundIds = await saveSoundsToDatabase(
+      prioritized,
+      { ...context, userId: context.userId || req.body.userId },
+      null, // audioFileUrl - set to null since file is deleted
+      audioMetadata
+    );
+    
+    const responseData = {
       success: true,
       data: {
         timestamp,
@@ -127,11 +249,19 @@ router.post('/detect', upload.single('audio'), async (req, res, next) => {
         critical: needsImmediateAlert,
         highestPriority: prioritized.length > 0 ? prioritized[0] : null,
         metadata: {
-          processingTime: Date.now() - new Date(timestamp).getTime(),
-          detectionsCount: detections.length
+          ...audioMetadata,
+          savedSoundIds, // Include IDs of saved sound records
         }
       }
+    };
+    
+    console.log('📤 Sending response:', {
+      detectionsCount: prioritized.length,
+      critical: needsImmediateAlert,
+      savedSoundIds: savedSoundIds.length
     });
+    
+    res.json(responseData);
   } catch (error) {
     if (req.file) {
       await fs.unlink(req.file.path).catch(console.error);
@@ -191,15 +321,33 @@ router.post('/detect-stream', upload.array('audio', 10), async (req, res, next) 
     // Aggregate and prioritize all detections
     const prioritized = prioritizeHazards(allDetections, context);
     
+    // Save detected sounds to database
+    const timestamp = new Date().toISOString();
+    const audioMetadata = {
+      chunkCount: req.files.length,
+      processingMode: 'stream',
+    };
+    
+    const savedSoundIds = await saveSoundsToDatabase(
+      prioritized,
+      { ...context, userId: context.userId || req.body.userId },
+      null, // audioFileUrl
+      audioMetadata
+    );
+    
     res.json({
       success: true,
       data: {
-        timestamp: new Date().toISOString(),
+        timestamp,
         location: context.location || null,
         detections: prioritized,
         chunkCount: req.files.length,
         critical: prioritized.some(h => getHazardPriority(h.type) >= 9),
-        highestPriority: prioritized.length > 0 ? prioritized[0] : null
+        highestPriority: prioritized.length > 0 ? prioritized[0] : null,
+        metadata: {
+          ...audioMetadata,
+          savedSoundIds,
+        }
       }
     });
   } catch (error) {

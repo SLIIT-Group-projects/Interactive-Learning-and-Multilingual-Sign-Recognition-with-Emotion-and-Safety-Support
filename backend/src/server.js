@@ -5,6 +5,7 @@ import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import audioRoutes from "./routes/audio.routes.js";
 import hazardRoutes from "./routes/hazard.routes.js";
+import soundRoutes from "./routes/sound.routes.js";
 
 // Load environment variables
 dotenv.config();
@@ -28,6 +29,7 @@ app.use(express.urlencoded({ extended: true }));
 // Routes
 app.use("/api/audio", audioRoutes);
 app.use("/api/hazard", hazardRoutes);
+app.use("/api/sounds", soundRoutes);
 
 // Health check endpoint
 app.get("/health", (req, res) => {

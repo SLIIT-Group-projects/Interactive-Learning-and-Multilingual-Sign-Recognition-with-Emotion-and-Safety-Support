@@ -1,4 +1,5 @@
 import axios, { AxiosInstance, AxiosError } from 'axios';
+import { Platform } from 'react-native';
 import API_CONFIG from '../utils/config';
 
 /**
@@ -87,13 +88,42 @@ class ApiService {
       console.log('🔧 Preparing audio file for upload...');
       console.log('📂 Audio URI:', audioUri);
       
+      // Convert URI to file object for React Native
+      const file = await this.uriToFile(audioUri);
+      console.log('📦 File object:', { uri: file.uri, name: file.name, type: file.type });
+      
       // Create FormData for file upload
       const formData = new FormData();
       
-      // Convert URI to blob/file
-      const file = await this.uriToFile(audioUri);
-      console.log('📦 File object:', { uri: file.uri, name: file.name, type: file.type });
-      formData.append('audio', file as any);
+      // Handle file upload differently for web vs React Native
+      if (Platform.OS === 'web') {
+        // For web, read file as blob from the URI
+        console.log('🌐 Web platform: Reading file as blob...');
+        try {
+          const response = await fetch(file.uri);
+          if (!response.ok) {
+            throw new Error(`Failed to read file: ${response.status}`);
+          }
+          const blob = await response.blob();
+          if (blob.size === 0) {
+            throw new Error('File is empty');
+          }
+          console.log('📦 Blob created:', { size: blob.size, type: blob.type });
+          formData.append('audio', blob, file.name);
+        } catch (blobError) {
+          console.error('❌ Error reading file as blob:', blobError);
+          throw new Error('Failed to read audio file for upload');
+        }
+      } else {
+        // For React Native (iOS/Android), use the object format directly
+        // This is the recommended approach for React Native FormData
+        console.log('📱 React Native platform: Using object format');
+        formData.append('audio', {
+          uri: file.uri,
+          name: file.name,
+          type: file.type,
+        } as any);
+      }
 
       // Add context if provided
       if (context) {
@@ -101,18 +131,50 @@ class ApiService {
         console.log('📍 Context:', context);
       }
 
-      console.log('🚀 Sending POST request to:', API_CONFIG.ENDPOINTS.HAZARD_DETECT);
-      // Don't set Content-Type - axios will set it automatically with boundary for FormData
-      const response = await this.client.post(
-        API_CONFIG.ENDPOINTS.HAZARD_DETECT,
-        formData
-      );
+      const url = `${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.HAZARD_DETECT}`;
+      console.log('🚀 Sending POST request to:', url);
+      
+      // Use fetch for React Native FormData compatibility
+      // React Native FormData works with fetch
+      // Add timeout and better error handling
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout
+      
+      try {
+        const response = await fetch(url, {
+          method: 'POST',
+          body: formData,
+          signal: controller.signal,
+          // DO NOT set Content-Type header - React Native will set it automatically with boundary
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (!response.ok) {
+          const errorText = await response.text();
+          let errorData;
+          try {
+            errorData = JSON.parse(errorText);
+          } catch {
+            errorData = { error: { message: errorText || `HTTP ${response.status}` } };
+          }
+          throw new Error(errorData.error?.message || `HTTP ${response.status}`);
+        }
 
-      console.log('✅ Response received:', response.status);
-      return response.data;
+        const data = await response.json();
+        console.log('✅ Response received:', response.status);
+        return data;
+      } catch (fetchError: any) {
+        clearTimeout(timeoutId);
+        if (fetchError.name === 'AbortError') {
+          throw new Error('Request timeout - file upload took too long');
+        }
+        throw fetchError;
+      }
+
     } catch (error: any) {
       console.error('❌ Error in detectHazards:', error.message);
-      console.error('❌ Error details:', error.response?.data || error);
+      console.error('❌ Error details:', error);
       throw error;
     }
   }
@@ -182,21 +244,42 @@ class ApiService {
    * Convert URI to File/Blob for FormData
    * React Native compatible version
    */
-  private async uriToFile(uri: string): Promise<any> {
+  private async uriToFile(uri: string): Promise<{ uri: string; name: string; type: string }> {
     try {
-      // For React Native, FormData accepts file URIs directly
+      // Clean up the URI - ensure it has file:// prefix
+      let cleanUri = uri;
+      if (!uri.startsWith('file://') && !uri.startsWith('http://') && !uri.startsWith('https://')) {
+        cleanUri = `file://${uri}`;
+      }
+      
       // Extract filename and type from URI
-      const filename = uri.split('/').pop() || 'audio.wav';
+      const filename = cleanUri.split('/').pop() || 'audio.wav';
       const match = /\.(\w+)$/.exec(filename);
-      const type = match ? `audio/${match[1]}` : 'audio/wav';
+      let type = 'audio/wav'; // default
+      
+      if (match) {
+        const ext = match[1].toLowerCase();
+        // Map common audio extensions to MIME types
+        const mimeTypes: { [key: string]: string } = {
+          'wav': 'audio/wav',
+          'wave': 'audio/wav',
+          'mp3': 'audio/mpeg',
+          'm4a': 'audio/mp4',
+          'aac': 'audio/aac',
+          'ogg': 'audio/ogg',
+        };
+        type = mimeTypes[ext] || `audio/${ext}`;
+      }
+
+      console.log('📄 Prepared file:', { uri: cleanUri, name: filename, type });
 
       // React Native FormData format
       // The format should be: { uri, name, type }
       return {
-        uri: uri.startsWith('file://') ? uri : `file://${uri}`,
+        uri: cleanUri,
         name: filename,
         type: type,
-      } as any;
+      };
     } catch (error) {
       console.error('Error converting URI to file:', error);
       throw new Error('Failed to prepare audio file for upload');
