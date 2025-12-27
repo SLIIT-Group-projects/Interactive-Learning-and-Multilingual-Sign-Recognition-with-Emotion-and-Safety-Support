@@ -187,4 +187,7 @@ python -m pip install --upgrade pip
 # 5. Install exact dependencies
 pip install -r requirements.txt
 
+# Run
+python models/hand_speed_demo.py                    
+
 
