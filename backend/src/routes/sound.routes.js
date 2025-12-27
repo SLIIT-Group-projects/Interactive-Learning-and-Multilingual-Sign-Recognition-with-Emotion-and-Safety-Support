@@ -99,16 +99,22 @@ router.get('/', async (req, res, next) => {
       query = query.where('timestamp', '<=', endDate);
     }
     
-    // Apply sorting
-    const sortOrder = order === 'asc' ? 'asc' : 'desc';
-    query = query.orderBy(sortBy, sortOrder);
+    // Note: We avoid orderBy in Firestore queries when combined with where clauses
+    // to prevent needing composite indexes. We'll sort in memory instead.
+    // Firestore requires an index even for single filter + orderBy combinations
+    const hasFilters = [userId, type, isHazard, status, startDate, endDate].filter(Boolean).length > 0;
     
-    // Apply pagination
-    const limitNum = Math.min(parseInt(limit) || 50, 100); // Max 100 per page
-    const offsetNum = parseInt(offset) || 0;
-    
-    // Execute query
-    const snapshot = await query.limit(limitNum).offset(offsetNum).get();
+    let snapshot;
+    // Always sort in memory if we have any filters to avoid index requirements
+    if (!hasFilters && sortBy === 'timestamp') {
+      // Only use Firestore orderBy if we have no filters at all
+      const sortOrder = order === 'asc' ? 'asc' : 'desc';
+      query = query.orderBy(sortBy, sortOrder);
+      snapshot = await query.get();
+    } else {
+      // Fetch all matching documents and sort in memory
+      snapshot = await query.get();
+    }
     
     // Format results
     const sounds = [];
@@ -119,18 +125,47 @@ router.get('/', async (req, res, next) => {
       }
     });
     
-    // Get total count (for pagination info)
-    const totalSnapshot = await query.get();
-    const total = totalSnapshot.size;
+    // Sort in memory if we have filters or if sortBy is not timestamp
+    if (hasFilters || sortBy !== 'timestamp') {
+      const sortOrder = order === 'asc' ? 1 : -1;
+      sounds.sort((a, b) => {
+        let aValue = a[sortBy];
+        let bValue = b[sortBy];
+        
+        // Handle timestamp strings
+        if (sortBy === 'timestamp' || sortBy === 'createdAt' || sortBy === 'updatedAt') {
+          aValue = aValue ? new Date(aValue).getTime() : 0;
+          bValue = bValue ? new Date(bValue).getTime() : 0;
+        }
+        
+        // Handle numeric values
+        if (typeof aValue === 'number' && typeof bValue === 'number') {
+          return (aValue - bValue) * sortOrder;
+        }
+        
+        // Handle string values
+        if (typeof aValue === 'string' && typeof bValue === 'string') {
+          return aValue.localeCompare(bValue) * sortOrder;
+        }
+        
+        return 0;
+      });
+    }
+    
+    // Apply pagination after sorting
+    const limitNum = Math.min(parseInt(limit) || 50, 100); // Max 100 per page
+    const offsetNum = parseInt(offset) || 0;
+    const total = sounds.length;
+    const paginatedSounds = sounds.slice(offsetNum, offsetNum + limitNum);
     
     res.json({
       success: true,
-      data: sounds,
+      data: paginatedSounds,
       pagination: {
         total,
         limit: limitNum,
         offset: offsetNum,
-        hasMore: offsetNum + sounds.length < total
+        hasMore: offsetNum + paginatedSounds.length < total
       }
     });
   } catch (error) {
@@ -332,9 +367,15 @@ router.delete('/:id', async (req, res, next) => {
  */
 router.get('/stats/summary', async (req, res, next) => {
   try {
-    const { userId, startDate, endDate } = req.query;
+    const { userId, startDate, endDate, isHazard } = req.query;
     
     let query = db.collection(SOUNDS_COLLECTION);
+    
+    // Apply isHazard filter first if provided
+    if (isHazard !== undefined) {
+      const hazardValue = isHazard === 'true' || isHazard === true;
+      query = query.where('isHazard', '==', hazardValue);
+    }
     
     if (userId) {
       query = query.where('userId', '==', userId);

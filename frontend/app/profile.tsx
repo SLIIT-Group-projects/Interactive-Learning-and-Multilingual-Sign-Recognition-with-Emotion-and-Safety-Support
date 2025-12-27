@@ -272,6 +272,24 @@ export default function ProfileScreen() {
   return (
     <ThemedView style={styles.container}>
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
+        {/* Menu/Sidebar */}
+        <ThemedView style={styles.menuContainer}>
+          <TouchableOpacity
+            style={[styles.menuItem, { borderColor: colors.icon }]}
+            onPress={() => router.push('/dashboard' as any)}>
+            <IconSymbol name="house.fill" size={24} color={colors.tint} />
+            <View style={styles.menuItemContent}>
+              <ThemedText type="defaultSemiBold" style={styles.menuItemTitle}>
+                Parent Dashboard
+              </ThemedText>
+              <ThemedText style={styles.menuItemSubtitle}>
+                View hazard alerts
+              </ThemedText>
+            </View>
+            <IconSymbol name="chevron.right" size={20} color={colors.icon} />
+          </TouchableOpacity>
+        </ThemedView>
+
         <ThemedView style={styles.header}>
           <ThemedText type="title" style={styles.title}>
             Saved Places
@@ -461,6 +479,29 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: 16,
+  },
+  menuContainer: {
+    marginBottom: 24,
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 12,
+    gap: 12,
+  },
+  menuItemContent: {
+    flex: 1,
+  },
+  menuItemTitle: {
+    fontSize: 16,
+    marginBottom: 4,
+  },
+  menuItemSubtitle: {
+    fontSize: 14,
+    opacity: 0.7,
   },
   header: {
     marginBottom: 24,

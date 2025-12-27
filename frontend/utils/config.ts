@@ -56,6 +56,7 @@ export const API_CONFIG = {
     HAZARD_DETECT_STREAM: '/api/hazard/detect-stream',
     HAZARD_PRIORITIES: '/api/hazard/priorities',
     PLACES: '/api/places',
+    SOUNDS: '/api/sounds',
   },
 } as const;
 

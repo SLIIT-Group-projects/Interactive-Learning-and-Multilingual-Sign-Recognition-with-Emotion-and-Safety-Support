@@ -1,7 +1,7 @@
 import apiService from './api.service';
 
 /**
- * Hazard Alert Service
+ * Hazard Database Service
  * Handles fetching and managing hazard alerts from the database
  */
 
@@ -33,7 +33,7 @@ export interface HazardStats {
   byStatus: Record<string, number>;
 }
 
-class HazardAlertService {
+class HazardDatabaseService {
   /**
    * Get all hazard alerts with optional filtering
    */
@@ -129,5 +129,6 @@ class HazardAlertService {
   }
 }
 
-export const hazardAlertService = new HazardAlertService();
-export default hazardAlertService;
+export const hazardDatabaseService = new HazardDatabaseService();
+export default hazardDatabaseService;
+

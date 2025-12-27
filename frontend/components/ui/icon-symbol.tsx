@@ -27,6 +27,20 @@ const MAPPING = {
   'location.fill': 'my-location',
   'book.fill': 'menu-book',
   'briefcase.fill': 'work',
+  'check-circle': 'check-circle',
+  'check': 'check',
+  'warning': 'warning',
+  'local-fire-department': 'local-fire-department',
+  'smoke-free': 'smoke-free',
+  'emergency': 'emergency',
+  'broken-image': 'broken-image',
+  'directions-car': 'directions-car',
+  'child-care': 'child-care',
+  'pets': 'pets',
+  'build': 'build',
+  'celebration': 'celebration',
+  'whatshot': 'whatshot',
+  'notifications': 'notifications',
 } as IconMapping;
 
 /**

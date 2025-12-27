@@ -147,6 +147,14 @@ export default function RootLayout() {
             headerShown: true,
           }} 
         />
+        <Stack.Screen 
+          name="dashboard" 
+          options={{ 
+            presentation: 'card',
+            title: 'Parent Dashboard',
+            headerShown: true,
+          }} 
+        />
       </Stack>
       <StatusBar style="auto" />
     </ThemeProvider>
