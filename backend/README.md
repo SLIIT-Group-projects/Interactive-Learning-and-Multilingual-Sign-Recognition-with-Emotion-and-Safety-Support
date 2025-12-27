@@ -161,3 +161,14 @@ curl -X POST http://localhost:3000/api/hazard/detect \
 MIT
 
 
+
+## Emotion detection - hand movement
+cd path\to\your\project\backend
+
+py -m venv .venv-hand
+.\.venv-hand\Scripts\Activate.ps1
+
+python -m pip install --upgrade pip
+pip install opencv-python mediapipe numpy
+
+

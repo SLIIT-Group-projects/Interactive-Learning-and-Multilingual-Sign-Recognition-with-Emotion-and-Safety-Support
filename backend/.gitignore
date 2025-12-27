@@ -10,4 +10,6 @@ models/*.json
 models/*.h5
 models/*.pb
 
-
+venv/
+.venv/
+.venv-hand/
