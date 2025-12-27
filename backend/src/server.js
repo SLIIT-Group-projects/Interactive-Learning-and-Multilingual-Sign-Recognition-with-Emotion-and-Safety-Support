@@ -5,6 +5,11 @@ import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import audioRoutes from "./routes/audio.routes.js";
 import hazardRoutes from "./routes/hazard.routes.js";
+// emtion and routes
+import emotionRoutes from "./routes/emotion.routes.js";
+import handRoutes from "./routes/hand.routes.js";
+import sessionRoutes from "./routes/session.routes.js";
+
 
 // Load environment variables
 dotenv.config();
@@ -28,6 +33,11 @@ app.use(express.urlencoded({ extended: true }));
 // Routes
 app.use("/api/audio", audioRoutes);
 app.use("/api/hazard", hazardRoutes);
+// emotion and hand routes
+app.use("/api/emotion", emotionRoutes);
+app.use("/api/hand", handRoutes);
+app.use("/api/session", sessionRoutes);
+
 
 // Health check endpoint
 app.get("/health", (req, res) => {
@@ -63,7 +73,7 @@ app.use((req, res) => {
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📡 Health check: http://localhost:${PORT}/health`);
-  console.log(`🌐 Network access: http://192.168.13.67:${PORT}/health`);
+  console.log(`🌐 Network access: http:// 192.168.1.7:${PORT}/health`);
   console.log(`🌍 Environment: ${process.env.NODE_ENV || "development"}`);
 });
 

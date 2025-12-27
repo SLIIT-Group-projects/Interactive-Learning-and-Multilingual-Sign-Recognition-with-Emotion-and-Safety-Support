@@ -1,41 +1,55 @@
-import { Router } from "express";
+import express from "express";
+import multer from "multer";
+import path from "path";
 import { spawn } from "child_process";
-import { join } from "path";
 import { fileURLToPath } from "url";
-import { dirname } from "path";
+import { dirname, join } from "path";
 
-const router = Router();
+const router = express.Router();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-// points to: backend/models/predict_emotion.py
-const PY_SCRIPT = join(__dirname, "../../models/predict_emotion.py");
+// upload to backend/uploads
+const uploadDir = join(__dirname, "../../uploads");
+const storage = multer.diskStorage({
+  destination: (_, __, cb) => cb(null, uploadDir),
+  filename: (_, file, cb) => cb(null, Date.now() + "-" + file.originalname),
+});
+const upload = multer({ storage });
 
-router.post("/predict", (req, res) => {
-  const { imageBase64 } = req.body;
-  if (!imageBase64) return res.status(400).json({ error: "imageBase64 required" });
+// POST /api/emotion/predict  (multipart/form-data: file=<image>)
+router.post("/predict", upload.single("file"), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: "No file uploaded" });
 
-  const py = spawn("python", [PY_SCRIPT], { stdio: ["pipe", "pipe", "pipe"] });
+    const imgPath = req.file.path;
 
-  let out = "";
-  let err = "";
+    // IMPORTANT: use your venv python if needed
+    // If you want system python, keep "python"
+    const py = spawn("python", ["models/emotion_predict.py", imgPath], {
+      cwd: join(__dirname, "../../"),
+    });
 
-  py.stdout.on("data", (d) => (out += d.toString()));
-  py.stderr.on("data", (d) => (err += d.toString()));
+    let out = "";
+    let err = "";
 
-  py.on("close", (code) => {
-    if (code !== 0) return res.status(500).json({ error: err || "Python error" });
+    py.stdout.on("data", (d) => (out += d.toString()));
+    py.stderr.on("data", (d) => (err += d.toString()));
 
-    try {
-      return res.json(JSON.parse(out));
-    } catch {
-      return res.status(500).json({ error: "Python returned invalid JSON", raw: out });
-    }
-  });
-
-  py.stdin.write(JSON.stringify({ imageBase64 }));
-  py.stdin.end();
+    py.on("close", (code) => {
+      if (code !== 0) {
+        return res.status(500).json({ error: err || "Python failed" });
+      }
+      try {
+        return res.json(JSON.parse(out));
+      } catch {
+        return res.status(500).json({ error: "Invalid python output", raw: out });
+      }
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 export default router;

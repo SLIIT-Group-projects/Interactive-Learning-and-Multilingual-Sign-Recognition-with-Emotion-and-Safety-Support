@@ -1,29 +1,44 @@
-import { Router } from "express";
+import express from "express";
 import { spawn } from "child_process";
-import { join } from "path";
 import { fileURLToPath } from "url";
-import { dirname } from "path";
+import { dirname, join } from "path";
 
-const router = Router();
+const router = express.Router();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-// points to: backend/models/hand_intensity.py
-const PY_SCRIPT = join(__dirname, "../../models/hand_intensity.py");
+// Correct Python file path
+const PYTHON_SCRIPT = join(__dirname, "../../models/hand_intensity.py");
 
 router.get("/run", (req, res) => {
-  const py = spawn("python", [PY_SCRIPT]);
+  const python = spawn("python", [PYTHON_SCRIPT]);
 
-  let out = "";
-  let err = "";
+  let data = "";
+  let error = "";
 
-  py.stdout.on("data", (d) => (out += d.toString()));
-  py.stderr.on("data", (d) => (err += d.toString()));
+  python.stdout.on("data", (chunk) => {
+    data += chunk.toString();
+  });
 
-  py.on("close", (code) => {
-    if (code !== 0) return res.status(500).json({ error: err || "Python error" });
-    res.json({ output: out });
+  python.stderr.on("data", (chunk) => {
+    error += chunk.toString();
+  });
+
+  python.on("close", (code) => {
+    if (code !== 0 || error) {
+      return res.status(500).json({ error });
+    }
+
+    try {
+      const parsed = JSON.parse(data);
+      res.json(parsed);
+    } catch (err) {
+      res.status(500).json({
+        error: "Invalid JSON from Python",
+        raw: data,
+      });
+    }
   });
 });
 
