@@ -161,7 +161,7 @@ curl -X POST http://localhost:3000/api/hazard/detect \
 MIT
 
 
-
+# option1
 ## Emotion detection - hand movement
 cd path\to\your\project\backend
 
@@ -170,5 +170,21 @@ py -m venv .venv-hand
 
 python -m pip install --upgrade pip
 pip install opencv-python mediapipe numpy
+
+# option2
+# 1. Go to backend folder
+cd path\to\project\backend
+
+# 2. Create virtual environment
+py -m venv .venv-hand
+
+# 3. Activate virtual environment
+.\.venv-hand\Scripts\Activate.ps1
+
+# 4. Upgrade pip
+python -m pip install --upgrade pip
+
+# 5. Install exact dependencies
+pip install -r requirements.txt
 
 
