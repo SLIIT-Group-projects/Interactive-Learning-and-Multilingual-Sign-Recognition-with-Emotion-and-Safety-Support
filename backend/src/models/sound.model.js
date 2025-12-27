@@ -92,12 +92,19 @@ export function validateSoundData(data) {
  * @returns {boolean}
  */
 function isValidISOString(str) {
+  if (!str || typeof str !== 'string') {
+    return false;
+  }
   try {
     const date = new Date(str);
-    return (
-      date.toISOString() === str ||
-      date.toISOString().slice(0, -5) + "Z" === str
-    );
+    // Check if date is valid (not NaN)
+    if (isNaN(date.getTime())) {
+      return false;
+    }
+    // Accept any valid ISO 8601 format (with or without Z, with or without milliseconds)
+    // Python timestamps like "2025-12-24T14:55:38.935886" are valid ISO 8601
+    const isoRegex = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,6})?(Z|[+-]\d{2}:\d{2})?$/;
+    return isoRegex.test(str);
   } catch {
     return false;
   }

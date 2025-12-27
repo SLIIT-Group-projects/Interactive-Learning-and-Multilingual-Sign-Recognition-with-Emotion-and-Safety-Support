@@ -19,6 +19,7 @@ const SOUNDS_COLLECTION = 'sounds';
 
 /**
  * Save detected sounds to database
+ * Only saves identified hazard alerts (recognized hazard types with sufficient confidence)
  * @param {Array} detections - Array of detection objects
  * @param {Object} context - Context information (userId, location, etc.)
  * @param {string} audioFileUrl - Optional URL/path to audio file
@@ -28,21 +29,55 @@ const SOUNDS_COLLECTION = 'sounds';
 async function saveSoundsToDatabase(detections, context = {}, audioFileUrl = null, metadata = {}) {
   const savedSoundIds = [];
   
+  // Minimum confidence threshold for saving (higher than model threshold to only save confident detections)
+  const MIN_CONFIDENCE_THRESHOLD = parseFloat(process.env.SAVE_CONFIDENCE_THRESHOLD || '0.4');
+  
   try {
     for (const detection of detections) {
+      const hazardType = detection.type || 'unknown';
+      const confidence = detection.confidence || 0;
+      const priority = detection.priority || getHazardPriority(hazardType);
+      
+      // Only save identified hazard alerts:
+      // 1. Must be a recognized hazard type (priority > 0 means it's in the hazard priorities list)
+      // 2. Must have sufficient confidence
+      // 3. Must not be 'unknown' type
+      const isRecognizedHazard = priority > 0 && hazardType !== 'unknown';
+      const hasSufficientConfidence = confidence >= MIN_CONFIDENCE_THRESHOLD;
+      
+      if (!isRecognizedHazard || !hasSufficientConfidence) {
+        console.log(`⏭️ Skipping save - ${hazardType} (confidence: ${confidence.toFixed(2)}, priority: ${priority}) - not a recognized hazard alert`);
+        continue;
+      }
+      
       // Clean context to remove undefined values
-      const cleanContext = {};
+      const cleanContext = {};  
       for (const [key, value] of Object.entries(context)) {
         if (value !== undefined) {
           cleanContext[key] = value;
         }
       }
       
+      // Normalize timestamp to proper ISO string format
+      let normalizedTimestamp;
+      if (detection.timestamp) {
+        try {
+          // Parse and convert to proper ISO string (handles Python timestamps without Z)
+          const date = new Date(detection.timestamp);
+          normalizedTimestamp = date.toISOString();
+        } catch (e) {
+          // If parsing fails, use current time
+          normalizedTimestamp = new Date().toISOString();
+        }
+      } else {
+        normalizedTimestamp = new Date().toISOString();
+      }
+      
       const soundData = {
         userId: context.userId || null,
-        type: detection.type || 'unknown',
-        confidence: detection.confidence || 0,
-        timestamp: detection.timestamp || new Date().toISOString(),
+        type: hazardType,
+        confidence: confidence,
+        timestamp: normalizedTimestamp,
         location: context.location || null,
         context: {
           ...cleanContext,
@@ -53,7 +88,7 @@ async function saveSoundsToDatabase(detections, context = {}, audioFileUrl = nul
           ...metadata,
           ...(detection.metadata || {}),
         },
-        priority: detection.priority || getHazardPriority(detection.type),
+        priority: priority,
         isHazard: true, // All detections from hazard endpoint are hazards
         status: 'detected',
       };
@@ -64,7 +99,7 @@ async function saveSoundsToDatabase(detections, context = {}, audioFileUrl = nul
         const soundDoc = createSoundDocument(soundData);
         const docRef = await db.collection(SOUNDS_COLLECTION).add(soundDoc);
         savedSoundIds.push(docRef.id);
-        console.log(`💾 Saved sound detection: ${detection.type} (ID: ${docRef.id})`);
+        console.log(`💾 Saved hazard alert: ${hazardType} (confidence: ${confidence.toFixed(2)}, priority: ${priority}, ID: ${docRef.id})`);
       } else {
         console.warn(`⚠️ Skipped saving invalid sound data:`, validation.errors);
       }

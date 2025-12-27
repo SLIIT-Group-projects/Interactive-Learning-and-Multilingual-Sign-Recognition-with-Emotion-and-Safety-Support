@@ -13,7 +13,7 @@ const USE_PHYSICAL_DEVICE = true; // Set to true for Expo Go on physical device
 
 // Your computer's IP address (for physical device testing)
 // Find it with: Windows: ipconfig | Mac/Linux: ifconfig
-const COMPUTER_IP = '192.168.13.67'; // Your IP: 192.168.13.67
+const COMPUTER_IP = '192.168.1.9'; // Your IP: 192.168.1.9
 
 // Backend server port
 const BACKEND_PORT = 3000;
