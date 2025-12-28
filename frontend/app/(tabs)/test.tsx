@@ -7,12 +7,26 @@ import {
   ScrollView, 
   Alert,
   ActivityIndicator,
-  Animated
+  Animated,
+  Dimensions,
+  Image
 } from 'react-native';
 import { Audio } from 'expo-av';
 import * as Haptics from 'expo-haptics';
+// Using View with backgroundColor instead of LinearGradient for simplicity
+import { useRouter } from 'expo-router';
+import { IconSymbol } from '@/components/ui/icon-symbol';
+import { Colors } from '@/constants/theme';
+import { useColorScheme } from '@/hooks/use-color-scheme';
 import apiService, { HazardDetectionResponse } from '../../services/api.service';
 import hazardAlertService from '../../services/hazardAlert.service';
+
+const { width } = Dimensions.get('window');
+
+
+const PURPLE_GRADIENT = ['#5452e6ff', '#7C3AED']; // Purple gradient
+const GREEN_BUTTON = '#10B981'; // Bright green
+const ORANGE_ACCENT = '#F59E0B'; // Orange for accents
 
 export default function HazardDetectionScreen() {
   const [permissionResponse, requestPermission] = Audio.usePermissions();
@@ -25,9 +39,33 @@ export default function HazardDetectionScreen() {
   const processingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const recordingRef = useRef<Audio.Recording | null>(null);
   const isListeningRef = useRef<boolean>(false);
-  const isRestartingRef = useRef<boolean>(false); // Lock to prevent concurrent restarts
+  const isRestartingRef = useRef<boolean>(false);
   const restartPromiseRef = useRef<Promise<Audio.Recording | null> | null>(null);
+  const isProcessingRef = useRef<boolean>(false);
   const flashAnimation = useRef(new Animated.Value(0)).current;
+  const pulseAnimation = useRef(new Animated.Value(1)).current;
+  const circleAnimation1 = useRef(new Animated.Value(0)).current;
+  const circleAnimation2 = useRef(new Animated.Value(0)).current;
+  const circleAnimation3 = useRef(new Animated.Value(0)).current;
+  const soundLevelAnimation = useRef(new Animated.Value(0)).current;
+  const router = useRouter();
+  const colorScheme = useColorScheme();
+  const [soundLevel, setSoundLevel] = useState(0.3); // Mock sound level (0-1)
+
+  const getAlertColor = (urgency: 'low' | 'medium' | 'high' | 'critical'): string => {
+    switch (urgency) {
+      case 'critical':
+        return '#FF3B30'; // Red
+      case 'high':
+        return '#FF9500'; // Orange
+      case 'medium':
+        return '#FFCC00'; // Yellow
+      case 'low':
+        return '#34C759'; // Green
+      default:
+        return GREEN_BUTTON;
+    }
+  };
 
   const checkBackendHealth = async () => {
     try {
@@ -35,50 +73,118 @@ export default function HazardDetectionScreen() {
       console.log('✅ Backend is healthy');
     } catch (error: any) {
       console.error('❌ Backend health check failed:', error.message);
-      setError(`Backend connection failed: ${error.message}. Please ensure the backend server is running.`);
+      setError(`Backend connection failed: ${error.message}`);
     }
   };
 
-  useEffect(() => {
-    // Request permissions on mount
-    if (!permissionResponse?.granted) {
-      requestPermission();
+// Separate useEffect for animations (runs when isListening changes)
+useEffect(() => {
+  if (isListening) {
+    // Pulse animation for circles
+    Animated.loop(
+      Animated.parallel([
+        Animated.sequence([
+          Animated.timing(circleAnimation1, {
+            toValue: 1,
+            duration: 1500,
+            useNativeDriver: true,
+          }),
+          Animated.timing(circleAnimation1, {
+            toValue: 0,
+            duration: 0,
+            useNativeDriver: true,
+          }),
+        ]),
+        Animated.sequence([
+          Animated.delay(300),
+          Animated.timing(circleAnimation2, {
+            toValue: 1,
+            duration: 1500,
+            useNativeDriver: true,
+          }),
+          Animated.timing(circleAnimation2, {
+            toValue: 0,
+            duration: 0,
+            useNativeDriver: true,
+          }),
+        ]),
+        Animated.sequence([
+          Animated.delay(600),
+          Animated.timing(circleAnimation3, {
+            toValue: 1,
+            duration: 1500,
+            useNativeDriver: true,
+          }),
+          Animated.timing(circleAnimation3, {
+            toValue: 0,
+            duration: 0,
+            useNativeDriver: true,
+          }),
+        ]),
+      ])
+    ).start();
+
+    // Sound level animation
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(soundLevelAnimation, {
+          toValue: 1,
+          duration: 2000,
+          useNativeDriver: false,
+        }),
+        Animated.timing(soundLevelAnimation, {
+          toValue: 0.2,
+          duration: 2000,
+          useNativeDriver: false,
+        }),
+      ])
+    ).start();
+  } else {
+    pulseAnimation.setValue(1);
+    circleAnimation1.setValue(0);
+    circleAnimation2.setValue(0);
+    circleAnimation3.setValue(0);
+    soundLevelAnimation.setValue(0);
+  }
+}, [isListening]);
+
+// Separate useEffect for initialization and cleanup (only runs on mount/unmount)
+useEffect(() => {
+  if (!permissionResponse?.granted) {
+    requestPermission();
+  }
+  checkBackendHealth();
+
+  // Cleanup on unmount only (not when recording changes)
+  return () => {
+    if (processingIntervalRef.current) {
+      clearInterval(processingIntervalRef.current);
+      processingIntervalRef.current = null;
     }
-
-    // Check backend health on mount
-    checkBackendHealth();
-
-    // Cleanup on unmount only (not when recording changes)
-    return () => {
-      if (processingIntervalRef.current) {
-        clearInterval(processingIntervalRef.current);
-        processingIntervalRef.current = null;
-      }
-      hazardAlertService.stopAlert();
-      // Stop recording if active and not already unloaded
-      const currentRecording = recordingRef.current;
-      if (currentRecording) {
-        currentRecording.getStatusAsync()
-          .then((status) => {
-            // Only stop if still recording or loaded
-            if (status.isRecording || status.canRecord) {
-              return currentRecording.stopAndUnloadAsync();
-            }
-          })
-          .catch((error) => {
-            // Ignore "already unloaded" errors - this is expected
-            if (!error.message?.includes('already been unloaded')) {
-              console.error('Error stopping recording in cleanup:', error);
-            }
-          });
-      }
-      recordingRef.current = null;
-    };
-  }, []); // Empty dependency array - only run on mount/unmount
+    // Stop any ongoing alerts
+    if (hazardAlertService && typeof (hazardAlertService as any).stopAlert === 'function') {
+      (hazardAlertService as any).stopAlert();
+    }
+    const currentRecording = recordingRef.current;
+    if (currentRecording) {
+      currentRecording.getStatusAsync()
+        .then((status) => {
+          if (status.isRecording || status.canRecord) {
+            return currentRecording.stopAndUnloadAsync();
+          }
+        })
+        .catch((error) => {
+          if (!error.message?.includes('already been unloaded')) {
+            console.error('Error stopping recording in cleanup:', error);
+          }
+        });
+    }
+    recordingRef.current = null;
+  };
+}, []); // Empty dependency array - only run on mount/unmount
 
   const startListening = async () => {
     try {
-      // Request permission if not granted
       if (!permissionResponse?.granted) {
         const { granted } = await requestPermission();
         if (!granted) {
@@ -89,7 +195,6 @@ export default function HazardDetectionScreen() {
 
     console.log('🎤 Starting microphone...');
       
-      // Configure audio mode
     await Audio.setAudioModeAsync({
       allowsRecordingIOS: true,
       playsInSilentModeIOS: true,
@@ -97,7 +202,6 @@ export default function HazardDetectionScreen() {
         shouldDuckAndroid: false,
     });
 
-      // Start recording
       const { recording: newRecording } = await Audio.Recording.createAsync(
       Audio.RecordingOptionsPresets.HIGH_QUALITY
     );
@@ -116,7 +220,7 @@ export default function HazardDetectionScreen() {
         console.log('🔍 Verifying ref after state update:', recordingRef.current ? 'exists' : 'null');
       }, 100);
 
-      // Process audio chunks every 3 seconds
+      // Process audio chunks every 8 seconds
       // We need to stop recording, send the chunk, then start a new recording
       processingIntervalRef.current = setInterval(async () => {
         console.log('⏰ Interval triggered - checking recording...');
@@ -199,7 +303,7 @@ export default function HazardDetectionScreen() {
         }
       }, 8000);
       
-      console.log('✅ Interval set up, will trigger every 3 seconds');
+      console.log('✅ Interval set up, will trigger every 8 seconds');
       
       // Process first chunk immediately after a short delay (to ensure recording has started)
       setTimeout(async () => {
@@ -274,6 +378,9 @@ export default function HazardDetectionScreen() {
         return;
       }
 
+      setIsProcessing(true);
+      isProcessingRef.current = true;
+
       // Stop and unload to finalize the recording file
       await recording.stopAndUnloadAsync();
       
@@ -284,6 +391,8 @@ export default function HazardDetectionScreen() {
       
       if (!uri) {
         console.warn('⚠️ No audio URI available after stopping recording');
+        setIsProcessing(false);
+        isProcessingRef.current = false;
         // CRITICAL: Always restart recording even if URI is missing to keep listening
         if (isListeningRef.current) {
           newRecording = await restartRecording();
@@ -297,7 +406,6 @@ export default function HazardDetectionScreen() {
       }
 
       console.log('📁 Audio URI:', uri);
-      setIsProcessing(true);
 
       // Get current context (time, location, etc.)
       const context = {
@@ -318,10 +426,19 @@ export default function HazardDetectionScreen() {
         // Trigger alerts if hazards detected
         if (response.data.highestPriority) {
           const hazard = response.data.highestPriority;
-          setAlertMessage(hazardAlertService.getAlertMessage(hazard));
+          const message = hazard.type === 'fire_alarm' ? '🔥 Fire alarm detected! Evacuate immediately!' :
+                          hazard.type === 'smoke_alarm' ? '⚠️ Smoke alarm detected! Check for smoke or fire!' :
+                          hazard.type === 'siren' ? '🚨 Emergency siren detected nearby!' :
+                          hazard.type === 'gun_shot' ? '🔫 Gunshot detected! Stay safe!' :
+                          hazard.type === 'glass_breaking' ? '💥 Glass breaking sound detected!' :
+                          hazard.type === 'car_horn' ? '🚗 Car horn detected - be careful!' :
+                          `Alert: ${hazard.type} detected`;
+          setAlertMessage(message);
           
           // Trigger haptic feedback
-          await hazardAlertService.triggerAlert(hazard);
+          if (hazardAlertService && typeof (hazardAlertService as any).triggerAlert === 'function') {
+            await (hazardAlertService as any).triggerAlert(hazard);
+          }
           
           // Visual alert animation
           triggerFlashAnimation(hazard.urgency);
@@ -389,54 +506,44 @@ export default function HazardDetectionScreen() {
       }
     } finally {
       setIsProcessing(false);
+      isProcessingRef.current = false;
     }
   };
 
   const restartRecording = async (): Promise<Audio.Recording | null> => {
-    // If already restarting, wait for the existing restart to complete
     if (isRestartingRef.current && restartPromiseRef.current) {
-      console.log('⏳ Already restarting, waiting for existing restart...');
       try {
         return await restartPromiseRef.current;
       } catch (error) {
-        // If the existing restart failed, try again
         console.log('⚠️ Existing restart failed, will try again');
       }
     }
 
-    // Set lock to prevent concurrent restarts
     isRestartingRef.current = true;
     
     const restartPromise = (async (): Promise<Audio.Recording | null> => {
       try {
         if (!isListeningRef.current) {
-          console.warn('⚠️ Cannot restart recording - not listening');
           return null;
         }
 
-        // Clean up old recording first if it exists
         const oldRecording = recordingRef.current;
         if (oldRecording) {
           try {
             const status = await oldRecording.getStatusAsync();
             if (status.isRecording || status.canRecord) {
-              console.log('🛑 Stopping old recording before restart...');
               await oldRecording.stopAndUnloadAsync();
             }
           } catch (cleanupError: any) {
-            // Ignore cleanup errors (already stopped, etc.)
             if (!cleanupError.message?.includes('already been unloaded')) {
               console.warn('⚠️ Error cleaning up old recording:', cleanupError.message);
             }
           }
-          // Clear the ref
           recordingRef.current = null;
         }
 
-        // Small delay to ensure cleanup is complete
         await new Promise(resolve => setTimeout(resolve, 100));
 
-        // Configure audio mode
         await Audio.setAudioModeAsync({
           allowsRecordingIOS: true,
           playsInSilentModeIOS: true,
@@ -444,32 +551,25 @@ export default function HazardDetectionScreen() {
           shouldDuckAndroid: false,
         });
 
-        // Start new recording
         const { recording: newRec } = await Audio.Recording.createAsync(
           Audio.RecordingOptionsPresets.HIGH_QUALITY
         );
 
-        console.log('🔄 Recording restarted successfully');
         return newRec;
       } catch (error: any) {
         console.error('❌ Error restarting recording:', error);
         throw error;
       } finally {
-        // Release lock
         isRestartingRef.current = false;
         restartPromiseRef.current = null;
       }
     })();
 
-    // Store the promise so other calls can wait for it
     restartPromiseRef.current = restartPromise;
-    
     return restartPromise;
   };
 
   const triggerFlashAnimation = (urgency: 'low' | 'medium' | 'high' | 'critical') => {
-    const color = hazardAlertService.getAlertColor(urgency);
-    
     Animated.sequence([
       Animated.timing(flashAnimation, {
         toValue: 1,
@@ -486,28 +586,21 @@ export default function HazardDetectionScreen() {
 
   const stopListening = async () => {
     try {
-      console.log('🛑 Stopping...');
-      
-      // Set listening flag to false FIRST to stop all processing
       setIsListening(false);
       isListeningRef.current = false;
       
-      // Clear processing interval
       if (processingIntervalRef.current) {
         clearInterval(processingIntervalRef.current);
         processingIntervalRef.current = null;
       }
 
-      // Stop recording
       if (recording) {
         try {
           const status = await recording.getStatusAsync();
-          // Only stop if still recording or loaded
           if (status.isRecording || status.canRecord) {
             await recording.stopAndUnloadAsync();
           }
         } catch (error: any) {
-          // Ignore "already unloaded" errors
           if (!error.message?.includes('already been unloaded')) {
             throw error;
           }
@@ -516,11 +609,13 @@ export default function HazardDetectionScreen() {
         recordingRef.current = null;
       }
 
-      // Stop alerts
-      hazardAlertService.stopAlert();
-
+      // Stop any ongoing alerts
+      if (hazardAlertService && typeof (hazardAlertService as any).stopAlert === 'function') {
+        (hazardAlertService as any).stopAlert();
+      }
       setAlertMessage(null);
       setIsProcessing(false);
+      isProcessingRef.current = false;
     } catch (error: any) {
       console.error('Error stopping recording:', error);
       setError(`Failed to stop recording: ${error.message}`);
@@ -528,373 +623,820 @@ export default function HazardDetectionScreen() {
   };
 
   const dismissAlert = () => {
-    hazardAlertService.stopAlert();
+      if (hazardAlertService && typeof (hazardAlertService as any).stopAlert === 'function') {
+        (hazardAlertService as any).stopAlert();
+      }
     setAlertMessage(null);
     setDetections(null);
   };
 
-  const getStatusColor = () => {
-    if (error) return '#FF6B6B'; // Friendly red
-    if (detections?.critical) return '#FF4444'; // Bright red for danger
-    if (detections?.highestPriority) {
-      const urgency = detections.highestPriority.urgency;
-      if (urgency === 'critical') return '#FF4444'; // Bright red
-      if (urgency === 'high') return '#FF9800'; // Orange
-      if (urgency === 'medium') return '#FFC107'; // Yellow/Amber
-      return '#4CAF50'; // Green
-    }
-    if (isListening) return '#4CAF50'; // Friendly green
-    return '#9E9E9E'; // Light gray
-  };
-
-  const getStatusEmoji = () => {
-    if (error) return '😟';
-    if (detections?.critical) return '🚨';
-    if (detections?.highestPriority) {
-      const urgency = detections.highestPriority.urgency;
-      if (urgency === 'critical') return '🚨';
-      if (urgency === 'high') return '⚠️';
-      if (urgency === 'medium') return '⚡';
-      return '💡';
-    }
-    if (isListening) return isProcessing ? '👂' : '👂';
-    return '😊';
-  };
-
-  const getStatusMessage = () => {
-    if (error) return 'Something went wrong';
-    if (detections?.critical) return 'DANGER! Be careful!';
-    if (detections?.highestPriority) {
-      const urgency = detections.highestPriority.urgency;
-      if (urgency === 'critical') return 'DANGER! Be careful!';
-      if (urgency === 'high') return 'Watch out!';
-      if (urgency === 'medium') return 'Be aware!';
-      return 'Something to notice';
-    }
-    if (isListening) return isProcessing ? 'Listening...' : 'I\'m listening!';
-    return 'Ready to listen!';
+  const formatHazardType = (type: string): string => {
+    return type
+      .split('_')
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
   };
 
   return (
+    <View style={styles.container}>
+      {/* Header */}
+
+      {/* Main Content */}
     <ScrollView 
-      style={styles.scrollContainer}
-      contentContainerStyle={styles.container}
-      showsVerticalScrollIndicator={true}
-    >
-      <Text style={styles.title}>👂 Sound Helper</Text>
-      <Text style={styles.subtitle}>I help you know about sounds around you!</Text>
-      
-      {/* Large Status Indicator */}
-      <View style={[styles.statusIndicator, { backgroundColor: getStatusColor() }]}>
-        <Text style={styles.statusEmoji}>{getStatusEmoji()}</Text>
-        <Text style={styles.statusText}>{getStatusMessage()}</Text>
-      </View>
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {isListening ? (
+          /* Listening Screen */
+          <View style={styles.listeningContainer}>
+            <Text style={styles.shhhTitle}>Shhh...</Text>
+            <Text style={styles.listeningSubtitle}>Dino is listening!</Text>
 
-      {/* Large Control Buttons */}
-      <View style={styles.controls}>
-        <TouchableOpacity
-          style={[styles.button, styles.startButton, isListening && styles.buttonDisabled]}
-          onPress={startListening}
-          disabled={isListening}
-        >
-          <Text style={styles.buttonEmoji}>▶️</Text>
-          <Text style={styles.buttonText}>Start Listening</Text>
-        </TouchableOpacity>
+            {/* Dinosaur with Concentric Circles */}
+            <View style={styles.dinoContainer}>
+              {/* Outer Circle 3 */}
+              <Animated.View
+                style={[
+                  styles.concentricCircle,
+                  styles.circle3,
+                  {
+                    opacity: circleAnimation3.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [0, 0.3],
+                    }),
+                    transform: [{
+                      scale: circleAnimation3.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [1, 1.5],
+                      }),
+                    }],
+                  },
+                ]}
+              />
+              {/* Middle Circle 2 */}
+              <Animated.View
+                style={[
+                  styles.concentricCircle,
+                  styles.circle2,
+                  {
+                    opacity: circleAnimation2.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [0, 0.4],
+                    }),
+                    transform: [{
+                      scale: circleAnimation2.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [1, 1.3],
+                      }),
+                    }],
+                  },
+                ]}
+              />
+              {/* Inner Circle 1 */}
+              <Animated.View
+                style={[
+                  styles.concentricCircle,
+                  styles.circle1,
+                  {
+                    opacity: circleAnimation1.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [0, 0.5],
+                    }),
+                    transform: [{
+                      scale: circleAnimation1.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [1, 1.2],
+                      }),
+                    }],
+                  },
+                ]}
+              />
+              
+               {/* Dinosaur Image */}
+               <View style={styles.dinoCircle}>
+                 <Image 
+                   source={require('../../assets/images/dino-listening.png')}
+                   style={styles.dinoImage}
+                   resizeMode="cover"
+                   defaultSource={require('../../assets/images/icon.png')}
+                 />
+               </View>
 
-        <TouchableOpacity
-          style={[styles.button, styles.stopButton, !isListening && styles.buttonDisabled]}
-          onPress={stopListening}
-          disabled={!isListening}
-        >
-          <Text style={styles.buttonEmoji}>⏸️</Text>
-          <Text style={styles.buttonText}>Stop</Text>
-        </TouchableOpacity>
-      </View>
+              {/* Leaf Icons */}
+              <View style={styles.leaf1}>
+                <View style={styles.leafIcon}>
+                  <Text style={styles.leafEmoji}>🍃</Text>
+                </View>
+              </View>
+              <View style={styles.leaf2}>
+                <View style={styles.leafIcon}>
+                  <Text style={styles.leafEmoji}>🍃</Text>
+                </View>
+              </View>
+            </View>
 
-      {/* Error Message - Child Friendly */}
-      {error && (
-        <View style={styles.errorContainer}>
-          <Text style={styles.errorEmoji}>😟</Text>
-          <Text style={styles.errorText}>Oops! Something went wrong.</Text>
-          <Text style={styles.errorHelpText}>Ask a grown-up for help!</Text>
-        </View>
-      )}
+            {/* Sound Level Indicator */}
+            <View style={styles.soundLevelContainer}>
+              <View style={styles.soundLevelHeader}>
+                <Text style={styles.soundLevelLabel}>Sound Level</Text>
+                <View style={styles.soundWaveIcon}>
+                  <Text style={styles.soundWaveEmoji}>📊</Text>
+                </View>
+              </View>
+              <View style={styles.soundLevelBarContainer}>
+                <Animated.View
+                  style={[
+                    styles.soundLevelBar,
+                    {
+                      width: soundLevelAnimation.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: ['10%', '60%'],
+                      }),
+                    },
+                  ]}
+                />
+              </View>
+              <Text style={styles.detectingText}>DETECTING</Text>
+            </View>
 
-      {/* Big Alert Message - Child Friendly */}
+            {/* Instruction */}
+            <Text style={styles.listeningInstruction}>
+              Make a noise to see the circles grow!
+            </Text>
+          </View>
+        ) : (
+          /* Initial Screen */
+          <View style={[styles.mainSection, { backgroundColor: PURPLE_GRADIENT[0] }]}>
+            <Text style={styles.mainPrompt}>What's that sound?</Text>
+            <Text style={[styles.instruction, { color: ORANGE_ACCENT }]}>Tap the green button!</Text>
+
+            {/* Button Container with Sound Waves and Music Note */}
+            <Animated.View
+              style={[
+                styles.buttonContainer,
+                {
+                  transform: [{ scale: pulseAnimation }],
+                },
+              ]}>
+              {/* Sound Wave Bars - Left Side */}
+              <View style={styles.soundWavesLeft}>
+                {[1, 2, 3].map((i) => (
+                  <View
+                    key={i}
+                    style={[
+                      styles.soundWaveBar,
+                      {
+                        height: 8 + i * 3,
+                        backgroundColor: '#FFD700', // Yellow bars
+                      },
+                    ]}
+                  />
+                ))}
+              </View>
+
+              {/* Large Green Button */}
+              <TouchableOpacity
+                style={[
+                  styles.mainButton,
+                  isProcessing && styles.mainButtonProcessing,
+                ]}
+                onPress={startListening}
+                disabled={isProcessing}
+              >
+                <Text style={styles.micIcon}>🎤</Text>
+                <Text style={styles.buttonText}>START</Text>
+              </TouchableOpacity>
+
+              {/* Musical Note Icon - Right Side */}
+              <View style={styles.musicNoteRight}>
+                <Text style={styles.musicNoteEmoji}>🎵</Text>
+              </View>
+            </Animated.View>
+          </View>
+        )}
+
+        {/* My Sounds Section - Only show when not listening */}
+        {!isListening && (
+          <View style={styles.mySoundsSection}>
+          <View style={styles.mySoundsHeader}>
+            <View style={styles.mySoundsHeaderLeft}>
+              <Text style={styles.folderIcon}>📁</Text>
+              <Text style={styles.mySoundsTitle}>My Sounds</Text>
+            </View>
+            <TouchableOpacity style={styles.seeAllButton}>
+              <Text style={styles.seeAllText}>See All</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Detected Sounds Cards */}
+          {detections && detections.detections.length > 0 ? (
+            <View style={styles.soundsCardsContainer}>
+              {detections.detections.slice(0, 2).map((detection, index) => {
+                const hazardEmoji = 
+                  detection.type === 'fire_alarm' ? '🔥' :
+                  detection.type === 'smoke_alarm' ? '💨' :
+                  detection.type === 'gun_shot' ? '🔫' :
+                  detection.type === 'siren' ? '🚨' :
+                  detection.type === 'glass_breaking' ? '💥' :
+                  detection.type === 'car_horn' ? '🚗' :
+                  detection.type === 'dog_barking' ? '🐕' :
+                  detection.type === 'baby_crying' ? '👶' : '🔊';
+                
+                const cardColors = [
+                  { bg: '#FFF5E6', border: '#FFA500' }, // Light orange
+                  { bg: '#E6F3FF', border: '#4A90E2' }, // Light blue
+                ];
+                
+                return (
+                  <View 
+                    key={index} 
+                    style={[
+                      styles.soundCard,
+                      { 
+                        backgroundColor: cardColors[index % 2].bg,
+                        borderColor: cardColors[index % 2].border,
+                      }
+                    ]}>
+                    <View style={styles.soundCardImage}>
+                      <Text style={styles.soundCardEmoji}>{hazardEmoji}</Text>
+                    </View>
+                    <Text style={styles.soundCardLabel}>
+                      {formatHazardType(detection.type)}
+                    </Text>
+                    <View style={styles.checkmarkBadge}>
+                      <Text style={styles.checkmark}>✓</Text>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          ) : (
+            <View style={styles.noSoundsContainer}>
+              <Text style={styles.noSoundsText}>No sounds detected yet</Text>
+            </View>
+          )}
+          </View>
+        )}
+
+        {/* Stop Listening Button - Only show when listening */}
+        {isListening && (
+          <TouchableOpacity
+            style={styles.stopListeningButton}
+            onPress={stopListening}>
+            <View style={styles.stopButtonIcon}>
+              <View style={styles.stopButtonInner} />
+            </View>
+            <Text style={styles.stopListeningText}>Stop Listening</Text>
+          </TouchableOpacity>
+        )}
+
+        {/* Alert Message */}
       {alertMessage && detections?.highestPriority && (
         <Animated.View
           style={[
-            styles.alertContainer,
+              styles.alertBanner,
             {
-              backgroundColor: hazardAlertService.getAlertColor(detections.highestPriority.urgency),
+                backgroundColor: getAlertColor(detections.highestPriority.urgency),
               opacity: flashAnimation.interpolate({
                 inputRange: [0, 1],
                 outputRange: [1, 0.7],
               }),
             },
-          ]}
-        >
-          <Text style={styles.alertEmoji}>
-            {detections.highestPriority.urgency === 'critical' ? '🚨' :
-             detections.highestPriority.urgency === 'high' ? '⚠️' :
-             detections.highestPriority.urgency === 'medium' ? '⚡' : '💡'}
-          </Text>
-          <Text style={styles.alertText}>{alertMessage}</Text>
-          <TouchableOpacity onPress={dismissAlert} style={styles.dismissButton}>
-            <Text style={styles.dismissText}>✓ Got it!</Text>
+            ]}>
+            <Text style={styles.alertBannerText}>{alertMessage}</Text>
+            <TouchableOpacity onPress={dismissAlert} style={styles.alertDismiss}>
+              <Text style={styles.alertDismissText}>✕</Text>
           </TouchableOpacity>
         </Animated.View>
       )}
 
-      {/* Detection Results - Simplified for Kids */}
-      {detections && detections.detections.length > 0 && (
-        <View style={styles.resultsContainer}>
-          <Text style={styles.resultsTitle}>🔍 What I Found:</Text>
-          <ScrollView 
-            style={styles.detectionsList}
-            nestedScrollEnabled={true}
-          >
-            {detections.detections.map((detection, index) => (
-              <View key={index} style={styles.detectionItem}>
-                <Text style={styles.detectionEmoji}>
-                  {detection.urgency === 'critical' ? '🚨' :
-                   detection.urgency === 'high' ? '⚠️' :
-                   detection.urgency === 'medium' ? '⚡' : '💡'}
-                </Text>
-                <View style={styles.detectionContent}>
-                  <Text style={styles.detectionType}>
-                    {detection.type.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                  </Text>
-                  <Text style={styles.detectionUrgency}>
-                    {detection.urgency === 'critical' ? 'Very Important!' :
-                     detection.urgency === 'high' ? 'Important!' :
-                     detection.urgency === 'medium' ? 'Notice!' : 'Info'}
-                  </Text>
-                </View>
-              </View>
-            ))}
-          </ScrollView>
+        {/* Processing Indicator */}
+        {isProcessing && !isListening && (
+          <View style={styles.processingIndicator}>
+            <ActivityIndicator size="small" color={GREEN_BUTTON} />
+            <Text style={[styles.processingText, { color: GREEN_BUTTON }]}>Listening...</Text>
         </View>
       )}
 
-      {/* Processing Indicator - Fun for Kids */}
-      {isProcessing && (
-        <View style={styles.processingContainer}>
-          <ActivityIndicator size="large" color="#4CAF50" />
-          <Text style={styles.processingText}>👂 Listening to sounds...</Text>
-          <Text style={styles.processingSubtext}>This will just take a moment!</Text>
+        {/* Error Message */}
+        {error && (
+          <View style={styles.errorBanner}>
+            <Text style={styles.errorText}>⚠️ {error}</Text>
         </View>
       )}
     </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  scrollContainer: {
-    flex: 1,
-    backgroundColor: '#F0F8FF', // Light blue background - friendly and bright
-  },
   container: {
-    padding: 20,
-    paddingBottom: 40, // Extra padding at bottom for better scrolling
+    flex: 1,
+    backgroundColor: '#F5F3FF', // Light purple background
   },
-  title: {
-    fontSize: 36,
-    fontWeight: 'bold',
-    color: '#4A90E2', // Friendly blue
-    textAlign: 'center',
-    marginTop: 20,
-    marginBottom: 10,
+  header: {
+    paddingTop: 50,
+    paddingBottom: 20,
+    paddingHorizontal: 20,
   },
-  subtitle: {
-    fontSize: 18,
-    color: '#666',
-    textAlign: 'center',
-    marginBottom: 30,
-    fontStyle: 'italic',
-  },
-  statusIndicator: {
-    padding: 25,
-    borderRadius: 20,
-    marginBottom: 30,
+  headerContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
   },
-  statusEmoji: {
-    fontSize: 60,
-    marginBottom: 10,
+  backButton: {
+    padding: 4,
   },
-  statusText: {
-    color: '#FFF',
+  backArrow: {
+    fontSize: 24,
+    color: '#333',
+    fontWeight: '600',
+  },
+  activeStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  activeDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: GREEN_BUTTON,
+  },
+  activeText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+  },
+  settingsButton: {
+    padding: 4,
+  },
+  settingsIcon: {
+    fontSize: 24,
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  logoCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#C4B5FD', // Light purple circle
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pawIcon: {
+    fontSize: 20,
+  },
+  headerTitle: {
     fontSize: 24,
     fontWeight: 'bold',
+    color: '#fff',
+  },
+  profileButton: {
+    padding: 4,
+  },
+  profileIcon: {
+    fontSize: 24,
+    color: '#fff',
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingBottom: 40,
+    flexGrow: 1,
+  },
+  mainSection: {
+    alignItems: 'center',
+    paddingVertical: 40,
+    paddingHorizontal: 20,
+    minHeight: 400,
+  },
+  listeningContainer: {
+    flex: 1,
+    backgroundColor: '#E8F4F8', // Light blue-gray background
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    alignItems: 'center',
+    minHeight: 600,
+  },
+  shhhTitle: {
+    fontSize: 48,
+    fontWeight: 'bold',
+    color: '#111827',
+    marginBottom: 8,
+  },
+  listeningSubtitle: {
+    fontSize: 18,
+    color: '#6B7280',
+    marginBottom: 40,
+  },
+  dinoContainer: {
+    width: 280,
+    height: 280,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginVertical: 30,
+    position: 'relative',
+  },
+  concentricCircle: {
+    position: 'absolute',
+    borderRadius: 140,
+    borderWidth: 2,
+    borderColor: '#F59E0B', // Orange
+  },
+  circle1: {
+    width: 200,
+    height: 200,
+  },
+  circle2: {
+    width: 240,
+    height: 240,
+  },
+  circle3: {
+    width: 280,
+    height: 280,
+  },
+   dinoCircle: {
+     width: 200,
+     height: 200,
+     borderRadius: 100,
+     backgroundColor: 'transparent', // Transparent to show image background
+     alignItems: 'center',
+     justifyContent: 'center',
+     zIndex: 10,
+     overflow: 'visible', // Allow image to extend beyond circle if needed
+   },
+   dinoImage: {
+     width: 200,
+     height: 200,
+     borderRadius: 100,
+   },
+  leaf1: {
+    position: 'absolute',
+    top: 20,
+    right: 20,
+  },
+  leaf2: {
+    position: 'absolute',
+    bottom: 20,
+    left: 20,
+  },
+  leafIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  leafEmoji: {
+    fontSize: 20,
+  },
+  soundLevelContainer: {
+    width: '100%',
+    marginTop: 40,
+    marginBottom: 20,
+  },
+  soundLevelHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  soundLevelLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  soundWaveIcon: {
+    width: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  soundWaveEmoji: {
+    fontSize: 20,
+    color: ORANGE_ACCENT,
+  },
+  soundLevelBarContainer: {
+    width: '100%',
+    height: 8,
+    backgroundColor: '#E5E7EB',
+    borderRadius: 4,
+    overflow: 'hidden',
+    marginBottom: 8,
+  },
+  soundLevelBar: {
+    height: '100%',
+    backgroundColor: ORANGE_ACCENT,
+    borderRadius: 4,
+  },
+  detectingText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: ORANGE_ACCENT,
+    textAlign: 'right',
+  },
+  listeningInstruction: {
+    fontSize: 16,
+    color: '#111827',
+    textAlign: 'center',
+    marginTop: 20,
+  },
+  stopListeningButton: {
+    backgroundColor: ORANGE_ACCENT,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 18,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    marginHorizontal: 20,
+    marginTop: 20,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  stopButtonIcon: {
+    width: 24,
+    height: 24,
+    borderRadius: 4,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stopButtonInner: {
+    width: 12,
+    height: 12,
+    borderRadius: 2,
+    backgroundColor: ORANGE_ACCENT,
+  },
+  stopListeningText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  mainPrompt: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: '#fff',
+    marginBottom: 8,
     textAlign: 'center',
   },
-  controls: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
+  instruction: {
+    fontSize: 18,
+    color: '#F59E0B', // Orange accent color
     marginBottom: 30,
-    gap: 15,
+    fontWeight: '600',
   },
-  button: {
-    flex: 1,
-    paddingVertical: 25,
-    paddingHorizontal: 20,
-    borderRadius: 20,
+  buttonContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginVertical: 30,
+    position: 'relative',
+    width: 250,
+    height: 250,
+  },
+  soundWavesLeft: {
+    position: 'absolute',
+    left: -40,
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 4,
+    height: 40,
+  },
+  soundWaveBar: {
+    width: 5,
+    borderRadius: 2.5,
+  },
+  outerRing: {
+    position: 'absolute',
+    width: 240,
+    height: 240,
+    borderRadius: 120,
+    borderWidth: 2,
+    borderColor: '#fff',
+    borderStyle: 'dashed',
+    opacity: 0.6,
+  },
+  innerRing: {
+    position: 'absolute',
+    width: 210,
+    height: 210,
+    borderRadius: 105,
+    borderWidth: 2,
+    borderColor: '#fff',
+    borderStyle: 'dashed',
+    opacity: 0.4,
+  },
+  mainButton: {
+    width: 180,
+    height: 180,
+    borderRadius: 90,
+    backgroundColor: '#10B981', // Green button color
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.2,
-    shadowRadius: 5,
-    elevation: 5,
-    minHeight: 100,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 8,
   },
-  startButton: {
-    backgroundColor: '#4CAF50', // Friendly green
+  mainButtonActive: {
+    backgroundColor: '#EF4444', // Red when stopping
   },
-  stopButton: {
-    backgroundColor: '#FF6B6B', // Friendly red
+  mainButtonProcessing: {
+    opacity: 0.8,
   },
-  buttonDisabled: {
-    opacity: 0.4,
+  buttonIconContainer: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
   },
-  buttonEmoji: {
-    fontSize: 40,
+  stopIcon: {
+    width: 30,
+    height: 30,
+    backgroundColor: '#fff',
+    borderRadius: 4,
+  },
+  micIcon: {
+    fontSize: 36,
     marginBottom: 8,
   },
   buttonText: {
-    color: '#FFF',
-    fontSize: 20,
-    fontWeight: 'bold',
-  },
-  errorContainer: {
-    backgroundColor: '#FFE5E5',
-    padding: 20,
-    borderRadius: 15,
-    marginBottom: 20,
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#FF6B6B',
-  },
-  errorEmoji: {
-    fontSize: 50,
-    marginBottom: 10,
-  },
-  errorText: {
-    color: '#D32F2F',
-    fontSize: 18,
-    fontWeight: 'bold',
-    textAlign: 'center',
-    marginBottom: 5,
-  },
-  errorHelpText: {
-    color: '#666',
-    fontSize: 16,
-    textAlign: 'center',
-  },
-  alertContainer: {
-    padding: 25,
-    borderRadius: 20,
-    marginBottom: 20,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 8,
-  },
-  alertEmoji: {
-    fontSize: 60,
-    marginBottom: 15,
-  },
-  alertText: {
-    color: '#FFF',
+    color: '#fff',
     fontSize: 24,
     fontWeight: 'bold',
-    textAlign: 'center',
-    marginBottom: 15,
+    letterSpacing: 1,
   },
-  dismissButton: {
-    backgroundColor: 'rgba(255,255,255,0.3)',
-    paddingVertical: 12,
-    paddingHorizontal: 25,
-    borderRadius: 15,
-    borderWidth: 2,
-    borderColor: '#FFF',
+  musicNoteRight: {
+    position: 'absolute',
+    right: -30,
+    top: '50%',
+    marginTop: -12,
   },
-  dismissText: {
-    color: '#FFF',
-    fontSize: 18,
-    fontWeight: 'bold',
+  musicNoteEmoji: {
+    fontSize: 24,
+    color: '#F59E0B', // Orange accent
   },
-  resultsContainer: {
-    maxHeight: 300,
-    backgroundColor: '#FFF',
-    borderRadius: 20,
+  mySoundsSection: {
+    backgroundColor: '#fff',
+    marginTop: -30,
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
     padding: 20,
+    minHeight: 200,
+  },
+  mySoundsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     marginBottom: 20,
+  },
+  mySoundsHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  folderIcon: {
+    fontSize: 20,
+  },
+  mySoundsTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#fff',
+    backgroundColor: PURPLE_GRADIENT[0],
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  seeAllButton: {
+    backgroundColor: '#87CEEB', // Light blue
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  seeAllText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  soundsCardsContainer: {
+    flexDirection: 'row',
+    gap: 16,
+    justifyContent: 'space-between',
+  },
+  soundCard: {
+    flex: 1,
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 2,
+    alignItems: 'center',
+    minHeight: 140,
+    position: 'relative',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
   },
-  resultsTitle: {
-    color: '#4A90E2',
-    fontSize: 22,
-    fontWeight: 'bold',
-    marginBottom: 15,
-    textAlign: 'center',
-  },
-  detectionsList: {
-    maxHeight: 250,
-  },
-  detectionItem: {
-    backgroundColor: '#F5F5F5',
-    padding: 15,
-    borderRadius: 15,
+  soundCardImage: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
     marginBottom: 12,
+  },
+  soundCardEmoji: {
+    fontSize: 48,
+  },
+  soundCardLabel: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  checkmarkBadge: {
+    position: 'absolute',
+    bottom: 8,
+    right: 8,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#10B981', // Green
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkmark: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  noSoundsContainer: {
+    padding: 40,
+    alignItems: 'center',
+  },
+  noSoundsText: {
+    fontSize: 16,
+    color: '#6B7280',
+    fontStyle: 'italic',
+  },
+  alertBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#E0E0E0',
+    justifyContent: 'space-between',
+    padding: 16,
+    marginHorizontal: 20,
+    marginTop: 20,
+    borderRadius: 12,
   },
-  detectionEmoji: {
-    fontSize: 40,
-    marginRight: 15,
-  },
-  detectionContent: {
+  alertBannerText: {
     flex: 1,
-  },
-  detectionType: {
-    color: '#333',
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 5,
-  },
-  detectionUrgency: {
-    color: '#666',
+    color: '#fff',
     fontSize: 16,
+    fontWeight: '600',
   },
-  processingContainer: {
-    alignItems: 'center',
-    marginTop: 30,
-    padding: 20,
+  alertDismiss: {
+    padding: 4,
   },
-  processingText: {
-    color: '#4CAF50',
+  alertDismissText: {
+    color: '#fff',
     fontSize: 20,
     fontWeight: 'bold',
-    marginTop: 15,
   },
-  processingSubtext: {
-    color: '#999',
+  processingIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 20,
+  },
+  processingText: {
     fontSize: 16,
-    marginTop: 5,
+    fontWeight: '500',
+  },
+  errorBanner: {
+    backgroundColor: '#FEE2E2',
+    padding: 16,
+    marginHorizontal: 20,
+    marginTop: 20,
+    borderRadius: 12,
+    borderLeftWidth: 4,
+    borderLeftColor: '#EF4444',
+  },
+  errorText: {
+    color: '#DC2626',
+    fontSize: 14,
   },
 });
