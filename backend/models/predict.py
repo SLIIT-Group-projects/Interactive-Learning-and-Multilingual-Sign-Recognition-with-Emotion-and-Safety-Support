@@ -2,6 +2,7 @@
 """
 Model Inference Script
 Loads YAMNet and the trained classifier model to predict audio classes
+Uses YAMNet embeddings (averaged) with a Dense classifier
 """
 
 import sys
@@ -15,27 +16,25 @@ import librosa
 # Model paths (can be overridden via environment variables)
 MODEL_PATH = os.getenv(
     'MODEL_PATH',
-    r'C:\Users\SiluniR\Documents\final research\dataset\ESC-50\hazard_yamnet_finetuned_stage2.keras'
+    r'C:\Users\SiluniR\Documents\final research\dataset\yamnet_classifier_29_12_2025.keras'
+)
+LABELS_PATH = os.getenv(
+    'LABELS_PATH',
+    r'C:\Users\SiluniR\Documents\final research\dataset\labels.npy'
 )
 YAMNET_MODEL_HANDLE = os.getenv('YAMNET_MODEL_HANDLE', 'https://tfhub.dev/google/yamnet/1')
 SAMPLE_RATE = int(os.getenv('SAMPLE_RATE', '16000'))
+DURATION = float(os.getenv('DURATION', '4.0'))  # Duration in seconds for audio processing
 
-# Class labels (55 classes from ESC-50 dataset)
+# Class labels (13 classes from YAMNet Dense classifier model)
+# Will be loaded from labels.npy if available, otherwise use this fallback
 CLASS_LABELS = [
-    'air_conditioner', 'airplane', 'breathing', 'brushing_teeth', 'can_opening',
-    'car_horn', 'cat', 'chainsaw', 'children_playing', 'chirping_birds',
-    'church_bells', 'clapping', 'clock_alarm', 'clock_tick', 'coughing', 'cow',
-    'crackling_fire', 'crickets', 'crow', 'crying_baby', 'dog', 'door_wood_creaks',
-    'door_wood_knock', 'drilling', 'drinking_sipping', 'engine', 'fireworks',
-    'footsteps', 'frog', 'glass_breaking', 'gun_shot', 'hand_saw', 'helicopter',
-    'hen', 'insects', 'keyboard_typing', 'laughing', 'mouse_click', 'pig',
-    'pouring_water', 'rain', 'rooster', 'sea_waves', 'sheep', 'siren', 'sneezing',
-    'snoring', 'street_music', 'thunderstorm', 'toilet_flush', 'train',
-    'vacuum_cleaner', 'washing_machine', 'water_drops', 'wind'
+    'car_horn', 'clock_alarm', 'coughing', 'crackling_fire', 'crying_baby', 
+    'dog', 'door_wood_knock', 'footsteps', 'glass_breaking', 'gun_shot', 
+    'siren', 'sneezing', 'train'
 ]
 
-# Map model classes to hazard types (only include classes that are actual hazards)
-# Maps ESC-50 class names to standardized hazard type names
+# Map model classes to hazard types (standardized hazard type names)
 HAZARD_MAPPING = {
     'siren': 'siren',
     'glass_breaking': 'glass_breaking',
@@ -43,23 +42,24 @@ HAZARD_MAPPING = {
     'crying_baby': 'baby_crying',
     'dog': 'dog_barking',
     'gun_shot': 'gun_shot',
-    'chainsaw': 'chainsaw',
-    'fireworks': 'fireworks',
-    'crackling_fire': 'fire',
-    'clock_alarm': 'alarm',
-    'church_bells': 'alarm',  # Could be emergency bells
-    # Note: 'fire_alarm' and 'smoke_alarm' are not in ESC-50 classes
-    # but are kept in mapping for compatibility with hazard priority system
+    'crackling_fire': 'fire_alarm',  # Map to fire_alarm for hazard system
+    'clock_alarm': 'smoke_alarm',    # Map to smoke_alarm for hazard system
+    'door_wood_knock': 'door_knock',
+    'footsteps': 'footsteps',
+    'coughing': 'coughing',
+    'sneezing': 'sneezing',
+    'train': 'train',
 }
 
 # Global model variables (loaded once)
 yamnet_model = None
 classifier_model = None
+class_labels = None
 
 
 def load_models():
     """Load YAMNet and classifier models (called once)"""
-    global yamnet_model, classifier_model
+    global yamnet_model, classifier_model, class_labels
     
     if yamnet_model is None:
         print("Loading YAMNet model...", file=sys.stderr)
@@ -72,21 +72,39 @@ def load_models():
             raise FileNotFoundError(f"Model file not found: {MODEL_PATH}")
         classifier_model = tf.keras.models.load_model(MODEL_PATH, compile=False)
         print("Classifier model loaded successfully", file=sys.stderr)
+    
+    # Load class labels from file if available
+    if class_labels is None:
+        if os.path.exists(LABELS_PATH):
+            print(f"Loading class labels from {LABELS_PATH}...", file=sys.stderr)
+            class_labels = np.load(LABELS_PATH, allow_pickle=True)
+            print(f"Loaded {len(class_labels)} class labels", file=sys.stderr)
+        else:
+            print(f"Labels file not found at {LABELS_PATH}, using default labels", file=sys.stderr)
+            class_labels = np.array(CLASS_LABELS)
 
 
 def extract_yamnet_embedding(audio_path):
-    """Extract YAMNet embedding from audio file"""
+    """
+    Extract YAMNet embedding from audio file and average across time frames
+    Returns averaged embedding vector (1024,) for Dense classifier model
+    This matches the training script approach
+    """
     try:
         # Load audio file
-        waveform, _ = librosa.load(audio_path, sr=SAMPLE_RATE, mono=True)
+        waveform, sr = librosa.load(audio_path, sr=SAMPLE_RATE)
         
-        # Get YAMNet embeddings
+        # Reshape waveform to 1D array
+        waveform = waveform.reshape(-1)
+        
+        # Get YAMNet embeddings (returns sequence)
         scores, embeddings, spectrogram = yamnet_model(waveform)
         
-        # Average embeddings over time
-        mean_embedding = tf.reduce_mean(embeddings, axis=0)
+        # Average embeddings across time frames (mean pooling)
+        # This matches the training script: np.mean(embeddings.numpy(), axis=0)
+        averaged_embedding = np.mean(embeddings.numpy(), axis=0)
         
-        return mean_embedding.numpy()
+        return averaged_embedding.astype(np.float32)
     except Exception as e:
         print(f"Error extracting embedding: {e}", file=sys.stderr)
         raise
@@ -94,7 +112,7 @@ def extract_yamnet_embedding(audio_path):
 
 def predict(audio_path, threshold=0.3):
     """
-    Predict classes from audio file
+    Predict classes from audio file using YAMNet Dense classifier model
     
     Args:
         audio_path: Path to audio file
@@ -106,13 +124,13 @@ def predict(audio_path, threshold=0.3):
     # Load models if not already loaded
     load_models()
     
-    # Extract embedding
+    # Extract averaged embedding (1024,)
     embedding = extract_yamnet_embedding(audio_path)
     
-    # Reshape for model input (batch_size=1, features=1024)
-    embedding_batch = np.expand_dims(embedding, axis=0)
+    # Reshape for model input: (batch_size=1, features=1024)
+    embedding_batch = np.expand_dims(embedding, axis=0)  # Shape: (1, 1024)
     
-    # Get predictions
+    # Get predictions from Dense classifier model
     predictions = classifier_model.predict(embedding_batch, verbose=0)[0]
     
     # Get top predictions above threshold
@@ -121,7 +139,7 @@ def predict(audio_path, threshold=0.3):
     
     for idx in top_indices:
         confidence = float(predictions[idx])
-        class_name = CLASS_LABELS[idx]
+        class_name = class_labels[idx] if class_labels is not None else CLASS_LABELS[idx]
         
         # Only include if above threshold
         if confidence >= threshold:

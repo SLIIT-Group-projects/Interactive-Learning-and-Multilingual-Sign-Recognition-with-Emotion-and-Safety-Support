@@ -246,14 +246,29 @@ class ApiService {
    */
   private async uriToFile(uri: string): Promise<{ uri: string; name: string; type: string }> {
     try {
-      // Clean up the URI - ensure it has file:// prefix
+      // Clean up the URI - handle different URI formats
       let cleanUri = uri;
-      if (!uri.startsWith('file://') && !uri.startsWith('http://') && !uri.startsWith('https://')) {
+      
+      // Check if it's already a valid URL (blob:, http:, https:, or file:)
+      const isBlobUrl = uri.startsWith('blob:');
+      const isHttpUrl = uri.startsWith('http://') || uri.startsWith('https://');
+      const isFileUrl = uri.startsWith('file://');
+      
+      // Only prepend file:// for local paths that don't have a protocol
+      if (!isBlobUrl && !isHttpUrl && !isFileUrl) {
         cleanUri = `file://${uri}`;
       }
       
       // Extract filename and type from URI
-      const filename = cleanUri.split('/').pop() || 'audio.wav';
+      // For blob URLs, use a default filename since they don't have a real path
+      let filename = 'audio.wav';
+      if (isBlobUrl) {
+        // Blob URLs don't have a filename, use a default
+        filename = 'audio.wav';
+      } else {
+        filename = cleanUri.split('/').pop() || 'audio.wav';
+      }
+      
       const match = /\.(\w+)$/.exec(filename);
       let type = 'audio/wav'; // default
       
@@ -271,7 +286,7 @@ class ApiService {
         type = mimeTypes[ext] || `audio/${ext}`;
       }
 
-      console.log('📄 Prepared file:', { uri: cleanUri, name: filename, type });
+      console.log('📄 Prepared file:', { uri: cleanUri, name: filename, type, isBlobUrl });
 
       // React Native FormData format
       // The format should be: { uri, name, type }
