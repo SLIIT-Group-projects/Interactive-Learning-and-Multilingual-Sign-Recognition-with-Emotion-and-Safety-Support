@@ -18,8 +18,12 @@ const PYTHON_SCRIPT_PATH = join(__dirname, '../../models/predict.py');
 // Python executable (can be overridden via environment)
 const PYTHON_EXECUTABLE = process.env.PYTHON_EXECUTABLE || 'python';
 
-// Confidence threshold for detections
-const CONFIDENCE_THRESHOLD = parseFloat(process.env.MODEL_CONFIDENCE_THRESHOLD || '0.3');
+// Confidence threshold for detections (for including multiple predictions)
+const CONFIDENCE_THRESHOLD = parseFloat(process.env.MODEL_CONFIDENCE_THRESHOLD || '0.4');
+
+// Minimum confidence required for top prediction (higher threshold to reduce false positives)
+// Increased from 0.5 to 0.6 to reduce false positives (coughing/footsteps)
+const MIN_CONFIDENCE = parseFloat(process.env.MODEL_MIN_CONFIDENCE || '0.6');
 
 /**
  * Run model inference on an audio file
@@ -30,10 +34,12 @@ const CONFIDENCE_THRESHOLD = parseFloat(process.env.MODEL_CONFIDENCE_THRESHOLD |
 export async function predictWithModel(audioFilePath, context = {}) {
   return new Promise((resolve, reject) => {
     // Spawn Python process
+    // Arguments: script_path, audio_file, threshold, min_confidence
     const pythonProcess = spawn(PYTHON_EXECUTABLE, [
       PYTHON_SCRIPT_PATH,
       audioFilePath,
-      CONFIDENCE_THRESHOLD.toString()
+      CONFIDENCE_THRESHOLD.toString(),
+      MIN_CONFIDENCE.toString()
     ]);
 
     let stdout = '';
@@ -63,8 +69,27 @@ export async function predictWithModel(audioFilePath, context = {}) {
       }
 
       try {
+        // Extract JSON from stdout (handle cases where panns_inference prints to stdout)
+        // Look for lines that start with '{' (JSON object)
+        const lines = stdout.trim().split('\n');
+        let jsonLine = '';
+        
+        // Find the last line that looks like JSON (starts with '{')
+        for (let i = lines.length - 1; i >= 0; i--) {
+          const line = lines[i].trim();
+          if (line.startsWith('{')) {
+            jsonLine = line;
+            break;
+          }
+        }
+        
+        if (!jsonLine) {
+          // Fallback: try parsing entire stdout
+          jsonLine = stdout.trim();
+        }
+        
         // Parse JSON output
-        const result = JSON.parse(stdout.trim());
+        const result = JSON.parse(jsonLine);
         
         if (!result.success) {
           reject(new Error(result.error || 'Model prediction failed'));

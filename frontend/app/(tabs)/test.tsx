@@ -51,6 +51,9 @@ export default function HazardDetectionScreen() {
   const router = useRouter();
   const colorScheme = useColorScheme();
   const [soundLevel, setSoundLevel] = useState(0.3); // Mock sound level (0-1)
+  
+  // Track previous detection for consecutive detection check (only alert after 2 detections in a row)
+  const previousDetectionRef = useRef<string | null>(null); // Store the previous detection type
 
   const getAlertColor = (urgency: 'low' | 'medium' | 'high' | 'critical'): string => {
     switch (urgency) {
@@ -220,7 +223,7 @@ useEffect(() => {
         console.log('🔍 Verifying ref after state update:', recordingRef.current ? 'exists' : 'null');
       }, 100);
 
-      // Process audio chunks every 8 seconds
+      // Process audio chunks every 4 seconds (reduced from 8s for faster detection)
       // We need to stop recording, send the chunk, then start a new recording
       processingIntervalRef.current = setInterval(async () => {
         console.log('⏰ Interval triggered - checking recording...');
@@ -301,7 +304,7 @@ useEffect(() => {
             }
           }
         }
-      }, 8000);
+      }, 4000); // Reduced to 4 seconds for faster detection
       
       console.log('✅ Interval set up, will trigger every 8 seconds');
       
@@ -423,28 +426,61 @@ useEffect(() => {
       if (response.success && response.data) {
         setDetections(response.data);
 
-        // Trigger alerts if hazards detected
+        // Check for consecutive detections (only alert if same sound detected 2 times in a row)
         if (response.data.highestPriority) {
           const hazard = response.data.highestPriority;
-          const message = hazard.type === 'fire_alarm' ? '🔥 Fire alarm detected! Evacuate immediately!' :
-                          hazard.type === 'smoke_alarm' ? '⚠️ Smoke alarm detected! Check for smoke or fire!' :
-                          hazard.type === 'siren' ? '🚨 Emergency siren detected nearby!' :
-                          hazard.type === 'gun_shot' ? '🔫 Gunshot detected! Stay safe!' :
-                          hazard.type === 'glass_breaking' ? '💥 Glass breaking sound detected!' :
-                          hazard.type === 'car_horn' ? '🚗 Car horn detected - be careful!' :
-                          `Alert: ${hazard.type} detected`;
-          setAlertMessage(message);
+          const hazardType = hazard.type;
+          const previousDetection = previousDetectionRef.current;
           
-          // Trigger haptic feedback
-          if (hazardAlertService && typeof (hazardAlertService as any).triggerAlert === 'function') {
-            await (hazardAlertService as any).triggerAlert(hazard);
+          // Check if this is the same detection as the previous one
+          if (previousDetection === hazardType) {
+            // Same detection twice in a row - trigger alert!
+            console.log(`✅ Confirmed hazard: ${hazardType} detected 2 times in a row`);
+            
+            const message = hazard.type === 'fire_alarm' ? '🔥 Fire alarm detected! Evacuate immediately!' :
+                            hazard.type === 'smoke_alarm' ? '⚠️ Smoke alarm detected! Check for smoke or fire!' :
+                            hazard.type === 'siren' ? '🚨 Emergency siren detected nearby!' :
+                            hazard.type === 'gun_shot' ? '🔫 Gunshot detected! Stay safe!' :
+                            hazard.type === 'glass_breaking' ? '💥 Glass breaking sound detected!' :
+                            hazard.type === 'car_horn' ? '🚗 Car horn detected - be careful!' :
+                            hazard.type === 'dog' ? '🐕 Dog barking detected!' :
+                            hazard.type === 'crying_baby' ? '👶 Baby crying detected!' :
+                            hazard.type === 'coughing' ? '😷 Coughing detected!' :
+                            hazard.type === 'sneezing' ? '🤧 Sneezing detected!' :
+                            hazard.type === 'train' ? '🚂 Train sound detected!' :
+                            hazard.type === 'clock_alarm' ? '⏰ Clock alarm detected!' :
+                            hazard.type === 'crackling_fire' ? '🔥 Fire crackling detected!' :
+                            hazard.type === 'door_wood_knock' ? '🚪 Door knock detected!' :
+                            hazard.type === 'footsteps' ? '👣 Footsteps detected!' :
+                            `Alert: ${hazard.type} detected`;
+            setAlertMessage(message);
+            
+            // Trigger haptic feedback
+            if (hazardAlertService && typeof (hazardAlertService as any).triggerAlert === 'function') {
+              await (hazardAlertService as any).triggerAlert(hazard);
+            }
+            
+            // Visual alert animation
+            triggerFlashAnimation(hazard.urgency);
+            
+            // Keep the same detection stored for potential 3rd+ consecutive detection
+            // (don't reset it, so if it happens again, it will still trigger)
+          } else {
+            // Different detection or first detection - store it but don't alert yet
+            console.log(`⏳ First detection of ${hazardType}, waiting for confirmation...`);
+            previousDetectionRef.current = hazardType;
+            // Clear any previous alert message
+            setAlertMessage(null);
           }
-          
-          // Visual alert animation
-          triggerFlashAnimation(hazard.urgency);
         } else {
+          // No detection in this chunk - reset previous detection
+          previousDetectionRef.current = null;
           setAlertMessage(null);
         }
+      } else {
+        // No detection - reset previous detection
+        previousDetectionRef.current = null;
+        setAlertMessage(null);
       }
 
       // ALWAYS restart recording for the next chunk - this is critical for continuous listening
@@ -614,6 +650,10 @@ useEffect(() => {
         (hazardAlertService as any).stopAlert();
       }
       setAlertMessage(null);
+      
+      // Clear recent detections when stopping
+      // Reset previous detection when stopping
+      previousDetectionRef.current = null;
       setIsProcessing(false);
       isProcessingRef.current = false;
     } catch (error: any) {
