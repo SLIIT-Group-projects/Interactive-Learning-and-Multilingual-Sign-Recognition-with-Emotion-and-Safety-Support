@@ -186,21 +186,21 @@ def extract_embedding(audio_path):
                 audio = audio / max_val
             
             # Step 5: Repeat or trim to 10 seconds
-            # Model expects 10-second chunks, but frontend sends 4-second chunks
+            # Model expects 10-second chunks, frontend sends 4-second chunks
             # Use repetition trick: repeat short audio to fill 10 seconds
+            # This is better than zero-padding because it maintains actual sound content
             target_samples = int(SAMPLE_RATE * 10.0)  # 10 seconds at 32 kHz = 320,000 samples
             audio_duration_sec = len(audio) / SAMPLE_RATE
             
             if len(audio) < target_samples:
                 # Use repetition trick: repeat the audio to fill 10 seconds
-                # This is better than zero-padding because it maintains actual sound content
                 # Example: 4-second chunk → repeat 2.5x → 10 seconds
                 num_repeats = int(np.ceil(target_samples / len(audio)))
                 # Repeat the audio
                 audio_repeated = np.tile(audio, num_repeats)
                 # Trim to exactly target_samples
                 audio = audio_repeated[:target_samples]
-                print(f"Audio duration: {audio_duration_sec:.2f}s → repeated {num_repeats}x → 10.00s", file=sys.stderr)
+                print(f"Audio duration: {audio_duration_sec:.2f}s → repeated {num_repeats}x → 10.00s (expected: ~4.00s)", file=sys.stderr)
             elif len(audio) > target_samples:
                 # Trim to 10 seconds (shouldn't happen with 4s chunks, but handle it)
                 audio = audio[:target_samples]
@@ -304,6 +304,20 @@ def _apply_threshold(predictions, threshold, min_confidence=0.5):
     if top_confidence < min_confidence:
         # Top prediction is not confident enough, return empty list
         return detections
+    
+    # Additional filtering: Check if top prediction is significantly higher than second
+    # This helps reduce false positives when model is uncertain
+    if len(top_indices) > 1:
+        second_confidence = float(predictions[top_indices[1]])
+        confidence_gap = top_confidence - second_confidence
+        
+        # If top prediction is not clearly better than second, require higher confidence
+        # This prevents false positives when model is uncertain between classes
+        if confidence_gap < 0.15 and top_confidence < 0.70:
+            # Model is uncertain - require higher confidence to reduce false positives
+            effective_min_confidence = min_confidence + 0.10
+            if top_confidence < effective_min_confidence:
+                return detections
     
     # Top prediction is confident enough, include all predictions above threshold
     for idx in top_indices:

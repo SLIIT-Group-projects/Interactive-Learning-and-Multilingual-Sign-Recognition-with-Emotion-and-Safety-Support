@@ -52,8 +52,18 @@ export default function HazardDetectionScreen() {
   const colorScheme = useColorScheme();
   const [soundLevel, setSoundLevel] = useState(0.3); // Mock sound level (0-1)
   
-  // Track previous detection for consecutive detection check (only alert after 2 detections in a row)
-  const previousDetectionRef = useRef<string | null>(null); // Store the previous detection type
+  // Smart detection tracking with temporal smoothing
+  // Track recent detections in a sliding window for better accuracy
+  interface DetectionHistory {
+    type: string;
+    confidence: number;
+    priority: number;
+    timestamp: number;
+  }
+  const detectionHistoryRef = useRef<DetectionHistory[]>([]);
+  const MAX_HISTORY_SIZE = 5; // Keep last 5 detections (20 seconds of history)
+  const ALERT_COOLDOWN_MS = 8000; // Don't alert same hazard within 8 seconds
+  const lastAlertTimeRef = useRef<Map<string, number>>(new Map()); // Track last alert time per hazard type
 
   const getAlertColor = (urgency: 'low' | 'medium' | 'high' | 'critical'): string => {
     switch (urgency) {
@@ -223,8 +233,11 @@ useEffect(() => {
         console.log('🔍 Verifying ref after state update:', recordingRef.current ? 'exists' : 'null');
       }, 100);
 
-      // Process audio chunks every 4 seconds (reduced from 8s for faster detection)
-      // We need to stop recording, send the chunk, then start a new recording
+      // Process audio chunks every 4 seconds
+      // Track recording start time to ensure we capture full 4-second chunks
+      const CHUNK_DURATION_MS = 4000; // 4 seconds
+      const MIN_CHUNK_DURATION_MS = 3500; // Minimum 3.5 seconds to account for processing delays
+      
       processingIntervalRef.current = setInterval(async () => {
         console.log('⏰ Interval triggered - checking recording...');
         // Check if recording is still active using ref
@@ -265,11 +278,21 @@ useEffect(() => {
         
         try {
           const status = await currentRecording.getStatusAsync();
-          console.log('📊 Recording status:', { isRecording: status.isRecording, canRecord: status.canRecord });
+          const durationSeconds = (status.durationMillis || 0) / 1000;
+          console.log('📊 Recording status:', { 
+            isRecording: status.isRecording, 
+            canRecord: status.canRecord,
+            durationSeconds: durationSeconds.toFixed(2)
+          });
           
           if (status.isRecording) {
-            console.log('✅ Recording is active, processing chunk...');
-            await processAudioChunk(currentRecording);
+            // Only process if recording has been running for at least MIN_CHUNK_DURATION_MS
+            if (status.durationMillis && status.durationMillis >= MIN_CHUNK_DURATION_MS) {
+              console.log(`✅ Recording is active (${durationSeconds.toFixed(2)}s), processing chunk...`);
+              await processAudioChunk(currentRecording);
+            } else {
+              console.log(`⏳ Recording too short (${durationSeconds.toFixed(2)}s), waiting for ${(MIN_CHUNK_DURATION_MS/1000).toFixed(1)}s minimum...`);
+            }
           } else {
             console.warn('⚠️ Recording is not active, trying to restart...');
             // Recording stopped unexpectedly - restart it instead of stopping
@@ -304,14 +327,14 @@ useEffect(() => {
             }
           }
         }
-      }, 4000); // Reduced to 4 seconds for faster detection
+      }, CHUNK_DURATION_MS); // Process every 4 seconds
       
-      console.log('✅ Interval set up, will trigger every 8 seconds');
+      console.log(`✅ Interval set up, will trigger every ${CHUNK_DURATION_MS/1000} seconds`);
       
-      // Process first chunk immediately after a short delay (to ensure recording has started)
+      // Process first chunk after 4 seconds (not 1 second) to ensure full duration
       setTimeout(async () => {
         try {
-          console.log('🚀 Processing first audio chunk immediately...');
+          console.log('🚀 Processing first audio chunk after 4 seconds...');
           const firstRecording = recordingRef.current;
           console.log('📹 First recording ref:', firstRecording ? 'exists' : 'null');
           console.log('🎧 isListeningRef:', isListeningRef.current);
@@ -328,18 +351,19 @@ useEffect(() => {
           
           console.log('📊 Getting recording status for first chunk...');
           const status = await firstRecording.getStatusAsync();
+          const durationSeconds = (status.durationMillis || 0) / 1000;
           console.log('📊 First chunk recording status:', { 
             isRecording: status.isRecording, 
             canRecord: status.canRecord,
-            durationMillis: status.durationMillis 
+            durationSeconds: durationSeconds.toFixed(2)
           });
           
-          if (status.isRecording) {
-            console.log('✅ Recording is active, calling processAudioChunk...');
+          if (status.isRecording && status.durationMillis && status.durationMillis >= MIN_CHUNK_DURATION_MS) {
+            console.log(`✅ Recording is active (${durationSeconds.toFixed(2)}s), calling processAudioChunk...`);
             await processAudioChunk(firstRecording);
             console.log('✅ Finished processing first chunk');
           } else {
-            console.warn('⚠️ Recording is not active for first chunk, status:', JSON.stringify(status));
+            console.warn(`⚠️ Recording not ready for first chunk (duration: ${durationSeconds.toFixed(2)}s, min: ${(MIN_CHUNK_DURATION_MS/1000).toFixed(1)}s)`);
           }
         } catch (error: any) {
           console.error('❌ Error in first chunk setTimeout:', error);
@@ -347,7 +371,7 @@ useEffect(() => {
           console.error('❌ Error stack:', error?.stack);
           console.error('❌ Full error:', JSON.stringify(error, null, 2));
         }
-      }, 1000); // Wait 1 second for recording to stabilize
+      }, CHUNK_DURATION_MS); // Wait 4 seconds for full chunk
 
     } catch (error: any) {
       console.error('Error starting recording:', error);
@@ -359,11 +383,13 @@ useEffect(() => {
   const processAudioChunk = async (recording: Audio.Recording) => {
     let newRecording: Audio.Recording | null = null;
     try {
-      console.log('🎵 Processing audio chunk...');
+      // Get status before stopping to log duration
+      const statusBeforeStop = await recording.getStatusAsync();
+      const durationSeconds = (statusBeforeStop.durationMillis || 0) / 1000;
+      console.log(`🎵 Processing audio chunk (duration: ${durationSeconds.toFixed(2)}s)...`);
       
       // Stop the current recording to access the file
-      const status = await recording.getStatusAsync();
-      if (!status.isRecording) {
+      if (!statusBeforeStop.isRecording) {
         console.warn('⚠️ Recording is not active, trying to restart...');
         // CRITICAL: If recording stopped, restart it to keep listening
         if (isListeningRef.current) {
@@ -426,16 +452,113 @@ useEffect(() => {
       if (response.success && response.data) {
         setDetections(response.data);
 
-        // Check for consecutive detections (only alert if same sound detected 2 times in a row)
+        // Smart confidence-based alerting system
         if (response.data.highestPriority) {
           const hazard = response.data.highestPriority;
           const hazardType = hazard.type;
-          const previousDetection = previousDetectionRef.current;
+          // Get confidence, priority, and urgency - with fallbacks
+          const confidence = hazard.confidence || 0;
+          // If priority is missing, try to get it from detections array or use default
+          let priority = hazard.priority;
+          if (priority === undefined || priority === null) {
+            // Try to find in detections array
+            const detectionInArray = response.data.detections?.find((d: any) => d.type === hazardType);
+            priority = detectionInArray?.priority || 0;
+          }
+          priority = priority || 0;
           
-          // Check if this is the same detection as the previous one
-          if (previousDetection === hazardType) {
-            // Same detection twice in a row - trigger alert!
-            console.log(`✅ Confirmed hazard: ${hazardType} detected 2 times in a row`);
+          let urgency = hazard.urgency;
+          if (!urgency) {
+            // Determine urgency from priority if not provided
+            if (priority >= 9) urgency = 'critical';
+            else if (priority >= 7) urgency = 'high';
+            else if (priority >= 5) urgency = 'medium';
+            else urgency = 'low';
+          }
+          
+          const now = Date.now();
+          
+          // Debug: Log the full hazard object
+          console.log('📊 Full hazard object:', JSON.stringify(hazard, null, 2));
+          console.log(`📊 Extracted values: type=${hazardType}, confidence=${confidence}, priority=${priority}, urgency=${urgency}`);
+          
+          // Add to detection history
+          const detection: DetectionHistory = {
+            type: hazardType,
+            confidence,
+            priority,
+            timestamp: now
+          };
+          
+          detectionHistoryRef.current.push(detection);
+          // Keep only recent detections (last MAX_HISTORY_SIZE)
+          if (detectionHistoryRef.current.length > MAX_HISTORY_SIZE) {
+            detectionHistoryRef.current.shift();
+          }
+          
+          // Debug logging
+          console.log(`🔍 Detection: ${hazardType}, confidence: ${(confidence*100).toFixed(1)}%, priority: ${priority}, urgency: ${urgency}`);
+          
+          // Check cooldown - don't alert same hazard too frequently
+          const lastAlertTime = lastAlertTimeRef.current.get(hazardType) || 0;
+          const timeSinceLastAlert = now - lastAlertTime;
+          const isOnCooldown = timeSinceLastAlert < ALERT_COOLDOWN_MS;
+          
+          if (isOnCooldown) {
+            console.log(`⏳ ${hazardType} alert on cooldown (${Math.round(timeSinceLastAlert/1000)}s ago)`);
+            // Don't return - continue to check rules but skip alerting if on cooldown
+          }
+          
+          // Smart alerting rules based on confidence and priority
+          let shouldAlert = false;
+          let alertReason = '';
+          
+          // Rule 1: Critical hazards (fire, gunshot) with high confidence - alert immediately
+          if (priority >= 9 && confidence >= 0.75) {
+            shouldAlert = true;
+            alertReason = `Critical hazard with high confidence (${(confidence*100).toFixed(0)}%)`;
+            console.log(`✅ Rule 1 matched: priority ${priority} >= 9, confidence ${(confidence*100).toFixed(1)}% >= 75%`);
+          }
+          // Rule 2: High priority hazards (siren, glass breaking) with medium-high confidence - alert immediately
+          else if (priority >= 7 && confidence >= 0.70) {
+            shouldAlert = true;
+            alertReason = `High priority hazard with good confidence (${(confidence*100).toFixed(0)}%)`;
+            console.log(`✅ Rule 2 matched: priority ${priority} >= 7, confidence ${(confidence*100).toFixed(1)}% >= 70%`);
+          }
+          // Rule 3: Medium confidence (0.6-0.7) - require 2 out of last 3 detections to be same type
+          else if (confidence >= 0.60 && confidence < 0.70) {
+            const recentSameType = detectionHistoryRef.current
+              .filter(d => d.type === hazardType)
+              .slice(-3); // Last 3 detections
+            
+            if (recentSameType.length >= 2) {
+              shouldAlert = true;
+              alertReason = `Confirmed by ${recentSameType.length} recent detections (confidence: ${(confidence*100).toFixed(0)}%)`;
+            } else {
+              console.log(`⏳ ${hazardType} needs confirmation (${recentSameType.length}/2 detections, confidence: ${(confidence*100).toFixed(0)}%)`);
+            }
+          }
+          // Rule 4: Lower confidence (<0.6) - require 3 out of last 5 detections
+          else if (confidence >= 0.50) {
+            const recentSameType = detectionHistoryRef.current
+              .filter(d => d.type === hazardType)
+              .slice(-5); // Last 5 detections
+            
+            if (recentSameType.length >= 3) {
+              shouldAlert = true;
+              alertReason = `Confirmed by ${recentSameType.length} recent detections (confidence: ${(confidence*100).toFixed(0)}%)`;
+            } else {
+              console.log(`⏳ ${hazardType} needs more confirmation (${recentSameType.length}/3 detections, confidence: ${(confidence*100).toFixed(0)}%)`);
+            }
+          }
+          // Rule 5: Very low confidence - don't alert
+          else {
+            console.log(`⏭️ Skipping ${hazardType} - confidence too low (${(confidence*100).toFixed(0)}%)`);
+          }
+          
+          // Only alert if shouldAlert is true AND not on cooldown
+          if (shouldAlert && !isOnCooldown) {
+            console.log(`✅ Alerting: ${hazardType} - ${alertReason}`);
             
             const message = hazard.type === 'fire_alarm' ? '🔥 Fire alarm detected! Evacuate immediately!' :
                             hazard.type === 'smoke_alarm' ? '⚠️ Smoke alarm detected! Check for smoke or fire!' :
@@ -444,7 +567,9 @@ useEffect(() => {
                             hazard.type === 'glass_breaking' ? '💥 Glass breaking sound detected!' :
                             hazard.type === 'car_horn' ? '🚗 Car horn detected - be careful!' :
                             hazard.type === 'dog' ? '🐕 Dog barking detected!' :
+                            hazard.type === 'dog_barking' ? '🐕 Dog barking detected!' :
                             hazard.type === 'crying_baby' ? '👶 Baby crying detected!' :
+                            hazard.type === 'baby_crying' ? '👶 Baby crying detected!' :
                             hazard.type === 'coughing' ? '😷 Coughing detected!' :
                             hazard.type === 'sneezing' ? '🤧 Sneezing detected!' :
                             hazard.type === 'train' ? '🚂 Train sound detected!' :
@@ -453,7 +578,11 @@ useEffect(() => {
                             hazard.type === 'door_wood_knock' ? '🚪 Door knock detected!' :
                             hazard.type === 'footsteps' ? '👣 Footsteps detected!' :
                             `Alert: ${hazard.type} detected`;
+            
             setAlertMessage(message);
+            
+            // Update last alert time
+            lastAlertTimeRef.current.set(hazardType, now);
             
             // Trigger haptic feedback
             if (hazardAlertService && typeof (hazardAlertService as any).triggerAlert === 'function') {
@@ -461,25 +590,21 @@ useEffect(() => {
             }
             
             // Visual alert animation
-            triggerFlashAnimation(hazard.urgency);
-            
-            // Keep the same detection stored for potential 3rd+ consecutive detection
-            // (don't reset it, so if it happens again, it will still trigger)
+            triggerFlashAnimation(urgency);
+          } else if (shouldAlert && isOnCooldown) {
+            console.log(`⏸️ Alert suppressed due to cooldown: ${hazardType}`);
+            // Keep detection in history but don't alert
           } else {
-            // Different detection or first detection - store it but don't alert yet
-            console.log(`⏳ First detection of ${hazardType}, waiting for confirmation...`);
-            previousDetectionRef.current = hazardType;
-            // Clear any previous alert message
+            // Don't alert yet, but keep detection in history
+            console.log(`⏳ Not alerting yet: ${hazardType} (confidence: ${(confidence*100).toFixed(1)}%, priority: ${priority})`);
             setAlertMessage(null);
           }
         } else {
-          // No detection in this chunk - reset previous detection
-          previousDetectionRef.current = null;
+          // No detection in this chunk - clear alert but keep history
           setAlertMessage(null);
         }
       } else {
-        // No detection - reset previous detection
-        previousDetectionRef.current = null;
+        // No detection - clear alert but keep history
         setAlertMessage(null);
       }
 
@@ -651,9 +776,9 @@ useEffect(() => {
       }
       setAlertMessage(null);
       
-      // Clear recent detections when stopping
-      // Reset previous detection when stopping
-      previousDetectionRef.current = null;
+      // Clear detection history when stopping
+      detectionHistoryRef.current = [];
+      lastAlertTimeRef.current.clear();
       setIsProcessing(false);
       isProcessingRef.current = false;
     } catch (error: any) {
@@ -668,6 +793,8 @@ useEffect(() => {
       }
     setAlertMessage(null);
     setDetections(null);
+    // Note: We keep detection history even after dismissing alert
+    // This allows the system to still track patterns
   };
 
   const formatHazardType = (type: string): string => {

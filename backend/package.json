@@ -7,7 +7,10 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
-    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js"
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
+    "model-server": "node scripts/start-model-server.js",
+    "start:all": "concurrently \"npm run model-server\" \"npm run start\"",
+    "dev:all": "concurrently \"npm run model-server\" \"npm run dev\""
   },
   "keywords": [
     "audio-processing",
@@ -30,6 +33,7 @@
   },
   "devDependencies": {
     "jest": "^29.7.0",
-    "nodemon": "^3.0.2"
+    "nodemon": "^3.0.2",
+    "concurrently": "^8.2.2"
   }
 }
