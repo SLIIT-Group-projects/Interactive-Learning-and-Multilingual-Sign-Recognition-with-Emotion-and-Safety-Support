@@ -3,10 +3,6 @@ import json
 import sys
 import random
 
-"""
-This script simulates hand movement intensity.
-Later you can replace this logic with real landmark input.
-"""
 
 def get_intensity(speed):
     if speed < 60:

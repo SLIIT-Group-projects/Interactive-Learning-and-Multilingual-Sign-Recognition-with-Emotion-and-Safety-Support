@@ -8,7 +8,7 @@ import hazardRoutes from "./routes/hazard.routes.js";
 // emtion and routes
 import emotionRoutes from "./routes/emotion.routes.js";
 import handRoutes from "./routes/hand.routes.js";
-import sessionRoutes from "./routes/session.routes.js";
+import ehFusionRoutes from "./routes/eh_fusion.routes.js";
 
 
 // Load environment variables
@@ -36,7 +36,7 @@ app.use("/api/hazard", hazardRoutes);
 // emotion and hand routes
 app.use("/api/emotion", emotionRoutes);
 app.use("/api/hand", handRoutes);
-app.use("/api/session", sessionRoutes);
+app.use("/api/eh", ehFusionRoutes);
 
 
 // Health check endpoint

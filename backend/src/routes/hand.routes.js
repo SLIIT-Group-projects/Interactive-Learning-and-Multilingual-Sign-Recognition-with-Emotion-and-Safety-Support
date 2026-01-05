@@ -1,44 +1,30 @@
 import express from "express";
+import multer from "multer";
+import path from "path";
+import fs from "fs";
 import { spawn } from "child_process";
-import { fileURLToPath } from "url";
-import { dirname, join } from "path";
+import { ehAddHand } from "../utils/eh_sessionStore.js";
 
 const router = express.Router();
+const upload = multer({ dest: "uploads/hand_sessions/" });
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+router.post("/analyze", upload.array("frames", 200), (req, res) => {
+  const { sessionId, fps = 10 } = req.body;
+  const framesDir = req.files[0].destination;
 
-// Correct Python file path
-const PYTHON_SCRIPT = join(__dirname, "../../models/hand_intensity.py");
+  const py = spawn("python", [
+    "models/hand_speed_analyze.py",
+    "--frames_dir", framesDir,
+    "--fps", String(fps)
+  ]);
 
-router.get("/run", (req, res) => {
-  const python = spawn("python", [PYTHON_SCRIPT]);
+  let out = "";
+  py.stdout.on("data", d => out += d.toString());
 
-  let data = "";
-  let error = "";
-
-  python.stdout.on("data", (chunk) => {
-    data += chunk.toString();
-  });
-
-  python.stderr.on("data", (chunk) => {
-    error += chunk.toString();
-  });
-
-  python.on("close", (code) => {
-    if (code !== 0 || error) {
-      return res.status(500).json({ error });
-    }
-
-    try {
-      const parsed = JSON.parse(data);
-      res.json(parsed);
-    } catch (err) {
-      res.status(500).json({
-        error: "Invalid JSON from Python",
-        raw: data,
-      });
-    }
+  py.on("close", () => {
+    const result = JSON.parse(out);
+    ehAddHand(sessionId, result);
+    res.json(result);
   });
 });
 
