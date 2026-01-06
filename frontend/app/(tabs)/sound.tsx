@@ -927,10 +927,6 @@ useEffect(() => {
               <Text style={styles.detectingText}>DETECTING</Text>
             </View>
 
-            {/* Instruction */}
-            <Text style={styles.listeningInstruction}>
-              Make a noise to see the circles grow!
-            </Text>
           </View>
         ) : (
           /* Initial Screen */
