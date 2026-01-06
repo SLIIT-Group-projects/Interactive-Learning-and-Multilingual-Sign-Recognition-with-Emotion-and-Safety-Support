@@ -62,6 +62,14 @@ const ChildDashboard = ({ navigation }) => {
               </Text>
             </View>
           </View>
+          {/* Parent Dashboard Button */}
+          <TouchableOpacity
+            onPress={() => navigation?.navigate('ParentDashboard')}
+            className="bg-indigo-500 rounded-full px-4 py-2 shadow-md"
+            activeOpacity={0.8}
+          >
+            <Text className="text-white font-semibold">👨‍👩‍👧 Parent</Text>
+          </TouchableOpacity>
         </View>
 
         {/* Progress Overview Card */}

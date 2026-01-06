@@ -6,6 +6,7 @@ import './global.css';
 import ChildDashboard from './screens/ChildDashboard';
 import LearnSigns from './screens/LearnSigns';
 import PlayGame from './screens/PlayGame';
+import ParentDashboard from './screens/ParentDashboard';
 
 const Stack = createNativeStackNavigator();
 
@@ -22,6 +23,7 @@ export default function App() {
         <Stack.Screen name="ChildDashboard" component={ChildDashboard} />
         <Stack.Screen name="LearnSigns" component={LearnSigns} />
         <Stack.Screen name="PlayGame" component={PlayGame} />
+        <Stack.Screen name="ParentDashboard" component={ParentDashboard} />
       </Stack.Navigator>
     </NavigationContainer>
   );
