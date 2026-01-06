@@ -144,18 +144,15 @@ export default function StoryReaderScreen() {
         return null;
       }
 
-      // SILENT CAPTURE: Use base64 mode with minimal processing
-      // This approach minimizes system-level camera sounds by:
-      // 1. Using base64 output (avoids file system sounds)
-      // 2. Skipping processing (reduces capture time and potential sounds)
-      // 3. Lower quality for faster, quieter capture
-      // Note: On some devices (especially iOS), a brief system sound may still occur
-      // This is a system privacy requirement and cannot be completely disabled programmatically
+      // SILENT CAPTURE: Disable shutter sound and minimize visual disruption
+      // Only captures the camera preview, not the entire screen
+      // Using shutterSound: false to mute the camera sound completely
       const photoPromise = camera.takePictureAsync({
-        quality: 0.5, // Lower quality = faster = less processing sounds
-        base64: true, // Base64 output avoids file I/O sounds
-        skipProcessing: true, // Skip processing to minimize capture duration
-        // Fast capture reduces the duration of any system sounds
+        quality: 0.7, // Good quality for emotion/hand detection
+        base64: true, // Base64 output for efficient processing
+        skipProcessing: false, // Keep processing for better image quality
+        shutterSound: false, // CRITICAL: Disable shutter sound completely
+        // This only captures the camera view, not the whole screen
       });
 
       const timeoutPromise = new Promise((_, reject) => 
@@ -180,13 +177,16 @@ export default function StoryReaderScreen() {
         return null;
       }
 
-      console.log(`[Capture] ✅ Frame captured (silent mode): ${uri.substring(0, 50)}...`);
+      // Silent capture completed - no sound, no screen flash
+      // Only the camera preview frame is captured, not the entire screen
+      console.log(`[Capture] ✅ Frame captured silently (no sound/flash): ${uri.substring(0, 50)}...`);
       return uri;
     } catch (err: any) {
       console.error("Frame capture error:", err);
       // Don't throw - just return null to prevent crashes
       return null;
     } finally {
+      // Always reset capturing flag, even on error
       isCapturingRef.current = false;
     }
   };
@@ -644,13 +644,18 @@ export default function StoryReaderScreen() {
               <Text style={styles.camPermissionBtnText}>Allow Camera</Text>
             </TouchableOpacity>
           ) : (
-            <View style={styles.camPreview}>
+            <View style={styles.camPreview} collapsable={false}>
               <CameraView
                 ref={cameraRef}
                 style={{ flex: 1 }}
                 facing="front"
                 mode="picture"
-                // Picture mode for frame capture - optimized for silent operation
+                animateShutter={false}
+                flash="off"
+                // animateShutter: false prevents screen flash during capture
+                // flash: 'off' ensures no flash light is used
+                // shutterSound: false in takePictureAsync prevents sounds
+                // Only captures the camera preview frame silently without any visual/audio feedback
               />
             </View>
           )}
