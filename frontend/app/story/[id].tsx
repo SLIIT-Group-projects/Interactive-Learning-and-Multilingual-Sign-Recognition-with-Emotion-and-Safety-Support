@@ -15,6 +15,7 @@ import { useRouter, useLocalSearchParams } from "expo-router";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { Image } from "expo-image";
 import * as FileSystem from "expo-file-system";
+import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import {
   API_ENDPOINTS,
   uploadFile,
@@ -22,7 +23,6 @@ import {
   apiCall,
   BASE_URL,
 } from "../../config/api";
-import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 
 // ✅ Change this import path if your STORIES file is elsewhere
 import { STORIES } from "../../data/stories";
@@ -534,12 +534,12 @@ export default function StoryReaderScreen() {
       {/* Header */}
       <View style={styles.headerRow}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <MaterialIcons name="arrow-back" size={24} color="#212121" />
+          <MaterialIcons name="chevron-left" size={28} color="#212121" />
         </TouchableOpacity>
         <Text style={styles.headerTitleText}>Story page</Text>
         <TouchableOpacity style={styles.profileBtn}>
           <View style={styles.profileIcon}>
-            <MaterialIcons name="person" size={18} color="#666666" />
+            <MaterialIcons name="person" size={18} color="#FFFFFF" />
           </View>
         </TouchableOpacity>
       </View>
@@ -728,11 +728,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  backIcon: {
-    fontSize: 24,
-    color: "#000000",
-    fontWeight: "700",
-  },
   headerTitleText: {
     fontSize: 18,
     fontWeight: "700",
@@ -748,9 +743,13 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: "#E0E0E0",
+    backgroundColor: "#0A7EA4",
     alignItems: "center",
     justifyContent: "center",
+  },
+  profileIconText: {
+    fontSize: 18,
+    color: "#FFFFFF",
   },
 
   // Content

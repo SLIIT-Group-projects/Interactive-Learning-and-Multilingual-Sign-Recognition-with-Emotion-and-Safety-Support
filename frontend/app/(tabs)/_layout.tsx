@@ -40,8 +40,8 @@ export default function TabLayout() {
       <Tabs.Screen
         name="parent"
         options={{
-          title: 'Parent',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="person.fill" color={color} />,
+          title: 'Dashboard',
+          tabBarIcon: ({ color }) => <IconSymbol size={28} name="chart.bar.fill" color={color} />,
         }}
       />
     </Tabs>

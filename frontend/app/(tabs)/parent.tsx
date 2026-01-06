@@ -245,7 +245,7 @@ export default function ParentDashboardScreen() {
 			{/* Header */}
 			<View style={styles.headerRow}>
 				<TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-					<MaterialIcons name="arrow-back" size={24} color="#000000" />
+					<MaterialIcons name="chevron-left" size={28} color="#212121" />
 				</TouchableOpacity>
 				<Text style={styles.headerTitle}>Emotion Dashboard</Text>
 				<TouchableOpacity style={styles.profileBtn}>
@@ -383,11 +383,6 @@ const styles = StyleSheet.create({
 		height: 40,
 		alignItems: 'center',
 		justifyContent: 'center',
-	},
-	backIcon: {
-		fontSize: 24,
-		color: '#000000',
-		fontWeight: '700',
 	},
 	headerTitle: {
 		fontSize: 18,

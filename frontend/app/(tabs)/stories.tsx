@@ -10,9 +10,9 @@ import {
   ScrollView,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { StoryCard } from '../../components/StoryCard';
 import { STORIES } from '../../data/stories';
-import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 
 export default function StoriesScreen() {
   const router = useRouter();
@@ -47,13 +47,11 @@ export default function StoriesScreen() {
         {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-            <MaterialIcons name="arrow-back" size={24} color="#212121" />
+            <MaterialIcons name="chevron-left" size={28} color="#212121" />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Story dashboard</Text>
           <TouchableOpacity style={styles.avatar}>
-            <View style={styles.avatarIcon}>
-              <MaterialIcons name="person" size={18} color="#FFFFFF" />
-            </View>
+            <MaterialIcons name="person" size={18} color="#FFFFFF" />
           </TouchableOpacity>
         </View>
 
@@ -125,11 +123,6 @@ const styles = StyleSheet.create({
     padding: 8,
     marginLeft: -8,
   },
-  backArrow: {
-    fontSize: 24,
-    fontWeight: '600',
-    color: '#212121',
-  },
   headerTitle: {
     fontSize: 20,
     fontWeight: '900',
@@ -141,16 +134,10 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
     backgroundColor: '#0A7EA4',
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
   },
 
   search: {
