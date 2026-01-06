@@ -6,7 +6,7 @@ import {
 	ScrollView,
 	StyleSheet,
 	TouchableOpacity,
-	FlatList,
+	Modal,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 
@@ -15,7 +15,7 @@ type Session = {
 	id: string;
 	dateTime: string; // ISO
 	storyTitle: string;
-	emotion: 'Happy' | 'Sad' | 'Angry' | 'Neutral';
+	emotion: 'Happy' | 'Sad' | 'Angry' | 'Neutral' | 'Disgust' | 'Surprise';
 	intensity: 'Low' | 'Medium' | 'High';
 	durationSeconds: number;
 	engagementScore: number; // 0-100
@@ -28,28 +28,16 @@ const MOCK_SESSIONS: Session[] = [
 	{ id: 's3', dateTime: new Date(Date.now() - 1000 * 60 * 60 * 24 * 2).toISOString(), storyTitle: 'Story Of Baby Dinosaur', emotion: 'Happy', intensity: 'High', durationSeconds: 900, engagementScore: 95 },
 	{ id: 's4', dateTime: new Date(Date.now() - 1000 * 60 * 60 * 24 * 3).toISOString(), storyTitle: 'The Colorful Garden', emotion: 'Angry', intensity: 'High', durationSeconds: 420, engagementScore: 40 },
 	{ id: 's5', dateTime: new Date(Date.now() - 1000 * 60 * 60 * 24 * 4).toISOString(), storyTitle: 'Luna and the Moon', emotion: 'Neutral', intensity: 'Medium', durationSeconds: 300, engagementScore: 70 },
-	{ id: 's6', dateTime: new Date(Date.now() - 1000 * 60 * 60 * 24 * 7).toISOString(), storyTitle: 'The Brave Little Squirrel', emotion: 'Sad', intensity: 'Low', durationSeconds: 200, engagementScore: 45 },
+	{ id: 's6', dateTime: new Date(Date.now() - 1000 * 60 * 60 * 24 * 5).toISOString(), storyTitle: 'The Brave Little Squirrel', emotion: 'Happy', intensity: 'Low', durationSeconds: 200, engagementScore: 45 },
 ];
 
-const BADGES = [
-	{ id: 'b1', title: 'Maths', emoji: '🔢', bg: '#FFF7E6' },
-	{ id: 'b2', title: 'Learner', emoji: '🏅', bg: '#FFF0F6' },
-	{ id: 'b3', title: 'Student', emoji: '🎓', bg: '#E8F6FF' },
-	{ id: 'b4', title: 'Science', emoji: '🧪', bg: '#EAF9F1' },
-];
-
-const ACHIEVEMENTS = [
-	{ id: 'a1', text: 'Completed Maths 10 sessions in a row', emoji: '✅' },
-	{ id: 'a2', text: 'Earned the badge of super fast learner', emoji: '🏅' },
-	{ id: 'a3', text: 'Finished 3 stories this week', emoji: '📚' },
+/* --- Children Data (Hardcoded - TODO: Connect to backend) --- */
+const CHILDREN = [
+	{ id: '1', name: 'Liviru' },
+	{ id: '2', name: 'Emma' },
 ];
 
 /* --- Helpers --- */
-const formatTime = (iso: string) => {
-	const d = new Date(iso);
-	return d.toLocaleString();
-};
-
 const isSameDay = (d1: Date, d2: Date) =>
 	d1.getFullYear() === d2.getFullYear() &&
 	d1.getMonth() === d2.getMonth() &&
@@ -68,88 +56,105 @@ const filterByRange = (sessions: Session[], range: 'Day' | 'Week' | 'Month') => 
 	return sessions.filter((s) => new Date(s.dateTime) >= monthAgo);
 };
 
-/* --- Small reusable components --- */
-const SummaryCard: React.FC<{ title: string; value: string | number; subtitle?: string }> = ({ title, value, subtitle }) => (
-	<View style={styles.summaryCard}>
-		<Text style={styles.summaryValue}>{value}</Text>
-		<Text style={styles.summaryTitle}>{title}</Text>
-		{subtitle ? <Text style={styles.summarySubtitle}>{subtitle}</Text> : null}
-	</View>
-);
+/* --- Emotion Overview Component --- */
+const EmotionOverview: React.FC = () => {
+	const emotions = [
+		{ emoji: '😊', label: 'Happy' },
+		{ emoji: '😢', label: 'Sad' },
+		{ emoji: '😠', label: 'Anger' },
+		{ emoji: '🤢', label: 'Disgust' },
+		{ emoji: '😐', label: 'Neutral' },
+		{ emoji: '😲', label: 'Suprise' },
+	];
 
-// Emotion guide card (new)
-const EmotionGuideCard: React.FC = () => {
 	return (
-		<View style={styles.guideCard}>
-			<Text style={styles.summaryTitle}>Emotion Guide</Text>
-
-			<View style={styles.guideSection}>
-				<Text style={styles.guideHeading}>😊 Happy</Text>
-				<View style={styles.guideList}>
-					<Text style={styles.guideItem}><Text style={styles.guideLevel}>Low</Text> — Calm, content</Text>
-					<Text style={styles.guideItem}><Text style={styles.guideLevel}>Medium</Text> — Cheerful, smiling</Text>
-					<Text style={styles.guideItem}><Text style={styles.guideLevel}>High</Text> — Excited, joyful</Text>
+		<View style={styles.emotionOverview}>
+			{emotions.map((emotion, idx) => (
+				<View key={idx} style={styles.emotionItem}>
+					<View style={styles.emotionCircle}>
+						<Text style={styles.emotionEmoji}>{emotion.emoji}</Text>
+					</View>
+					<Text style={styles.emotionLabel}>{emotion.label}</Text>
 				</View>
-			</View>
-
-			<View style={[styles.guideSection, { marginTop: 8 }]}>
-				<Text style={styles.guideHeading}>😠 Angry</Text>
-				<View style={styles.guideList}>
-					<Text style={styles.guideItem}><Text style={styles.guideLevel}>Low</Text> — Annoyed, irritated</Text>
-					<Text style={styles.guideItem}><Text style={styles.guideLevel}>Medium</Text> — Frustrated, upset</Text>
-					<Text style={styles.guideItem}><Text style={styles.guideLevel}>High</Text> — Furious, enraged</Text>
-				</View>
-			</View>
+			))}
 		</View>
 	);
 };
 
-const Badge: React.FC<{ label: string; type?: 'emotion' | 'intensity' | 'neutral' }> = ({ label, type = 'neutral' }) => {
-	const colorMap: Record<string, string> = {
-		Happy: '#67D37A',
-		Sad: '#6CB4FF',
-		Angry: '#FF6B6B',
-		Neutral: '#AAB2BD',
-		Low: '#E0F2F2',
-		Medium: '#FFE8B8',
-		High: '#FFD7D7',
-	};
-	const bg = colorMap[label] ?? '#EAEAEA';
-	const textColor = type === 'emotion' ? '#fff' : '#222';
-	return (
-		<View style={[styles.badge, { backgroundColor: bg }]}>
-			<Text style={[styles.badgeText, { color: textColor }]}>{label}</Text>
-		</View>
-	);
-};
+/* --- Children Dropdown Component --- */
+const ChildrenDropdown: React.FC<{
+	selectedChild: typeof CHILDREN[0];
+	children: typeof CHILDREN;
+	onSelect: (child: typeof CHILDREN[0]) => void;
+}> = ({ selectedChild, children, onSelect }) => {
+	const [isOpen, setIsOpen] = useState(false);
 
-const SessionCard: React.FC<{ item: Session; onPress: () => void }> = ({ item, onPress }) => {
 	return (
-		<TouchableOpacity style={styles.sessionCard} onPress={onPress}>
-			<View style={{ flex: 1 }}>
-				<Text style={styles.sessionTitle}>{item.storyTitle}</Text>
-				<Text style={styles.sessionTime}>{formatTime(item.dateTime)}</Text>
-			</View>
-			<View style={{ alignItems: 'flex-end' }}>
-				<Badge label={item.emotion} type="emotion" />
-				<Badge label={item.intensity} type="intensity" />
-				<Text style={styles.sessionMeta}>⏱ {Math.round(item.durationSeconds / 60)}m</Text>
-				<Text style={styles.sessionMeta}>⭐ {item.engagementScore}</Text>
-			</View>
-		</TouchableOpacity>
+		<View>
+			<TouchableOpacity
+				onPress={() => setIsOpen(true)}
+				style={styles.dropdownTrigger}
+			>
+				<Text style={styles.dropdownTriggerText}>{selectedChild.name}</Text>
+				<Text style={styles.dropdownArrow}>▼</Text>
+			</TouchableOpacity>
+
+			<Modal
+				visible={isOpen}
+				transparent
+				animationType="fade"
+				onRequestClose={() => setIsOpen(false)}
+			>
+				<TouchableOpacity
+					style={styles.modalOverlay}
+					activeOpacity={1}
+					onPress={() => setIsOpen(false)}
+				>
+					<View style={styles.dropdownMenu}>
+						{children.map((child) => (
+							<TouchableOpacity
+								key={child.id}
+								style={[
+									styles.dropdownItem,
+									selectedChild.id === child.id && styles.dropdownItemActive,
+								]}
+								onPress={() => {
+									onSelect(child);
+									setIsOpen(false);
+								}}
+							>
+								<Text
+									style={[
+										styles.dropdownItemText,
+										selectedChild.id === child.id && styles.dropdownItemTextActive,
+									]}
+								>
+									{child.name}
+								</Text>
+								{selectedChild.id === child.id && (
+									<Text style={styles.checkmark}>✓</Text>
+								)}
+							</TouchableOpacity>
+						))}
+					</View>
+				</TouchableOpacity>
+			</Modal>
+		</View>
 	);
 };
 
 /* --- Parent Dashboard Screen --- */
 export default function ParentDashboardScreen() {
 	const router = useRouter();
-	const [child, setChild] = useState('Child 01');
-	const [range, setRange] = useState<'Day' | 'Week' | 'Month'>('Week');
+	const [selectedChild, setSelectedChild] = useState(CHILDREN[0]);
+	const [view, setView] = useState<'Liviru' | 'Overview'>('Liviru');
+	const [range, setRange] = useState<'Day' | 'Week' | 'Month'>('Day');
 
 	// TODO: replace MOCK_SESSIONS with API call and subscribe to live updates
 	const sessions = useMemo(() => filterByRange(MOCK_SESSIONS, range), [range]);
 
-	const todayCount = useMemo(() => filterByRange(MOCK_SESSIONS, 'Day').length, []);
+	const sessionCount = useMemo(() => sessions.length, [sessions]);
+
 	const avgEngagement = useMemo(() => {
 		if (!sessions.length) return 0;
 		return Math.round(sessions.reduce((s, x) => s + x.engagementScore, 0) / sessions.length);
@@ -159,12 +164,11 @@ export default function ParentDashboardScreen() {
 		const tally: Record<string, number> = {};
 		sessions.forEach((s) => (tally[s.emotion] = (tally[s.emotion] || 0) + 1));
 		const sorted = Object.entries(tally).sort((a, b) => b[1] - a[1]);
-		return sorted[0]?.[0] ?? '—';
+		return sorted[0]?.[0] ?? 'Neutral';
 	}, [sessions]);
 
 	const avgIntensity = useMemo(() => {
-		if (!sessions.length) return '—';
-		// map Low=1, Medium=2, High=3
+		if (!sessions.length) return 'Low';
 		const map: Record<string, number> = { Low: 1, Medium: 2, High: 3 };
 		const avg = sessions.reduce((s, x) => s + map[x.intensity], 0) / sessions.length;
 		if (avg < 1.5) return 'Low';
@@ -172,22 +176,18 @@ export default function ParentDashboardScreen() {
 		return 'High';
 	}, [sessions]);
 
-	/* Simple recommendations logic (hardcoded for now) */
-	const recommendations = useMemo(() => {
-		const recs: string[] = [];
-		const angryCount = sessions.filter((s) => s.emotion === 'Angry').length;
-		const lowEngCount = sessions.filter((s) => s.engagementScore < 60).length;
-		const happyHigh = sessions.filter((s) => s.emotion === 'Happy' && s.intensity === 'High').length;
-		if (angryCount >= 2) recs.push('Try calming stories & breathing mini-games');
-		if (lowEngCount >= 2) recs.push('Shorter stories + interactive activities to boost engagement');
-		if (happyHigh >= 1) recs.push('Reward / continue with slightly harder stories');
-		if (!recs.length) recs.push('All good — keep encouraging reading sessions!');
-		return recs;
-	}, [sessions]);
+	// Interpret state from emotion + intensity
+	const interpreted = useMemo(() => {
+		const e = mostCommonEmotion;
+		const i = avgIntensity;
+		if (e === 'Happy' && i === 'Low') return { label: 'Calm', emoji: '😊' };
+		if (e === 'Happy') return { label: 'Happy', emoji: '😊' };
+		return { label: e, emoji: '😐' };
+	}, [mostCommonEmotion, avgIntensity]);
 
-	/* Trend placeholder: last 7 days dominant emotion */
+	// Trend: last 7 days
 	const last7 = useMemo(() => {
-		const res: { day: string; emotion: string }[] = [];
+		const res: { day: string; emotion: string; dotColor: string }[] = [];
 		for (let i = 6; i >= 0; i--) {
 			const d = new Date();
 			d.setDate(d.getDate() - i);
@@ -196,221 +196,143 @@ export default function ParentDashboardScreen() {
 			const tally: Record<string, number> = {};
 			daySessions.forEach((s) => (tally[s.emotion] = (tally[s.emotion] || 0) + 1));
 			const dominant = Object.entries(tally).sort((a, b) => b[1] - a[1])[0]?.[0] ?? '—';
-			res.push({ day: dayStr, emotion: dominant });
+			
+			const colorMap: Record<string, string> = {
+				Happy: '#67D37A',
+				Sad: '#6CB4FF',
+				Angry: '#FF6B6B',
+				Neutral: '#DDE3E8',
+				'—': '#DDE3E8',
+			};
+			
+			res.push({ day: dayStr, emotion: dominant, dotColor: colorMap[dominant] ?? '#DDE3E8' });
 		}
 		return res;
 	}, []);
 
-	/* Dynamic Achievements (based on emotion detection & engagement) */
-	const dynamicAchievements = useMemo(() => {
-		const res: { id: string; emoji: string; text: string }[] = [];
-		const angryCount = sessions.filter((s) => s.emotion === 'Angry').length;
-		const happyHigh = sessions.filter((s) => s.emotion === 'Happy' && s.intensity === 'High').length;
-		const highEng = sessions.filter((s) => s.engagementScore >= 85).length;
-
-		if (angryCount >= 2) {
-			res.push({
-				id: 'dyn-angry',
-				emoji: '🧘',
-				text: `Multiple angry sessions (${angryCount}) — try calming stories & breathing activities`,
-			});
+	// Achievements: Calm streak
+	const calmStreakDays = useMemo(() => {
+		const angrySessions = sessions.filter((s) => s.emotion === 'Angry').sort((a, b) => +new Date(b.dateTime) - +new Date(a.dateTime));
+		if (angrySessions.length === 0 && sessions.length > 0) {
+			// No angry sessions, calculate from first session
+			const firstSession = sessions.sort((a, b) => +new Date(a.dateTime) - +new Date(b.dateTime))[0];
+			if (firstSession) {
+				const days = Math.floor((Date.now() - new Date(firstSession.dateTime).getTime()) / (1000 * 60 * 60 * 24));
+				return days;
+			}
+			return 3; // Default
 		}
-		if (happyHigh >= 1) {
-			res.push({
-				id: 'dyn-happy',
-				emoji: '🎉',
-				text: `${happyHigh} high-energy happy session(s) — consider rewarding or adding tougher stories`,
-			});
-		}
-		if (highEng >= 1) {
-			res.push({
-				id: 'dyn-engage',
-				emoji: '🏆',
-				text: `${highEng} highly engaged session(s) — great progress!`,
-			});
-		}
-
-		// Calm streak (days since last angry session)
-		const angrySessionsSorted = sessions
-			.filter((s) => s.emotion === 'Angry')
-			.sort((a, b) => +new Date(b.dateTime) - +new Date(a.dateTime));
-		if (angrySessionsSorted.length === 0 && sessions.length > 0) {
-			res.unshift({ id: 'dyn-calm', emoji: '🌿', text: 'No angry sessions in this range — calm streak!' });
-		} else if (angrySessionsSorted.length > 0) {
-			const lastAngry = new Date(angrySessionsSorted[0].dateTime);
+		if (angrySessions.length > 0) {
+			const lastAngry = new Date(angrySessions[0].dateTime);
 			const days = Math.floor((Date.now() - lastAngry.getTime()) / (1000 * 60 * 60 * 24));
-			if (days >= 1) res.unshift({ id: 'dyn-calm-days', emoji: '🌿', text: `Calm for ${days} day(s) since last angry session` });
+			return days;
 		}
-
-		// fallback
-		if (!res.length) res.push({ id: 'dyn-none', emoji: '✨', text: 'All good — keep encouraging reading sessions!' });
-		return res;
+		return 3;
 	}, [sessions]);
-
-	// interpret combined state from emotion + intensity
-	const interpretState = (emotion: string, intensity: string) => {
-		// default
-		if (!emotion || emotion === '—') return { label: '—', emoji: '—' };
-		const e = emotion;
-		const i = intensity || 'Low';
-		let label = '—';
-		if (e === 'Happy') {
-			if (i === 'Low') label = 'Calm';
-			else if (i === 'Medium') label = 'Cheerful';
-			else label = 'Excited';
-		} else if (e === 'Angry') {
-			if (i === 'Low') label = 'Annoyed';
-			else if (i === 'Medium') label = 'Frustrated';
-			else label = 'Furious';
-		} else if (e === 'Sad') {
-			if (i === 'Low') label = 'Down';
-			else if (i === 'Medium') label = 'Upset';
-			else label = 'Distressed';
-		} else {
-			label = 'Neutral';
-		}
-		const emojiMap: Record<string, string> = {
-			Calm: '😌',
-			Cheerful: '😊',
-			Excited: '🤩',
-			Annoyed: '😒',
-			Frustrated: '😤',
-			Furious: '😡',
-			Down: '😔',
-			Upset: '☹️',
-			Distressed: '😩',
-			Neutral: '😐',
-			'—': '—',
-		};
-		return { label, emoji: emojiMap[label] ?? '—' };
-	};
-
-	// small card to show interpreted single-state
-	const InterpretedStateCard: React.FC<{ label: string; emoji: string; breakdown?: string }> = ({ label, emoji, breakdown }) => (
-		<View style={styles.stateCard}>
-			<View style={styles.stateLeft}>
-				<Text style={styles.stateEmoji}>{emoji}</Text>
-			</View>
-			<View style={{ flex: 1 }}>
-				<Text style={styles.stateLabel}>{label}</Text>
-				{breakdown ? <Text style={styles.stateSub}>{breakdown}</Text> : null}
-			</View>
-		</View>
-	);
-
-	// computed interpreted state (single label) from the mostCommonEmotion & avgIntensity
-	const interpreted = useMemo(() => {
-		return interpretState(mostCommonEmotion, typeof avgIntensity === 'string' ? avgIntensity : String(avgIntensity));
-	}, [mostCommonEmotion, avgIntensity, sessions]);
 
 	return (
 		<SafeAreaView style={styles.safe}>
-			<ScrollView style={{ flex: 1 }} contentContainerStyle={styles.scrollContent}>
-				<View style={styles.container}>
-					{/* Header */}
-					<View style={styles.headerRow}>
-						<View>
-							<Text style={styles.headerTitle}>Parent Dashboard</Text>
-							<View style={{ flexDirection: 'row', marginTop: 6, alignItems: 'center' }}>
-								<TouchableOpacity style={styles.childPill} onPress={() => setChild(child === 'Child 01' ? 'Child 02' : 'Child 01')}>
-									<Text style={styles.childPillText}>{child}</Text>
-								</TouchableOpacity>
-								<Text style={{ marginLeft: 12, color: '#666' }}>Overview</Text>
-							</View>
-						</View>
-						<View style={styles.avatar}><Text style={{color:'#fff',fontWeight:'700'}}>P</Text></View>
+			{/* Header */}
+			<View style={styles.headerRow}>
+				<TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+					<Text style={styles.backIcon}>←</Text>
+				</TouchableOpacity>
+				<Text style={styles.headerTitle}>Emotion Dashboard</Text>
+				<TouchableOpacity style={styles.profileBtn}>
+					<View style={styles.profileIcon} />
+				</TouchableOpacity>
+			</View>
+
+			{/* Navigation/Filter Bar */}
+			<View style={styles.navBar}>
+				<View style={styles.dropdownContainer}>
+					<ChildrenDropdown
+						selectedChild={selectedChild}
+						children={CHILDREN}
+						onSelect={setSelectedChild}
+					/>
+				</View>
+				<TouchableOpacity 
+					onPress={() => setView('Overview')} 
+					style={[styles.navItem, view === 'Overview' && styles.navItemActive]}
+				>
+					<Text style={[styles.navText, view === 'Overview' && styles.navTextActive]}>Overview</Text>
+				</TouchableOpacity>
+			</View>
+
+			<ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+				{/* Emotion Overview Section */}
+				<EmotionOverview />
+
+				{/* Key Metrics Cards (2x2 Grid) */}
+				<View style={styles.metricsGrid}>
+					<View style={styles.metricCard}>
+						<Text style={styles.metricValue}>{sessionCount}</Text>
+						<Text style={styles.metricSubtitle}>
+							{range === 'Day' ? "Today's Sessions" : range === 'Week' ? "Week's Sessions" : "Month's Sessions"}
+						</Text>
+						<Text style={styles.metricLabel}>{range === 'Day' ? 'today' : range.toLowerCase()}</Text>
 					</View>
-
-					{/* Badges strip (new) */}
-					<View style={styles.badgesRow}>
-						{BADGES.map((b) => (
-							<View key={b.id} style={styles.badgeItem}>
-								<View style={[styles.badgeCircle, { backgroundColor: b.bg }]}>
-									<Text style={styles.badgeEmoji}>{b.emoji}</Text>
-								</View>
-								<Text style={styles.badgeLabel}>{b.title}</Text>
-							</View>
-						))}
+					<View style={styles.metricCard}>
+						<Text style={[styles.metricValue, styles.metricValueYellow]}>{mostCommonEmotion}</Text>
+						<Text style={styles.metricSubtitle}>Common Emotion</Text>
+						<Text style={styles.metricLabel}>{range}</Text>
 					</View>
-
-					{/* Summary (grid: 2 per row, last full-width if odd) */}
-					{(() => {
-						const summaries = [
-							{ id: 's1', title: "Today’s Sessions", value: todayCount, subtitle: 'today' },
-							{ id: 's2', title: 'Common Emotion', value: mostCommonEmotion, subtitle: range.toLowerCase() },
-							{ id: 's3', title: 'Avg Intensity', value: avgIntensity, subtitle: range.toLowerCase() },
-							{ id: 's4', title: 'Avg Engagement', value: `${avgEngagement}%`, subtitle: range.toLowerCase() },
-							{ id: 's5', stateCard: true, idKey: 'interpreted-state' },
-						];
-						return (
-							<View style={styles.summaryGrid}>
-								{summaries.map((s: any, idx: number) => {
-									const isLastOdd = idx === summaries.length - 1 && summaries.length % 2 === 1;
-									return (
-										<View
-											key={s.id ?? s.idKey ?? idx}
-											style={[styles.summaryWrapper, isLastOdd && styles.summaryFullWidth]}
-										>
-											{s.stateCard ? (
-												<InterpretedStateCard
-													label={interpreted.label}
-													emoji={interpreted.emoji}
-													breakdown={`${mostCommonEmotion} • ${avgIntensity}`}
-												/>
-											) : s.guide ? (
-												<EmotionGuideCard />
-											) : (
-												<SummaryCard title={s.title} value={s.value} subtitle={s.subtitle} />
-											)}
-										</View>
-									);
-								})}
-							</View>
-						);
-					})()}
-
-					{/* Time Filter Tabs */}
-					<View style={styles.tabsRow}>
-						{(['Day', 'Week', 'Month'] as const).map((r) => (
-							<TouchableOpacity key={r} onPress={() => setRange(r)} style={[styles.tab, range === r && styles.tabActive]}>
-								<Text style={[styles.tabText, range === r && styles.tabTextActive]}>{r}</Text>
-							</TouchableOpacity>
-						))}
+					<View style={styles.metricCard}>
+						<Text style={[styles.metricValue, styles.metricValueBlue]}>{avgIntensity}</Text>
+						<Text style={styles.metricSubtitle}>AVg intensity</Text>
+						<Text style={styles.metricLabel}>{range}</Text>
 					</View>
-
-					{/* Trend */}
-					<View style={styles.card}>
-						<Text style={styles.cardTitle}>Emotion Trend (last 7 days)</Text>
-						<View style={{ flexDirection: 'row', marginTop: 12, justifyContent: 'space-between' }}>
-							{last7.map((d) => (
-								<View key={d.day} style={{ alignItems: 'center', flex: 1 }}>
-									<View style={[styles.trendBar, { backgroundColor: d.emotion === 'Happy' ? '#67D37A' : d.emotion === 'Sad' ? '#6CB4FF' : d.emotion === 'Angry' ? '#FF6B6B' : '#DDE3E8' }]} />
-									<Text style={{ fontSize: 12, marginTop: 6 }}>{d.day}</Text>
-									<Text style={{ fontSize: 12, color: '#666' }}>{d.emotion}</Text>
-								</View>
-							))}
-						</View>
+					<View style={styles.metricCard}>
+						<Text style={[styles.metricValue, styles.metricValueBlue]}>{avgEngagement}%</Text>
+						<Text style={styles.metricSubtitle}>AVg Engagement</Text>
+						<Text style={styles.metricLabel}>{range}</Text>
 					</View>
+				</View>
 
-					{/* Achievements (dynamic based on emotion detection) */}
-					<View style={{ marginTop: 8 }}>
-						<Text style={styles.sectionTitle}>Achievements</Text>
-						{dynamicAchievements.map((a) => (
-							<View key={a.id} style={styles.achievementCard}>
-								<View style={styles.achievementLeft}>
-									<Text style={styles.achievementEmoji}>{a.emoji}</Text>
-								</View>
-								<View style={{ flex: 1 }}>
-									<Text style={styles.achievementText}>{a.text}</Text>
-								</View>
-								<TouchableOpacity style={styles.achievementViewBtn}>
-									<Text style={{ color: '#07BDD6', fontWeight: '800' }}>View</Text>
-								</TouchableOpacity>
+				{/* Current State Card */}
+				<View style={styles.stateCard}>
+					<View style={styles.stateContent}>
+						<Text style={styles.stateLabel}>{interpreted.label}</Text>
+						<Text style={styles.stateBreakdown}>{mostCommonEmotion} | {avgIntensity}</Text>
+					</View>
+					<Text style={styles.stateEmoji}>{interpreted.emoji}</Text>
+				</View>
+
+				{/* Time Period Filters */}
+				<View style={styles.timeFilters}>
+					{(['Day', 'Week', 'Month'] as const).map((r) => (
+						<TouchableOpacity 
+							key={r} 
+							onPress={() => setRange(r)} 
+							style={[styles.timeFilter, range === r && styles.timeFilterActive]}
+						>
+							<Text style={[styles.timeFilterText, range === r && styles.timeFilterTextActive]}>{r}</Text>
+						</TouchableOpacity>
+					))}
+				</View>
+
+				{/* Emotion Trend Section */}
+				<View style={styles.trendCard}>
+					<Text style={styles.trendTitle}>Emotion Trend (last 7 days)</Text>
+					<View style={styles.trendRow}>
+						{last7.map((d, idx) => (
+							<View key={idx} style={styles.trendItem}>
+								<View style={[styles.trendDot, { backgroundColor: d.dotColor }]} />
+								<Text style={styles.trendDay}>{d.day}</Text>
+								<Text style={styles.trendEmotion}>{d.emotion === '—' ? '' : d.emotion}</Text>
 							</View>
 						))}
 					</View>
+				</View>
 
-					
+				{/* Achievements Section */}
+				<View style={styles.achievementsCard}>
+					<Text style={styles.achievementsTitle}>Achievements</Text>
+					<View style={styles.achievementItem}>
+						<Text style={styles.achievementIcon}>🌿</Text>
+						<Text style={styles.achievementText}>Calm for {calmStreakDays} day(s) since last angry session</Text>
+					</View>
 				</View>
 			</ScrollView>
 		</SafeAreaView>
@@ -418,93 +340,338 @@ export default function ParentDashboardScreen() {
 }
 
 const styles = StyleSheet.create({
-	safe: { flex: 1, backgroundColor: '#F7FEFF' },
-	container: { flex: 1, padding: 16, paddingBottom: 96 },
-
-	headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-	headerTitle: { fontSize: 20, fontWeight: '900', color: '#212121' },
-	avatar: { width: 44, height: 44, borderRadius: 44, backgroundColor: '#07BDD6', alignItems: 'center', justifyContent: 'center' },
-
-	childPill: { backgroundColor: '#fff', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12, elevation: 2 },
-	childPillText: { fontWeight: '800', color: '#07BDD6' },
-
-	// grid that supports 2-per-row, last item full width if odd count
-	summaryGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginBottom: 12 },
-	summaryWrapper: { width: '48%', marginBottom: 12 },
-	summaryFullWidth: { width: '100%' },
-	summaryCard: { backgroundColor: '#fff', padding: 12, borderRadius: 12, alignItems: 'flex-start', elevation: 2 },
-
-	tabsRow: { flexDirection: 'row', marginVertical: 12 },
-	tab: { paddingVertical: 8, paddingHorizontal: 14, backgroundColor: '#fff', borderRadius: 12, marginRight: 8 },
-	tabActive: { backgroundColor: '#07BDD6' },
-	tabText: { fontWeight: '800', color: '#666' },
-	tabTextActive: { color: '#fff' },
-
-	card: { backgroundColor: '#fff', padding: 14, borderRadius: 14, elevation: 2, marginBottom: 12 },
-	cardTitle: { fontWeight: '900', color: '#212121', fontSize: 15 },
-
-	trendBar: { width: '60%', height: 10, borderRadius: 6 },
-
-	sectionTitle: { fontSize: 16, fontWeight: '900', color: '#212121', marginBottom: 8 },
-
-	sessionCard: { backgroundColor: '#fff', padding: 12, borderRadius: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', elevation: 1 },
-	sessionTitle: { fontSize: 14, fontWeight: '900' },
-	sessionTime: { color: '#666', marginTop: 6, fontSize: 12 },
-	sessionMeta: { fontSize: 12, color: '#666', marginTop: 6 },
-
-	badge: { paddingHorizontal: 8, paddingVertical: 6, borderRadius: 999, marginVertical: 6, minWidth: 72, alignItems: 'center' },
-	badgeText: { fontWeight: '800', fontSize: 12 },
-
-	recoItem: { marginTop: 8, fontWeight: '700', color: '#333' },
-
-	actionBtn: { backgroundColor: '#07BDD6', paddingHorizontal: 12, paddingVertical: 10, borderRadius: 12, minWidth: 80, alignItems: 'center' },
-	actionText: { color: '#fff', fontWeight: '900', fontSize: 12 },
-
-	// badges
-	badgesRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 12, marginBottom: 6 },
-	badgeItem: { alignItems: 'center', width: 80 },
-	badgeCircle: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center', elevation: 2 },
-	badgeEmoji: { fontSize: 22 },
-	badgeLabel: { marginTop: 8, fontWeight: '800', color: '#333', fontSize: 12 },
-
-	// achievements
-	achievementCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: 12, padding: 12, marginTop: 10, elevation: 2 },
-	achievementLeft: { width: 44, height: 44, borderRadius: 10, backgroundColor: '#F6F8FF', alignItems: 'center', justifyContent: 'center', marginRight: 12 },
-	achievementEmoji: { fontSize: 20 },
-	achievementText: { fontWeight: '800', color: '#333' },
-	achievementViewBtn: { paddingHorizontal: 10 },
-
-	// bottom nav
-	bottomNav: {
-		position: 'absolute',
-		left: 12,
-		right: 12,
-		bottom: 12,
-		height: 72,
-		borderRadius: 20,
-		backgroundColor: '#fff',
+	safe: {
+		flex: 1,
+		backgroundColor: '#F0F8FF', // Light blue background
+	},
+	headerRow: {
 		flexDirection: 'row',
 		alignItems: 'center',
-		justifyContent: 'space-around',
-		elevation: 6,
-		paddingHorizontal: 8,
+		justifyContent: 'space-between',
+		paddingHorizontal: 16,
+		paddingVertical: 12,
+		backgroundColor: '#FFFFFF',
 	},
-
-	// emotion guide styles
-	guideCard: { backgroundColor: '#fff', padding: 12, borderRadius: 12, elevation: 2 },
-	guideSection: { marginTop: 6 },
-	guideHeading: { fontWeight: '900', color: '#07BDD6', fontSize: 13 },
-	guideList: { marginTop: 6 },
-	guideItem: { color: '#333', fontWeight: '700', marginTop: 4 },
-	guideLevel: { fontWeight: '900', color: '#333', marginRight: 6 },
-
-	// interpreted state card styles (new)
-	stateCard: { backgroundColor: '#fff', padding: 12, borderRadius: 12, flexDirection: 'row', alignItems: 'center', elevation: 2 },
-	stateLeft: { width: 64, height: 64, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginRight: 12, backgroundColor: '#EAF7F8' },
-	stateEmoji: { fontSize: 28 },
-	stateLabel: { fontWeight: '900', fontSize: 16, color: '#212121' },
-	stateSub: { marginTop: 6, color: '#666', fontWeight: '700' },
-
-	// added style to ensure scrollable content has enough bottom space
-	scrollContent: { paddingBottom: 160 },
+	backBtn: {
+		width: 40,
+		height: 40,
+		alignItems: 'center',
+		justifyContent: 'center',
+	},
+	backIcon: {
+		fontSize: 24,
+		color: '#000000',
+		fontWeight: '700',
+	},
+	headerTitle: {
+		fontSize: 18,
+		fontWeight: '700',
+		color: '#000000',
+	},
+	profileBtn: {
+		width: 40,
+		height: 40,
+		alignItems: 'center',
+		justifyContent: 'center',
+	},
+	profileIcon: {
+		width: 32,
+		height: 32,
+		borderRadius: 16,
+		backgroundColor: '#0A7EA4',
+	},
+	navBar: {
+		flexDirection: 'row',
+		paddingHorizontal: 16,
+		paddingVertical: 12,
+		gap: 16,
+		alignItems: 'center',
+	},
+	dropdownContainer: {
+		flex: 1,
+	},
+	dropdownTrigger: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		justifyContent: 'space-between',
+		paddingVertical: 6,
+		paddingHorizontal: 8,
+		borderBottomWidth: 2,
+		borderBottomColor: '#0A7EA4',
+		maxWidth: 120,
+	},
+	dropdownTriggerText: {
+		fontSize: 14,
+		fontWeight: '700',
+		color: '#0A7EA4',
+	},
+	dropdownArrow: {
+		fontSize: 10,
+		color: '#0A7EA4',
+		marginLeft: 6,
+	},
+	modalOverlay: {
+		flex: 1,
+		backgroundColor: 'rgba(0, 0, 0, 0.3)',
+		justifyContent: 'flex-start',
+		paddingTop: 60,
+		paddingHorizontal: 16,
+	},
+	dropdownMenu: {
+		backgroundColor: '#FFFFFF',
+		borderRadius: 12,
+		paddingVertical: 8,
+		elevation: 4,
+		shadowColor: '#000',
+		shadowOpacity: 0.2,
+		shadowRadius: 8,
+		shadowOffset: { width: 0, height: 4 },
+		minWidth: 150,
+	},
+	dropdownItem: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		justifyContent: 'space-between',
+		paddingVertical: 12,
+		paddingHorizontal: 16,
+	},
+	dropdownItemActive: {
+		backgroundColor: '#F0F8FF',
+	},
+	dropdownItemText: {
+		fontSize: 14,
+		fontWeight: '600',
+		color: '#212121',
+	},
+	dropdownItemTextActive: {
+		color: '#0A7EA4',
+		fontWeight: '700',
+	},
+	checkmark: {
+		fontSize: 16,
+		color: '#0A7EA4',
+		fontWeight: '700',
+	},
+	navItem: {
+		paddingVertical: 6,
+	},
+	navItemActive: {
+		borderBottomWidth: 2,
+		borderBottomColor: '#0A7EA4',
+	},
+	navText: {
+		fontSize: 14,
+		fontWeight: '600',
+		color: '#999999',
+	},
+	navTextActive: {
+		color: '#0A7EA4',
+		fontWeight: '700',
+	},
+	scrollContent: {
+		padding: 16,
+		paddingBottom: 32,
+	},
+	emotionOverview: {
+		flexDirection: 'row',
+		flexWrap: 'wrap',
+		justifyContent: 'space-between',
+		marginBottom: 24,
+	},
+	emotionItem: {
+		width: '30%',
+		alignItems: 'center',
+		marginBottom: 16,
+	},
+	emotionCircle: {
+		width: 60,
+		height: 60,
+		borderRadius: 30,
+		backgroundColor: '#FFFFFF',
+		alignItems: 'center',
+		justifyContent: 'center',
+		elevation: 2,
+		shadowColor: '#000',
+		shadowOpacity: 0.1,
+		shadowRadius: 4,
+		shadowOffset: { width: 0, height: 2 },
+	},
+	emotionEmoji: {
+		fontSize: 32,
+	},
+	emotionLabel: {
+		marginTop: 8,
+		fontSize: 12,
+		fontWeight: '600',
+		color: '#212121',
+	},
+	metricsGrid: {
+		flexDirection: 'row',
+		flexWrap: 'wrap',
+		justifyContent: 'space-between',
+		marginBottom: 16,
+	},
+	metricCard: {
+		width: '48%',
+		backgroundColor: '#FFFFFF',
+		borderRadius: 12,
+		padding: 16,
+		marginBottom: 12,
+		elevation: 2,
+		shadowColor: '#000',
+		shadowOpacity: 0.08,
+		shadowRadius: 4,
+		shadowOffset: { width: 0, height: 2 },
+	},
+	metricValue: {
+		fontSize: 28,
+		fontWeight: '900',
+		color: '#212121',
+		marginBottom: 4,
+	},
+	metricValueYellow: {
+		color: '#FFC107',
+	},
+	metricValueBlue: {
+		color: '#0A7EA4',
+	},
+	metricSubtitle: {
+		fontSize: 13,
+		fontWeight: '700',
+		color: '#212121',
+		marginTop: 4,
+	},
+	metricLabel: {
+		fontSize: 11,
+		fontWeight: '600',
+		color: '#999999',
+		marginTop: 2,
+	},
+	stateCard: {
+		backgroundColor: '#FFFFFF',
+		borderRadius: 12,
+		padding: 16,
+		flexDirection: 'row',
+		alignItems: 'center',
+		justifyContent: 'space-between',
+		marginBottom: 16,
+		elevation: 2,
+		shadowColor: '#000',
+		shadowOpacity: 0.08,
+		shadowRadius: 4,
+		shadowOffset: { width: 0, height: 2 },
+	},
+	stateContent: {
+		flex: 1,
+	},
+	stateLabel: {
+		fontSize: 24,
+		fontWeight: '900',
+		color: '#212121',
+		marginBottom: 4,
+	},
+	stateBreakdown: {
+		fontSize: 14,
+		fontWeight: '600',
+		color: '#666666',
+	},
+	stateEmoji: {
+		fontSize: 48,
+	},
+	timeFilters: {
+		flexDirection: 'row',
+		gap: 12,
+		marginBottom: 16,
+	},
+	timeFilter: {
+		paddingVertical: 10,
+		paddingHorizontal: 20,
+		borderRadius: 8,
+		backgroundColor: '#FFFFFF',
+		borderWidth: 1,
+		borderColor: '#E0E0E0',
+	},
+	timeFilterActive: {
+		backgroundColor: '#0A7EA4',
+		borderColor: '#0A7EA4',
+	},
+	timeFilterText: {
+		fontSize: 14,
+		fontWeight: '700',
+		color: '#666666',
+	},
+	timeFilterTextActive: {
+		color: '#FFFFFF',
+	},
+	trendCard: {
+		backgroundColor: '#FFFFFF',
+		borderRadius: 12,
+		padding: 16,
+		marginBottom: 16,
+		elevation: 2,
+		shadowColor: '#000',
+		shadowOpacity: 0.08,
+		shadowRadius: 4,
+		shadowOffset: { width: 0, height: 2 },
+	},
+	trendTitle: {
+		fontSize: 16,
+		fontWeight: '900',
+		color: '#212121',
+		marginBottom: 16,
+	},
+	trendRow: {
+		flexDirection: 'row',
+		justifyContent: 'space-between',
+	},
+	trendItem: {
+		alignItems: 'center',
+		flex: 1,
+	},
+	trendDot: {
+		width: 12,
+		height: 12,
+		borderRadius: 6,
+		marginBottom: 8,
+	},
+	trendDay: {
+		fontSize: 12,
+		fontWeight: '600',
+		color: '#212121',
+		marginBottom: 4,
+	},
+	trendEmotion: {
+		fontSize: 11,
+		color: '#666666',
+	},
+	achievementsCard: {
+		backgroundColor: '#FFFFFF',
+		borderRadius: 12,
+		padding: 16,
+		elevation: 2,
+		shadowColor: '#000',
+		shadowOpacity: 0.08,
+		shadowRadius: 4,
+		shadowOffset: { width: 0, height: 2 },
+	},
+	achievementsTitle: {
+		fontSize: 16,
+		fontWeight: '900',
+		color: '#212121',
+		marginBottom: 12,
+	},
+	achievementItem: {
+		flexDirection: 'row',
+		alignItems: 'center',
+	},
+	achievementIcon: {
+		fontSize: 24,
+		marginRight: 12,
+	},
+	achievementText: {
+		flex: 1,
+		fontSize: 14,
+		fontWeight: '600',
+		color: '#212121',
+	},
 });

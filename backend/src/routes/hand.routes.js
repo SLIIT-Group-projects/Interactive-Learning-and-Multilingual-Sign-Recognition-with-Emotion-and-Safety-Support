@@ -37,8 +37,12 @@ const upload = multer({ storage, limits: { files: 200 } });
 
 router.post("/analyze", upload.array("frames", 200), (req, res) => {
   try {
+    console.log(`[Hand] Received request - Body:`, req.body);
+    console.log(`[Hand] Received files:`, req.files ? `${req.files.length} files` : "NO FILES");
+    
     const { sessionId, fps = 10 } = req.body;
     if (!sessionId) {
+      console.error("[Hand] Missing sessionId in request");
       return res.status(400).json({ error: "sessionId required" });
     }
     

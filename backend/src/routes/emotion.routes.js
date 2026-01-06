@@ -37,15 +37,26 @@ const upload = multer({ storage });
 
 router.post("/predict", upload.single("file"), (req, res) => {
   try {
+    console.log(`[Emotion] Received request - Body:`, req.body);
+    console.log(`[Emotion] Received file:`, req.file ? {
+      originalname: req.file.originalname,
+      mimetype: req.file.mimetype,
+      size: req.file.size,
+      path: req.file.path
+    } : "NO FILE");
+    
     const { sessionId } = req.body;
     if (!sessionId) {
+      console.error("[Emotion] Missing sessionId in request");
       return res.status(400).json({ error: "sessionId required" });
     }
     if (!req.file) {
+      console.error("[Emotion] No file received in request");
       return res.status(400).json({ error: "file required (field name 'file')" });
     }
 
     const imgPath = req.file.path;
+    console.log(`[Emotion] Processing image: ${imgPath} for session ${sessionId}`);
     const scriptPath = join(__dirname, "..", "..", "models", "eh_emotion_predict.py");
     
     const py = spawn(config.PYTHON_CMD, [scriptPath, imgPath]);
@@ -56,14 +67,30 @@ router.post("/predict", upload.single("file"), (req, res) => {
 
     py.on("close", (code) => {
       try {
+        console.log(`[Emotion] Python script exited with code ${code}`);
+        console.log(`[Emotion] Python output: ${out.substring(0, 500)}`);
+        
         // Parse last JSON line (in case script printed warnings before final JSON)
         const lines = out.trim().split(/\r?\n/).filter(Boolean);
         const last = lines.pop();
         if (!last) {
-          return res.status(500).json({ error: "no output from python script", raw: out });
+          console.error(`[Emotion] No output from python script. Code: ${code}, Output: ${out}`);
+          // Still store a fallback result
+          const fallbackResult = {
+            predicted: "neutral",
+            confidence: 0.0,
+            probabilities: {},
+            sessionId,
+            t: Date.now(),
+            error: "No output from Python script",
+            pythonCode: code
+          };
+          addEmotion(sessionId, fallbackResult);
+          return res.status(500).json({ error: "no output from python script", raw: out.substring(0, 200), stored: fallbackResult });
         }
         
         const result = JSON.parse(last);
+        console.log(`[Emotion] Parsed result:`, result);
         
         // Add sessionId and timestamp
         const enrichedResult = {
@@ -74,11 +101,22 @@ router.post("/predict", upload.single("file"), (req, res) => {
         
         // Store in session
         addEmotion(sessionId, enrichedResult);
+        console.log(`[Emotion] ✅ Stored emotion result for session ${sessionId}:`, enrichedResult);
         
         return res.json(enrichedResult);
       } catch (e) {
-        console.error("Error parsing python output:", e);
-        return res.status(500).json({ error: "invalid python output", raw: out, parseError: String(e) });
+        console.error("[Emotion] Error parsing python output:", e);
+        // Store fallback on parse error
+        const fallbackResult = {
+          predicted: "neutral",
+          confidence: 0.0,
+          probabilities: {},
+          sessionId,
+          t: Date.now(),
+          error: "Parse error: " + String(e)
+        };
+        addEmotion(sessionId, fallbackResult);
+        return res.status(500).json({ error: "invalid python output", raw: out.substring(0, 200), parseError: String(e), stored: fallbackResult });
       }
     });
 

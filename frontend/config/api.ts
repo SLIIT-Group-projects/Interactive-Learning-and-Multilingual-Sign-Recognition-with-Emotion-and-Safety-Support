@@ -133,7 +133,7 @@ export async function apiCall(
   console.log(`[API] Calling: ${url}`);
   
   const controller = new AbortController();
-  let timeoutId: NodeJS.Timeout | null = null;
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
   
   try {
     timeoutId = setTimeout(() => {
@@ -190,19 +190,57 @@ export async function uploadFile(
   body: Record<string, any> = {},
   retries = 2
 ): Promise<any> {
+  console.log(`[Upload] Preparing upload - endpoint: ${endpoint}, file: ${file.name}`);
+  console.log(`[Upload] URI type: ${file.uri?.startsWith('data:') ? 'base64' : file.uri?.startsWith('file://') ? 'file' : 'other'}`);
+  
   const formData = new FormData();
   
-  // Add file
-  formData.append("file", {
-    uri: file.uri,
-    type: file.type || "image/jpeg",
-    name: file.name || "image.jpg",
-  } as any);
+  // Handle base64 data URIs - convert to Blob for web, or use file URI for native
+  if (file.uri.startsWith('data:')) {
+    console.log(`[Upload] Converting base64 data URI to Blob...`);
+    try {
+      // Extract base64 data and mime type
+      const base64Data = file.uri.split(',')[1];
+      const mimeType = file.uri.split(',')[0].split(':')[1].split(';')[0];
+      
+      // Convert base64 to binary
+      const binaryString = atob(base64Data);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      
+      // Create Blob from bytes
+      const blob = new Blob([bytes], { type: mimeType || file.type || "image/jpeg" });
+      
+      // Append Blob to FormData (works on web)
+      formData.append("file", blob, file.name || "image.jpg");
+      console.log(`[Upload] ✅ Converted base64 to Blob (${bytes.length} bytes, ${mimeType})`);
+    } catch (err: any) {
+      console.error(`[Upload] Error converting base64 to Blob:`, err);
+      // Fallback: try sending as data URI (might work on some platforms)
+      formData.append("file", {
+        uri: file.uri,
+        type: file.type || "image/jpeg",
+        name: file.name || "image.jpg",
+      } as any);
+    }
+  } else {
+    // Regular file URI (native platforms)
+    formData.append("file", {
+      uri: file.uri,
+      type: file.type || "image/jpeg",
+      name: file.name || "image.jpg",
+    } as any);
+  }
   
   // Add other body fields
   Object.entries(body).forEach(([key, value]) => {
+    console.log(`[Upload] Adding field: ${key} = ${value}`);
     formData.append(key, String(value));
   });
+  
+  console.log(`[Upload] Uploading to ${BASE_URL}${endpoint}...`);
   
   try {
     const response = await apiCall(
@@ -210,19 +248,22 @@ export async function uploadFile(
       {
         method: "POST",
         body: formData,
-        // Don't set Content-Type - React Native FormData sets it automatically with boundary
+        // CRITICAL: Don't set Content-Type header - FormData sets it automatically with boundary
       },
       retries
     );
     
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({ error: "Unknown error" }));
-      throw new Error(errorData.error || `HTTP ${response.status}`);
+      const errorText = await response.text().catch(() => "Unknown error");
+      console.error(`[Upload] Upload failed with status ${response.status}: ${errorText}`);
+      throw new Error(errorText || `HTTP ${response.status}`);
     }
     
-    return await response.json();
+    const result = await response.json();
+    console.log(`[Upload] ✅ Upload successful:`, result);
+    return result;
   } catch (error: any) {
-    console.error("Upload error:", error);
+    console.error("[Upload] Upload error:", error);
     throw error;
   }
 }
@@ -236,15 +277,41 @@ export async function uploadFiles(
   body: Record<string, any> = {},
   retries = 2
 ): Promise<any> {
+  console.log(`[Upload] Preparing upload of ${files.length} files...`);
   const formData = new FormData();
   
   // Add all files with field name "frames"
-  files.forEach((file) => {
-    formData.append("frames", {
-      uri: file.uri,
-      type: file.type || "image/jpeg",
-      name: file.name || "frame.jpg",
-    } as any);
+  files.forEach((file, index) => {
+    if (file.uri.startsWith('data:')) {
+      // Convert base64 to Blob
+      try {
+        const base64Data = file.uri.split(',')[1];
+        const mimeType = file.uri.split(',')[0].split(':')[1].split(';')[0];
+        const binaryString = atob(base64Data);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+        const blob = new Blob([bytes], { type: mimeType || file.type || "image/jpeg" });
+        formData.append("frames", blob, file.name || `frame_${index}.jpg`);
+        console.log(`[Upload] Converted frame ${index + 1} from base64 to Blob`);
+      } catch (err: any) {
+        console.error(`[Upload] Error converting frame ${index + 1}:`, err);
+        // Fallback
+        formData.append("frames", {
+          uri: file.uri,
+          type: file.type || "image/jpeg",
+          name: file.name || "frame.jpg",
+        } as any);
+      }
+    } else {
+      // Regular file URI
+      formData.append("frames", {
+        uri: file.uri,
+        type: file.type || "image/jpeg",
+        name: file.name || "frame.jpg",
+      } as any);
+    }
   });
   
   // Add other body fields

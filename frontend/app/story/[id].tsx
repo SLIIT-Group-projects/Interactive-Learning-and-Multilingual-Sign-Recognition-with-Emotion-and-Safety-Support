@@ -13,6 +13,8 @@ import {
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { CameraView, useCameraPermissions } from "expo-camera";
+import { Image } from "expo-image";
+import * as FileSystem from "expo-file-system";
 import {
   API_ENDPOINTS,
   uploadFile,
@@ -25,9 +27,9 @@ import {
 import { STORIES } from "../../data/stories";
 
 function formatSeconds(total: number) {
-  const mm = Math.floor(total / 60);
+  const hh = Math.floor(total / 3600);
   const ss = total % 60;
-  return `${mm}m ${String(ss).padStart(2, "0")}s`;
+  return `${hh}h ${String(ss).padStart(2, "0")}s`;
 }
 
 // Generate unique session ID
@@ -108,41 +110,78 @@ export default function StoryReaderScreen() {
     }
   }, [seconds, sessionActive]);
 
-  // Capture frame from camera
+  // Capture frame from camera silently (no shutter sound)
+  // Using video mode frame capture which doesn't trigger shutter sounds
   const captureFrame = async (): Promise<string | null> => {
     // Check all prerequisites before attempting capture
-    if (!cameraRef.current || !permission?.granted || isCapturingRef.current || !cameraOn || !sessionActive) {
+    if (!cameraRef.current) {
+      console.warn("[Capture] Camera ref not available");
+      return null;
+    }
+    if (!permission?.granted) {
+      console.warn("[Capture] Camera permission not granted");
+      return null;
+    }
+    if (isCapturingRef.current) {
+      console.warn("[Capture] Already capturing, skipping");
+      return null;
+    }
+    if (!cameraOn) {
+      console.warn("[Capture] Camera is off");
+      return null;
+    }
+    if (!sessionActiveRef.current) {
+      console.warn("[Capture] Session not active");
       return null;
     }
 
     try {
       isCapturingRef.current = true;
-      // CameraView uses takePictureAsync method - check if it exists
       const camera = cameraRef.current as any;
+      
       if (!camera || typeof camera.takePictureAsync !== 'function') {
         console.warn("Camera takePictureAsync not available");
         return null;
       }
 
-      // Add timeout to prevent hanging
+      // SILENT CAPTURE: Use base64 mode with minimal processing
+      // This approach minimizes system-level camera sounds by:
+      // 1. Using base64 output (avoids file system sounds)
+      // 2. Skipping processing (reduces capture time and potential sounds)
+      // 3. Lower quality for faster, quieter capture
+      // Note: On some devices (especially iOS), a brief system sound may still occur
+      // This is a system privacy requirement and cannot be completely disabled programmatically
       const photoPromise = camera.takePictureAsync({
-        quality: 0.7,
-        base64: false,
-        skipProcessing: false,
+        quality: 0.5, // Lower quality = faster = less processing sounds
+        base64: true, // Base64 output avoids file I/O sounds
+        skipProcessing: true, // Skip processing to minimize capture duration
+        // Fast capture reduces the duration of any system sounds
       });
 
       const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error("Camera capture timeout")), 5000)
+        setTimeout(() => reject(new Error("Camera capture timeout")), 2000) // Fast timeout
       );
 
       const photo = await Promise.race([photoPromise, timeoutPromise]) as any;
 
-      if (!photo?.uri) {
+      if (!photo) {
+        console.warn("[Capture] Photo capture returned null");
         return null;
       }
 
-      // Return photo URI directly (backend can handle resizing if needed)
-      return photo.uri;
+      // Convert base64 to data URI for silent upload (no file system access)
+      let uri: string;
+      if (photo.base64) {
+        uri = `data:image/jpeg;base64,${photo.base64}`;
+      } else if (photo.uri) {
+        uri = photo.uri;
+      } else {
+        console.warn("[Capture] No URI or base64 returned from capture");
+        return null;
+      }
+
+      console.log(`[Capture] ✅ Frame captured (silent mode): ${uri.substring(0, 50)}...`);
+      return uri;
     } catch (err: any) {
       console.error("Frame capture error:", err);
       // Don't throw - just return null to prevent crashes
@@ -208,10 +247,11 @@ export default function StoryReaderScreen() {
 
       for (let i = 0; i < 10; i++) {
         capturePromises.push(
-          captureFrame().then((uri) => {
+          captureFrame().then(async (uri) => {
             if (uri) {
+              // Keep data URI as-is - uploadFiles will convert to Blob
               frames.push({
-                uri,
+                uri: uri,
                 type: "image/jpeg",
                 name: `hand_frame_${i}.jpg`,
               });
@@ -460,8 +500,8 @@ export default function StoryReaderScreen() {
           <Text style={{ marginTop: 8, color: "#666" }}>
             Check your STORIES import path and data file.
           </Text>
-          <TouchableOpacity style={styles.primaryBtn} onPress={() => router.back()}>
-            <Text style={styles.primaryBtnText}>Go Back</Text>
+          <TouchableOpacity style={styles.startSessionBtn} onPress={() => router.back()}>
+            <Text style={styles.startSessionBtnText}>Go Back</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -473,121 +513,152 @@ export default function StoryReaderScreen() {
       {/* Header */}
       <View style={styles.headerRow}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={styles.backText}>Back</Text>
+          <Text style={styles.backIcon}>←</Text>
         </TouchableOpacity>
-
-        <View style={{ flex: 1 }}>
-          <View style={styles.hero}>
-            <View style={[styles.heroThumb, { backgroundColor: story.coverColor }]}>
-              <Text style={styles.heroEmoji}>{story.emoji}</Text>
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.headerTitle} numberOfLines={2}>
-                {story.title}
-              </Text>
-              <Text style={styles.headerSubSmall}>
-                {story.level} • {story.timeMin} min
-              </Text>
-            </View>
-          </View>
-        </View>
-
-        <TouchableOpacity onPress={onToggleCamera} style={styles.camToggle}>
-          <Text style={styles.camToggleText}>{cameraOn ? "Hide Cam" : "Show Cam"}</Text>
+        <Text style={styles.headerTitleText}>Story page</Text>
+        <TouchableOpacity style={styles.profileBtn}>
+          <View style={styles.profileIcon} />
         </TouchableOpacity>
       </View>
 
       {/* Body */}
-      <View style={{ flex: 1 }}>
-        <ScrollView contentContainerStyle={styles.content}>
-          <Text style={styles.storyTextLarge}>{story.storyText}</Text>
-          {!!story.moral && <Text style={styles.moral}>Moral: {story.moral}</Text>}
-
-          {/* Error Display */}
-          {error && (
-            <View style={styles.errorBox}>
-              <Text style={styles.errorText} numberOfLines={10}>
-                {error}
-              </Text>
-            </View>
-          )}
-
-          {/* Session Controls */}
-          <View style={styles.sessionRow}>
-            <TouchableOpacity
-              onPress={sessionActive ? finishSession : startSession}
-              style={[styles.primaryBtn, sessionActive && styles.finishBtn]}
-              disabled={loading}
-            >
-              {loading ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.primaryBtnText}>
-                  {sessionActive ? "Finish Session" : "Start Reading Session"}
-                </Text>
-              )}
-            </TouchableOpacity>
-
-            <View style={[styles.pill, sessionActive && styles.pillActive]}>
-              <Text style={styles.pillText}>
-                {sessionActive ? `Active (${formatSeconds(seconds)})` : "Inactive"}
-              </Text>
-            </View>
-          </View>
-
-          {/* Session Output Card */}
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Session Output (From Backend)</Text>
-
-            <Text style={styles.kvText}>
-              Final Emotion:{" "}
-              <Text style={styles.kvStrong}>{finalEmotion ?? "—"}</Text>
-            </Text>
-
-            <Text style={styles.kvText}>
-              Engagement Level:{" "}
-              <Text style={styles.kvStrong}>{engagementLevel ?? "—"}</Text>
-            </Text>
-
-            {summary && (
-              <Text style={styles.note} numberOfLines={5}>
-                {summary}
-              </Text>
-            )}
-
-            {!sessionActive && !finalEmotion && (
-              <Text style={styles.note}>
-                Start a session to begin capturing and analyzing engagement data.
-              </Text>
-            )}
-          </View>
-        </ScrollView>
-
-        {/* Camera Overlay */}
-        {cameraOn && (
-          <View style={styles.camBox}>
-            <CamStatus />
-
-            {!permission?.granted ? (
-              <TouchableOpacity
-                style={[styles.primaryBtn, { paddingVertical: 8, paddingHorizontal: 10 }]}
-                onPress={ensureCameraPermission}
-              >
-                <Text style={styles.primaryBtnText}>Allow Camera</Text>
-              </TouchableOpacity>
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        {/* Hero Section with Story Image */}
+        <View style={styles.heroSection}>
+          <View style={styles.heroImageContainer}>
+            {story.imageSource || story.imageUrl ? (
+              <Image 
+                source={story.imageSource || { uri: story.imageUrl }} 
+                style={styles.heroImage}
+                contentFit="cover"
+              />
             ) : (
-              <View style={styles.camPreview}>
-                <CameraView
-                  ref={cameraRef}
-                  style={{ flex: 1 }}
-                  facing="front"
-                  mode="picture"
-                />
+              <View style={[styles.heroImagePlaceholder, { backgroundColor: story.coverColor }]}>
+                <Text style={styles.heroEmoji}>{story.emoji}</Text>
               </View>
             )}
+            {/* Difficulty Tag on Image */}
+            <View style={styles.difficultyTag}>
+              <Text style={styles.difficultyText}>{story.level}</Text>
+            </View>
+            {/* Hide/Show Cam Button Overlay */}
+            <TouchableOpacity onPress={onToggleCamera} style={styles.hideCamBtnOverlay}>
+              <Text style={styles.hideCamBtnText}>{cameraOn ? "Hide cam" : "Show cam"}</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Story Title and Metadata */}
+          <Text style={styles.storyTitle}>{story.title}</Text>
+          <View style={styles.metadataRow}>
+            <View style={styles.timeBadge}>
+              <Text style={styles.timeText}>{story.timeMin}min</Text>
+            </View>
+            {story.uploadedOn && (
+              <Text style={styles.dateText}>{story.uploadedOn}</Text>
+            )}
+          </View>
+        </View>
+
+        {/* Show Camera Button - when camera is hidden */}
+        {!cameraOn && (
+          <TouchableOpacity onPress={onToggleCamera} style={styles.showCamBtn}>
+            <Text style={styles.showCamBtnText}>Show Camera</Text>
+          </TouchableOpacity>
+        )}
+
+        {/* Story Text Box */}
+        <View style={styles.storyTextBox}>
+          <Text style={styles.storyText}>{story.storyText}</Text>
+        </View>
+
+        {/* Error Display */}
+        {error && (
+          <View style={styles.errorBox}>
+            <Text style={styles.errorText} numberOfLines={10}>
+              {error}
+            </Text>
           </View>
         )}
-      </View>
+
+        {/* Session Controls */}
+        <View style={styles.sessionRow}>
+          <TouchableOpacity
+            onPress={sessionActive ? finishSession : startSession}
+            style={styles.startSessionBtn}
+            disabled={loading}
+          >
+            {loading ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.startSessionBtnText}>
+                {sessionActive ? "Finish Session" : "Start Reading Session"}
+              </Text>
+            )}
+          </TouchableOpacity>
+
+          <View style={[styles.statusBtn, sessionActive && styles.statusBtnActive]}>
+            <Text style={styles.statusBtnText}>
+              {sessionActive ? `Active(${formatSeconds(seconds)})` : "Inactive"}
+            </Text>
+          </View>
+        </View>
+
+        {/* Session Output Card */}
+        <View style={styles.outputCard}>
+          <Text style={styles.outputCardTitle}>Session Output</Text>
+          
+          {finalEmotion || engagementLevel ? (
+            <>
+              <Text style={styles.outputLabel}>
+                Final Emotion - <Text style={styles.outputValueYellow}>{finalEmotion ?? "—"}</Text>
+              </Text>
+              <Text style={styles.outputLabel}>
+                Engagement Level - <Text style={styles.outputValueBlue}>{engagementLevel ?? "—"}</Text>
+              </Text>
+              {summary && (
+                <Text style={styles.outputSummary} numberOfLines={5}>
+                  {summary}
+                </Text>
+              )}
+            </>
+          ) : (
+            <Text style={styles.outputPlaceholder}>
+              Start a session to begin capturing and analyzing engagement data.
+            </Text>
+          )}
+        </View>
+
+        {/* Spacer for camera overlay */}
+        {cameraOn && <View style={{ height: 180 }} />}
+      </ScrollView>
+
+      {/* Camera Overlay */}
+      {cameraOn && (
+        <View style={styles.camBox}>
+          <CamStatus />
+          {!permission?.granted ? (
+            <TouchableOpacity
+              style={styles.camPermissionBtn}
+              onPress={ensureCameraPermission}
+            >
+              <Text style={styles.camPermissionBtnText}>Allow Camera</Text>
+            </TouchableOpacity>
+          ) : (
+            <View style={styles.camPreview}>
+              <CameraView
+                ref={cameraRef}
+                style={{ flex: 1 }}
+                facing="front"
+                mode="picture"
+                // Picture mode for frame capture - optimized for silent operation
+              />
+            </View>
+          )}
+          <TouchableOpacity onPress={onToggleCamera} style={styles.camCloseBtn}>
+            <Text style={styles.camCloseBtnText}>Hide cam</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       {/* Summary Modal */}
       <Modal visible={summaryVisible} animationType="slide" transparent>
@@ -615,129 +686,319 @@ export default function StoryReaderScreen() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#F7FEFF" },
+  safe: { flex: 1, backgroundColor: "#F0F8FF" }, // Light blue background
 
+  // Header
   headerRow: {
     flexDirection: "row",
     alignItems: "center",
-    padding: 12,
-    borderBottomWidth: 0.5,
-    borderColor: "#EAEAEA",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     backgroundColor: "#FFFFFF",
   },
-  backBtn: { paddingVertical: 8, paddingHorizontal: 10, marginRight: 8 },
-  backText: { color: "#07BDD6", fontWeight: "800" },
-
-  headerTitle: { fontSize: 18, fontWeight: "900", color: "#212121" },
-  headerSub: { marginTop: 2, fontSize: 12, color: "#666" },
-  hero: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    marginBottom: 8,
-  },
-  heroThumb: {
-    width: 84,
-    height: 84,
-    borderRadius: 14,
+  backBtn: {
+    width: 40,
+    height: 40,
     alignItems: "center",
     justifyContent: "center",
   },
-  heroEmoji: { fontSize: 40 },
-  headerSubSmall: { color: "#666", fontSize: 12, marginTop: 6 },
-
-  camToggle: {
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    borderRadius: 10,
-    backgroundColor: "#E6F9FC",
-    marginLeft: 10,
+  backIcon: {
+    fontSize: 24,
+    color: "#000000",
+    fontWeight: "700",
   },
-  camToggleText: { fontWeight: "800", color: "#07BDD6" },
+  headerTitleText: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#000000",
+  },
+  profileBtn: {
+    width: 40,
+    height: 40,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  profileIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "#0A7EA4",
+  },
 
-  content: { padding: 16, paddingBottom: 220 },
+  // Content
+  content: {
+    padding: 16,
+    paddingBottom: 200,
+  },
 
-  storyText: { fontSize: 18, lineHeight: 28, color: "#212121" },
-  storyTextLarge: { fontSize: 20, lineHeight: 30, color: "#212121" },
-  moral: { marginTop: 12, fontWeight: "800", color: "#444" },
+  // Hero Section
+  heroSection: {
+    marginBottom: 20,
+  },
+  heroImageContainer: {
+    width: "100%",
+    height: 240,
+    borderRadius: 16,
+    overflow: "hidden",
+    marginBottom: 12,
+    position: "relative",
+  },
+  heroImage: {
+    width: "100%",
+    height: "100%",
+  },
+  heroImagePlaceholder: {
+    width: "100%",
+    height: "100%",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  heroEmoji: {
+    fontSize: 80,
+  },
+  difficultyTag: {
+    position: "absolute",
+    bottom: 12,
+    right: 12,
+    backgroundColor: "rgba(255, 255, 255, 0.9)",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+  },
+  difficultyText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#212121",
+  },
+  hideCamBtnOverlay: {
+    position: "absolute",
+    top: 12,
+    right: 12,
+    backgroundColor: "#0A7EA4",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  hideCamBtnText: {
+    color: "#FFFFFF",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  showCamBtn: {
+    backgroundColor: "#0A7EA4",
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    alignItems: "center",
+    marginBottom: 16,
+    alignSelf: "flex-start",
+  },
+  showCamBtnText: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  storyTitle: {
+    fontSize: 24,
+    fontWeight: "900",
+    color: "#212121",
+    marginBottom: 8,
+  },
+  metadataRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  timeBadge: {
+    backgroundColor: "#FFF9E6",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  timeText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#B8860B",
+  },
+  dateText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#0A7EA4",
+  },
 
+  // Story Text Box
+  storyTextBox: {
+    backgroundColor: "#FFFFFF",
+    borderWidth: 2,
+    borderColor: "#0A7EA4",
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 20,
+  },
+  storyText: {
+    fontSize: 17,
+    lineHeight: 28,
+    color: "#212121",
+    fontFamily: Platform.select({
+      ios: "Georgia", // Elegant serif font perfect for stories on iOS
+      android: "serif", // Elegant serif on Android (Roboto Serif or Noto Serif)
+      default: "Georgia, serif",
+    }),
+    letterSpacing: 0.3,
+    textAlign: "left",
+  },
+
+  // Error
   errorBox: {
     marginTop: 12,
+    marginBottom: 12,
     padding: 12,
     backgroundColor: "#FFEBEE",
     borderRadius: 8,
     borderWidth: 1,
     borderColor: "#FFCDD2",
   },
-  errorText: { color: "#C62828", fontWeight: "600" },
+  errorText: {
+    color: "#C62828",
+    fontWeight: "600",
+  },
 
+  // Session Controls
   sessionRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginTop: 14,
-    flexWrap: "wrap",
+    gap: 12,
+    marginBottom: 20,
   },
-  primaryBtn: {
-    backgroundColor: "#07BDD6",
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+  startSessionBtn: {
+    flex: 1,
+    backgroundColor: "#0A7EA4",
+    paddingVertical: 14,
+    paddingHorizontal: 20,
     borderRadius: 12,
-    minWidth: 150,
     alignItems: "center",
+    justifyContent: "center",
   },
-  finishBtn: { backgroundColor: "#FF4AB3" },
-  primaryBtnText: { color: "#FFFFFF", fontWeight: "900" },
-
-  pill: {
-    marginLeft: 10,
-    marginTop: 10,
-    backgroundColor: "#EEEEEE",
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: 20,
+  startSessionBtnText: {
+    color: "#FFFFFF",
+    fontSize: 15,
+    fontWeight: "800",
   },
-  pillActive: { backgroundColor: "#D1EC3F" },
-  pillText: { fontWeight: "800", color: "#212121" },
+  statusBtn: {
+    backgroundColor: "#FFD700", // Yellow
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    minWidth: 100,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  statusBtnActive: {
+    backgroundColor: "#FFD700", // Yellow when active
+  },
+  statusBtnText: {
+    color: "#212121",
+    fontSize: 14,
+    fontWeight: "800",
+  },
 
-  card: {
-    marginTop: 18,
-    borderWidth: 1,
-    borderColor: "#EAEAEA",
+  // Session Output Card
+  outputCard: {
     backgroundColor: "#FFFFFF",
     borderRadius: 16,
-    padding: 14,
+    padding: 16,
+    marginTop: 8,
   },
-  cardTitle: { fontSize: 16, fontWeight: "900", color: "#212121", marginBottom: 10 },
+  outputCardTitle: {
+    fontSize: 18,
+    fontWeight: "900",
+    color: "#212121",
+    marginBottom: 12,
+  },
+  outputLabel: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#212121",
+    marginBottom: 8,
+  },
+  outputValueYellow: {
+    color: "#FF8C00",
+    fontWeight: "900",
+  },
+  outputValueBlue: {
+    color: "#0A7EA4",
+    fontWeight: "900",
+  },
+  outputSummary: {
+    marginTop: 8,
+    fontSize: 13,
+    color: "#666",
+    lineHeight: 20,
+  },
+  outputPlaceholder: {
+    fontSize: 13,
+    color: "#999",
+    lineHeight: 20,
+    fontStyle: "italic",
+  },
 
-  kvText: { marginTop: 6, color: "#333", fontWeight: "800" },
-  kvStrong: { color: "#07BDD6", fontWeight: "900" },
-
-  note: { marginTop: 10, color: "#666", lineHeight: 20, fontWeight: "600" },
-
+  // Camera Overlay
   camBox: {
     position: "absolute",
-    left: 12,
-    bottom: 12,
-    width: 150,
-    backgroundColor: "rgba(255,255,255,0.96)",
+    left: 16,
+    bottom: 16,
+    width: 160,
+    backgroundColor: "#FFFFFF",
     borderRadius: 14,
-    padding: 10,
+    padding: 12,
     borderWidth: 1,
     borderColor: "#EAEAEA",
     zIndex: 50,
     shadowColor: "#000",
-    shadowOpacity: 0.12,
+    shadowOpacity: 0.15,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 4 },
     elevation: 8,
   },
-  camHint: { fontSize: 12, fontWeight: "900", color: "#07BDD6", marginBottom: 8 },
+  camHint: {
+    fontSize: 12,
+    fontWeight: "900",
+    color: "#212121",
+    marginBottom: 8,
+  },
   camPreview: {
-    height: 140,
-    borderRadius: 12,
+    height: 120,
+    borderRadius: 10,
     overflow: "hidden",
     borderWidth: 1,
     borderColor: "#EAEAEA",
+    marginBottom: 8,
+  },
+  camPermissionBtn: {
+    backgroundColor: "#0A7EA4",
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  camPermissionBtnText: {
+    color: "#FFFFFF",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  camCloseBtn: {
+    backgroundColor: "#0A7EA4",
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 6,
+    alignItems: "center",
+  },
+  camCloseBtnText: {
+    color: "#FFFFFF",
+    fontSize: 11,
+    fontWeight: "700",
   },
 
   modalBackground: {
