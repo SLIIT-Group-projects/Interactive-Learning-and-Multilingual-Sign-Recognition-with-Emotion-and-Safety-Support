@@ -3,42 +3,59 @@ const sessions = new Map();
 /**
  * Create a new reading session
  */
-export function ehStartSession(sessionId) {
+export function startSession(sessionId) {
   sessions.set(sessionId, {
+    startedAt: Date.now(),
     emotions: [],
-    hand: [],
-    startedAt: Date.now()
+    hands: [],
+    final: null,
   });
 }
 
 /**
  * Save emotion output
  */
-export function ehAddEmotion(sessionId, data) {
+export function addEmotion(sessionId, item) {
   const s = sessions.get(sessionId);
   if (!s) return;
-  s.emotions.push({ ...data, t: Date.now() });
+  s.emotions.push({ ...item, t: Date.now() });
 }
 
 /**
  * Save hand output
  */
-export function ehAddHand(sessionId, data) {
+export function addHand(sessionId, item) {
   const s = sessions.get(sessionId);
   if (!s) return;
-  s.hand.push({ ...data, t: Date.now() });
+  s.hands.push({ ...item, t: Date.now() });
 }
 
 /**
  * Get session data
  */
-export function ehGetSession(sessionId) {
+export function getSession(sessionId) {
   return sessions.get(sessionId);
 }
 
 /**
- * Clear session
+ * Finalize session - save final result
  */
-export function ehEndSession(sessionId) {
+export function finalize(sessionId, finalData) {
+  const s = sessions.get(sessionId);
+  if (!s) return;
+  s.final = finalData;
+}
+
+/**
+ * Clear session (optional cleanup)
+ */
+export function endSession(sessionId) {
   sessions.delete(sessionId);
 }
+
+// Legacy exports for backward compatibility
+export const ehStartSession = startSession;
+export const ehAddEmotion = addEmotion;
+export const ehAddHand = addHand;
+export const ehGetSession = getSession;
+export const ehEndSession = endSession;

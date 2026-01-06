@@ -1,32 +1,75 @@
 import express from "express";
-import { ehGetSession, ehEndSession } from "../utils/eh_sessionStore.js";
+import { startSession, getSession, finalize } from "../utils/eh_sessionStore.js";
+import { computeFusion } from "../utils/eh_fusion_model.js";
 
 const router = express.Router();
 
-router.post("/finalize", (req, res) => {
-  const { sessionId } = req.body;
-  const session = ehGetSession(sessionId);
+/**
+ * POST /api/eh/start
+ * Start a new reading session
+ */
+router.post("/start", (req, res) => {
+  try {
+    console.log("[EH/Start] Received request:", req.body);
+    const { sessionId } = req.body;
+    
+    if (!sessionId) {
+      console.error("[EH/Start] Missing sessionId in request");
+      return res.status(400).json({ error: "sessionId required" });
+    }
 
-  if (!session) {
-    return res.status(404).json({ error: "Session not found" });
+    console.log(`[EH/Start] Starting session: ${sessionId}`);
+    startSession(sessionId);
+    
+    const response = {
+      success: true,
+      sessionId,
+      message: "Session started",
+    };
+    
+    console.log(`[EH/Start] Session ${sessionId} started successfully`);
+    res.json(response);
+  } catch (err) {
+    console.error("[EH/Start] Error starting session:", err);
+    res.status(500).json({ error: String(err), stack: err.stack });
   }
+});
 
-  // Simple fusion logic (can improve later)
-  const happyCount = session.emotions.filter(e => e.predicted === "happy").length;
-  const avgHand = session.hand.reduce((s,h)=>s+h.level,0)/(session.hand.length||1);
+/**
+ * POST /api/eh/finalize
+ * Finalize a session and get fused results
+ */
+router.post("/finalize", (req, res) => {
+  try {
+    const { sessionId } = req.body;
+    if (!sessionId) {
+      return res.status(400).json({ error: "sessionId required" });
+    }
 
-  let engagement = "LOW";
-  if (happyCount > 3 && avgHand >= 1) engagement = "HIGH";
-  else if (happyCount > 1) engagement = "MEDIUM";
+    const session = getSession(sessionId);
+    if (!session) {
+      return res.status(404).json({ error: "Session not found" });
+    }
 
-  const output = {
-    engagement,
-    emotionSamples: session.emotions.length,
-    handSamples: session.hand.length
-  };
+    // Compute fusion result
+    const fusionResult = computeFusion(session);
 
-  ehEndSession(sessionId);
-  res.json(output);
+    // Save final result in session
+    finalize(sessionId, fusionResult);
+
+    // Return enriched response
+    const output = {
+      sessionId,
+      ...fusionResult,
+      startedAt: session.startedAt,
+      duration: Date.now() - session.startedAt,
+    };
+
+    res.json(output);
+  } catch (err) {
+    console.error("Finalize session error:", err);
+    res.status(500).json({ error: String(err) });
+  }
 });
 
 export default router;
