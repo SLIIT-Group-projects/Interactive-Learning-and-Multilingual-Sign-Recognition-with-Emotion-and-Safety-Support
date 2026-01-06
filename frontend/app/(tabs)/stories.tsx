@@ -12,6 +12,7 @@ import {
 import { useRouter } from 'expo-router';
 import { StoryCard } from '../../components/StoryCard';
 import { STORIES } from '../../data/stories';
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 
 export default function StoriesScreen() {
   const router = useRouter();
@@ -46,11 +47,13 @@ export default function StoriesScreen() {
         {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-            <Text style={styles.backArrow}>←</Text>
+            <MaterialIcons name="arrow-back" size={24} color="#212121" />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Story dashboard</Text>
           <TouchableOpacity style={styles.avatar}>
-            <Text style={styles.avatarText}>👤</Text>
+            <View style={styles.avatarIcon}>
+              <MaterialIcons name="person" size={18} color="#FFFFFF" />
+            </View>
           </TouchableOpacity>
         </View>
 
@@ -138,13 +141,16 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#07BDD6',
     alignItems: 'center',
     justifyContent: 'center',
-    overflow: 'hidden',
   },
-  avatarText: {
-    fontSize: 20,
+  avatarIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#0A7EA4',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
   search: {

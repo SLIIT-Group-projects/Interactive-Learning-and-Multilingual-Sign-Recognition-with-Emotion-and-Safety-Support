@@ -9,6 +9,7 @@ import {
 	Modal,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 
 /* --- Mock data (TODO: replace with API) --- */
 type Session = {
@@ -59,24 +60,33 @@ const filterByRange = (sessions: Session[], range: 'Day' | 'Week' | 'Month') => 
 /* --- Emotion Overview Component --- */
 const EmotionOverview: React.FC = () => {
 	const emotions = [
-		{ emoji: '😊', label: 'Happy' },
-		{ emoji: '😢', label: 'Sad' },
-		{ emoji: '😠', label: 'Anger' },
-		{ emoji: '🤢', label: 'Disgust' },
-		{ emoji: '😐', label: 'Neutral' },
-		{ emoji: '😲', label: 'Suprise' },
+		{ emoji: '😊', label: 'Happy', color: '#FFE082', bgColor: '#FFF8E1' },
+		{ emoji: '😢', label: 'Sad', color: '#90CAF9', bgColor: '#E3F2FD' },
+		{ emoji: '😠', label: 'Anger', color: '#EF5350', bgColor: '#FFEBEE' },
+		{ emoji: '🤢', label: 'Disgust', color: '#81C784', bgColor: '#E8F5E9' },
+		{ emoji: '😐', label: 'Neutral', color: '#BDBDBD', bgColor: '#F5F5F5' },
+		{ emoji: '😲', label: 'Surprise', color: '#FFB74D', bgColor: '#FFF3E0' },
 	];
 
 	return (
 		<View style={styles.emotionOverview}>
-			{emotions.map((emotion, idx) => (
-				<View key={idx} style={styles.emotionItem}>
-					<View style={styles.emotionCircle}>
-						<Text style={styles.emotionEmoji}>{emotion.emoji}</Text>
-					</View>
-					<Text style={styles.emotionLabel}>{emotion.label}</Text>
-				</View>
-			))}
+			<Text style={styles.emotionSectionTitle}>Emotions</Text>
+			<View style={styles.emotionGrid}>
+				{emotions.map((emotion, idx) => (
+					<TouchableOpacity 
+						key={idx} 
+						style={styles.emotionCard}
+						activeOpacity={0.8}
+					>
+						<View style={[styles.emotionCardInner, { backgroundColor: emotion.bgColor }]}>
+							<View style={[styles.emotionCircle, { backgroundColor: emotion.color }]}>
+								<Text style={styles.emotionEmoji}>{emotion.emoji}</Text>
+							</View>
+							<Text style={styles.emotionLabel}>{emotion.label}</Text>
+						</View>
+					</TouchableOpacity>
+				))}
+			</View>
 		</View>
 	);
 };
@@ -235,11 +245,13 @@ export default function ParentDashboardScreen() {
 			{/* Header */}
 			<View style={styles.headerRow}>
 				<TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-					<Text style={styles.backIcon}>←</Text>
+					<MaterialIcons name="arrow-back" size={24} color="#000000" />
 				</TouchableOpacity>
 				<Text style={styles.headerTitle}>Emotion Dashboard</Text>
 				<TouchableOpacity style={styles.profileBtn}>
-					<View style={styles.profileIcon} />
+					<View style={styles.profileIcon}>
+						<MaterialIcons name="person" size={18} color="#FFFFFF" />
+					</View>
 				</TouchableOpacity>
 			</View>
 
@@ -258,6 +270,20 @@ export default function ParentDashboardScreen() {
 				>
 					<Text style={[styles.navText, view === 'Overview' && styles.navTextActive]}>Overview</Text>
 				</TouchableOpacity>
+			</View>
+
+			{/* Modern Interactive Section */}
+			<View style={styles.interactiveSection}>
+				{/* Welcome Card */}
+				<View style={styles.welcomeCard}>
+					<View style={styles.welcomeContent}>
+						<Text style={styles.welcomeGreeting}>Good {new Date().getHours() < 12 ? 'Morning' : new Date().getHours() < 18 ? 'Afternoon' : 'Evening'}! 👋</Text>
+						<Text style={styles.welcomeName}>{selectedChild.name}'s Progress</Text>
+					</View>
+					<View style={styles.welcomeEmoji}>
+						<Text style={styles.welcomeEmojiText}>{interpreted.emoji}</Text>
+					</View>
+				</View>
 			</View>
 
 			<ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
@@ -379,6 +405,8 @@ const styles = StyleSheet.create({
 		height: 32,
 		borderRadius: 16,
 		backgroundColor: '#0A7EA4',
+		alignItems: 'center',
+		justifyContent: 'center',
 	},
 	navBar: {
 		flexDirection: 'row',
@@ -470,40 +498,63 @@ const styles = StyleSheet.create({
 	},
 	scrollContent: {
 		padding: 16,
+		paddingTop: 8,
 		paddingBottom: 32,
 	},
 	emotionOverview: {
-		flexDirection: 'row',
-		flexWrap: 'wrap',
-		justifyContent: 'space-between',
 		marginBottom: 24,
 	},
-	emotionItem: {
-		width: '30%',
-		alignItems: 'center',
+	emotionSectionTitle: {
+		fontSize: 18,
+		fontWeight: '900',
+		color: '#212121',
 		marginBottom: 16,
+		letterSpacing: -0.5,
 	},
-	emotionCircle: {
-		width: 60,
-		height: 60,
-		borderRadius: 30,
-		backgroundColor: '#FFFFFF',
+	emotionGrid: {
+		flexDirection: 'row',
+		flexWrap: 'wrap',
+		gap: 12,
+	},
+	emotionCard: {
+		width: '31%',
+		minWidth: 100,
+	},
+	emotionCardInner: {
+		borderRadius: 16,
+		padding: 16,
 		alignItems: 'center',
 		justifyContent: 'center',
 		elevation: 2,
 		shadowColor: '#000',
-		shadowOpacity: 0.1,
-		shadowRadius: 4,
+		shadowOpacity: 0.08,
+		shadowRadius: 8,
 		shadowOffset: { width: 0, height: 2 },
+		borderWidth: 1,
+		borderColor: 'rgba(0, 0, 0, 0.05)',
+	},
+	emotionCircle: {
+		width: 64,
+		height: 64,
+		borderRadius: 32,
+		alignItems: 'center',
+		justifyContent: 'center',
+		marginBottom: 12,
+		elevation: 3,
+		shadowColor: '#000',
+		shadowOpacity: 0.15,
+		shadowRadius: 6,
+		shadowOffset: { width: 0, height: 3 },
 	},
 	emotionEmoji: {
-		fontSize: 32,
+		fontSize: 36,
 	},
 	emotionLabel: {
-		marginTop: 8,
-		fontSize: 12,
-		fontWeight: '600',
+		fontSize: 13,
+		fontWeight: '700',
 		color: '#212121',
+		textAlign: 'center',
+		letterSpacing: 0.2,
 	},
 	metricsGrid: {
 		flexDirection: 'row',
@@ -673,5 +724,141 @@ const styles = StyleSheet.create({
 		fontSize: 14,
 		fontWeight: '600',
 		color: '#212121',
+	},
+	interactiveSection: {
+		paddingHorizontal: 16,
+		paddingTop: 12,
+		paddingBottom: 8,
+		backgroundColor: '#F8F9FA',
+	},
+	welcomeCard: {
+		backgroundColor: '#FFFFFF',
+		borderRadius: 16,
+		padding: 20,
+		flexDirection: 'row',
+		alignItems: 'center',
+		justifyContent: 'space-between',
+		marginBottom: 12,
+		elevation: 3,
+		shadowColor: '#000',
+		shadowOpacity: 0.1,
+		shadowRadius: 8,
+		shadowOffset: { width: 0, height: 2 },
+		borderLeftWidth: 4,
+		borderLeftColor: '#0A7EA4',
+	},
+	welcomeContent: {
+		flex: 1,
+	},
+	welcomeGreeting: {
+		fontSize: 14,
+		fontWeight: '600',
+		color: '#666666',
+		marginBottom: 4,
+	},
+	welcomeName: {
+		fontSize: 20,
+		fontWeight: '900',
+		color: '#212121',
+	},
+	welcomeEmoji: {
+		width: 56,
+		height: 56,
+		borderRadius: 28,
+		backgroundColor: '#E3F2FD',
+		alignItems: 'center',
+		justifyContent: 'center',
+	},
+	welcomeEmojiText: {
+		fontSize: 32,
+	},
+	quickStatsRow: {
+		flexDirection: 'row',
+		gap: 12,
+		marginBottom: 12,
+	},
+	quickStatCard: {
+		flex: 1,
+		backgroundColor: '#FFFFFF',
+		borderRadius: 14,
+		padding: 16,
+		alignItems: 'center',
+		elevation: 2,
+		shadowColor: '#000',
+		shadowOpacity: 0.08,
+		shadowRadius: 6,
+		shadowOffset: { width: 0, height: 2 },
+	},
+	quickStatIconContainer: {
+		width: 48,
+		height: 48,
+		borderRadius: 24,
+		backgroundColor: '#E3F2FD',
+		alignItems: 'center',
+		justifyContent: 'center',
+		marginBottom: 8,
+	},
+	quickStatValue: {
+		fontSize: 20,
+		fontWeight: '900',
+		color: '#212121',
+		marginBottom: 2,
+	},
+	quickStatLabel: {
+		fontSize: 11,
+		fontWeight: '600',
+		color: '#999999',
+		textAlign: 'center',
+	},
+	stateHighlightCard: {
+		backgroundColor: '#0A7EA4',
+		borderRadius: 16,
+		padding: 20,
+		flexDirection: 'row',
+		alignItems: 'center',
+		justifyContent: 'space-between',
+		marginBottom: 8,
+		elevation: 4,
+		shadowColor: '#0A7EA4',
+		shadowOpacity: 0.3,
+		shadowRadius: 10,
+		shadowOffset: { width: 0, height: 4 },
+	},
+	stateHighlightLeft: {
+		flex: 1,
+	},
+	stateHighlightLabel: {
+		fontSize: 12,
+		fontWeight: '600',
+		color: '#FFFFFF',
+		opacity: 0.9,
+		marginBottom: 4,
+	},
+	stateHighlightValue: {
+		fontSize: 28,
+		fontWeight: '900',
+		color: '#FFFFFF',
+		marginBottom: 4,
+	},
+	stateHighlightSubtext: {
+		fontSize: 13,
+		fontWeight: '600',
+		color: '#FFFFFF',
+		opacity: 0.8,
+	},
+	stateHighlightRight: {
+		alignItems: 'center',
+		justifyContent: 'center',
+	},
+	stateHighlightEmojiContainer: {
+		width: 64,
+		height: 64,
+		borderRadius: 32,
+		backgroundColor: 'rgba(255, 255, 255, 0.2)',
+		alignItems: 'center',
+		justifyContent: 'center',
+	},
+	stateHighlightEmoji: {
+		fontSize: 36,
 	},
 });

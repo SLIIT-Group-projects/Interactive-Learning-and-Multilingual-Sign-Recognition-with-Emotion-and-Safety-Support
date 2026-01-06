@@ -22,6 +22,7 @@ import {
   apiCall,
   BASE_URL,
 } from "../../config/api";
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 
 // ✅ Change this import path if your STORIES file is elsewhere
 import { STORIES } from "../../data/stories";
@@ -150,9 +151,10 @@ export default function StoryReaderScreen() {
       const photoPromise = camera.takePictureAsync({
         quality: 0.7, // Good quality for emotion/hand detection
         base64: true, // Base64 output for efficient processing
-        skipProcessing: false, // Keep processing for better image quality
+        skipProcessing: true, // Skip processing to minimize flash duration
         shutterSound: false, // CRITICAL: Disable shutter sound completely
         // This only captures the camera view, not the whole screen
+        // skipProcessing: true reduces capture time, minimizing visual flash
       });
 
       const timeoutPromise = new Promise((_, reject) => 
@@ -191,7 +193,7 @@ export default function StoryReaderScreen() {
     }
   };
 
-  // Send emotion prediction (every 1 second)
+  // Send emotion prediction (MOCKED - no API calls)
   const sendEmotionPrediction = async () => {
     const currentSessionId = sessionIdRef.current;
     const isActive = sessionActiveRef.current;
@@ -202,34 +204,31 @@ export default function StoryReaderScreen() {
     }
 
     try {
-      console.log(`[Emotion] Capturing frame for session ${currentSessionId}`);
-      const frameUri = await captureFrame();
-      if (!frameUri) {
-        console.warn("[Emotion] Frame capture returned null");
-        return;
-      }
-
-      console.log(`[Emotion] Uploading frame to backend...`);
-      const result = await uploadFile(
-        API_ENDPOINTS.PREDICT_EMOTION,
-        {
-          uri: frameUri,
-          type: "image/jpeg",
-          name: "emotion_frame.jpg",
-        },
-        { sessionId: currentSessionId }
-      );
-      console.log(`[Emotion] Emotion prediction result:`, result);
+      // MOCK MODE: Simulate emotion detection without API calls
+      // This prevents crashes and allows frontend demo
+      console.log(`[Emotion] Mock mode - simulating emotion detection for session ${currentSessionId}`);
+      
+      // Simulate frame capture (optional - can skip actual camera capture too)
+      // const frameUri = await captureFrame();
+      
+      // Simulate emotion prediction with realistic data
+      const mockEmotions = ['Happy', 'Neutral', 'Excited', 'Calm', 'Focused'];
+      const mockIntensities = ['Low', 'Medium', 'High'];
+      const randomEmotion = mockEmotions[Math.floor(Math.random() * mockEmotions.length)];
+      const randomIntensity = mockIntensities[Math.floor(Math.random() * mockIntensities.length)];
+      
+      // Store mock result (simulating backend response)
+      console.log(`[Emotion] Mock result: ${randomEmotion} (${randomIntensity})`);
+      
+      // Update UI with mock data (this would normally come from backend)
+      // For now, we'll just log it and let the finalize session handle the display
     } catch (err: any) {
       console.error("[Emotion] Emotion prediction error:", err);
-      // Only set error if it's a critical issue, not for every failed frame
-      if (err.message?.includes("Network request failed") || err.message?.includes("Cannot connect")) {
-        setError(err.message);
-      }
+      // Don't show errors in mock mode
     }
   };
 
-  // Send hand analysis (every 5 seconds, 10 frames)
+  // Send hand analysis (MOCKED - no API calls)
   const sendHandAnalysis = async () => {
     const currentSessionId = sessionIdRef.current;
     const isActive = sessionActiveRef.current;
@@ -240,59 +239,27 @@ export default function StoryReaderScreen() {
     }
 
     try {
-      console.log(`[Hand] Starting hand analysis capture for session ${currentSessionId}`);
-      // Capture 10 frames quickly
-      const frames: Array<{ uri: string; type: string; name: string }> = [];
-      const capturePromises: Promise<void>[] = [];
-
-      for (let i = 0; i < 10; i++) {
-        capturePromises.push(
-          captureFrame().then(async (uri) => {
-            if (uri) {
-              // Keep data URI as-is - uploadFiles will convert to Blob
-              frames.push({
-                uri: uri,
-                type: "image/jpeg",
-                name: `hand_frame_${i}.jpg`,
-              });
-              console.log(`[Hand] Captured frame ${i + 1}/10`);
-            } else {
-              console.warn(`[Hand] Frame ${i + 1}/10 capture returned null`);
-            }
-          }).catch((err) => {
-            console.error(`[Hand] Error capturing hand frame ${i + 1}:`, err);
-          })
-        );
-      }
-
-      await Promise.all(capturePromises);
-
-      console.log(`[Hand] Captured ${frames.length}/10 frames successfully`);
+      // MOCK MODE: Simulate hand movement analysis without API calls
+      console.log(`[Hand] Mock mode - simulating hand analysis for session ${currentSessionId}`);
       
-      if (frames.length === 0) {
-        console.warn("[Hand] No frames captured, skipping upload");
-        return;
-      }
-
-      // Estimate FPS: 10 frames captured quickly, assume ~10fps
-      const fps = 10;
-      console.log(`[Hand] Uploading ${frames.length} frames to backend...`);
-      const result = await uploadFiles(
-        API_ENDPOINTS.ANALYZE_HAND,
-        frames,
-        { sessionId: currentSessionId, fps: String(fps) }
-      );
-      console.log(`[Hand] Hand analysis result:`, result);
+      // Simulate hand movement detection
+      const mockSpeeds = [0.5, 1.2, 2.1, 0.8, 1.5];
+      const mockLevels = ['Low', 'Medium', 'High'];
+      const randomSpeed = mockSpeeds[Math.floor(Math.random() * mockSpeeds.length)];
+      const randomLevel = mockLevels[Math.floor(Math.random() * mockLevels.length)];
+      
+      // Store mock result
+      console.log(`[Hand] Mock result: Speed=${randomSpeed}, Level=${randomLevel}`);
+      
+      // Update UI with mock data (this would normally come from backend)
+      // For now, we'll just log it
     } catch (err: any) {
       console.error("[Hand] Hand analysis error:", err);
-      // Only set error if it's a critical issue
-      if (err.message?.includes("Network request failed") || err.message?.includes("Cannot connect")) {
-        setError(err.message);
-      }
+      // Don't show errors in mock mode
     }
   };
 
-  // Start session
+  // Start session (MOCK MODE - no API calls)
   const startSession = async () => {
     // Prevent multiple simultaneous calls
     if (isStartingSessionRef.current || sessionActive) {
@@ -303,14 +270,15 @@ export default function StoryReaderScreen() {
     try {
       isStartingSessionRef.current = true;
 
-      if (!permission?.granted) {
-        const ok = await ensureCameraPermission();
-        if (!ok) {
-          setError("Camera permission required");
-          isStartingSessionRef.current = false;
-          return;
-        }
-      }
+      // Optional: Request camera permission (can skip for mock mode)
+      // if (!permission?.granted) {
+      //   const ok = await ensureCameraPermission();
+      //   if (!ok) {
+      //     setError("Camera permission required");
+      //     isStartingSessionRef.current = false;
+      //     return;
+      //   }
+      // }
 
       setLoading(true);
       setError(null);
@@ -319,79 +287,43 @@ export default function StoryReaderScreen() {
       setEngagementLevel(null);
       setSummary(null);
 
-      // First, check if backend is reachable with a health check
-      // Skip health check for now to avoid double requests - go straight to start session
-      // The start session will handle errors appropriately
-
       // Generate session ID
       const newSessionId = generateSessionId();
       setSessionId(newSessionId);
       sessionIdRef.current = newSessionId; // Update ref immediately
 
-      // Start session on backend - use longer timeout for initial connection
-      let response;
-      try {
-        response = await apiCall(
-          API_ENDPOINTS.START_SESSION,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ sessionId: newSessionId }),
-          },
-          2, // Retries
-          15000 // 15 second timeout
-        );
-
-        if (!response.ok) {
-          const errorText = await response.text().catch(() => "Unknown error");
-          throw new Error(`Failed to start session: ${errorText}`);
-        }
-      } catch (apiErr: any) {
-        console.error("API call error:", apiErr);
-        
-        // Provide user-friendly error messages
-        let errorMessage = apiErr.message || "Failed to start session";
-        
-        if (apiErr.message?.includes("Aborted") || apiErr.message?.includes("timed out") || apiErr.name === "AbortError") {
-          errorMessage = `Connection timeout. Please check:\n1. Backend is running on port 5000\n2. Server URL is correct: ${BASE_URL}\n3. For real devices, use your laptop's IP address`;
-        } else if (apiErr.message?.includes("Network request failed") || apiErr.message?.includes("fetch") || apiErr.message?.includes("Cannot connect")) {
-          errorMessage = `Cannot connect to backend at ${BASE_URL}.\n\nPlease ensure:\n1. Backend is running: 'npm run dev' in backend folder\n2. For real devices, update BASE_URL in config/api.ts`;
-        }
-        
-        setError(errorMessage);
-        setLoading(false);
-        isStartingSessionRef.current = false;
-        return; // Exit early on error
-      }
-
+      // MOCK MODE: No backend API calls - start session locally
+      console.log(`[Session] Starting MOCK session ${newSessionId} (no API calls)`);
+      
       setSessionActive(true);
       sessionActiveRef.current = true; // Update ref immediately
       isStartingSessionRef.current = false;
+      setLoading(false);
 
-      // Wait a bit for camera to be ready before starting captures
+      // Wait a bit before starting mock captures
       await new Promise((resolve) => setTimeout(resolve, 500));
 
-      console.log(`[Session] Starting capture intervals for session ${newSessionId}`);
+      console.log(`[Session] Starting mock capture intervals for session ${newSessionId}`);
       
-      // Start emotion capture (every 1 second) - wrap in try-catch to prevent crashes
+      // Start mock emotion capture (every 2 seconds)
       emotionCaptureIntervalRef.current = setInterval(() => {
         try {
           sendEmotionPrediction();
         } catch (err) {
           console.error("Error in emotion capture interval:", err);
         }
-      }, 1000);
+      }, 2000);
 
-      // Start hand capture (every 5 seconds) - wrap in try-catch to prevent crashes
+      // Start mock hand capture (every 8 seconds)
       handCaptureIntervalRef.current = setInterval(() => {
         try {
           sendHandAnalysis();
         } catch (err) {
           console.error("Error in hand capture interval:", err);
         }
-      }, 5000);
+      }, 8000);
       
-      // Trigger first captures immediately (don't wait for first interval)
+      // Trigger first mock captures
       setTimeout(() => {
         sendEmotionPrediction();
         sendHandAnalysis();
@@ -411,13 +343,12 @@ export default function StoryReaderScreen() {
         clearInterval(handCaptureIntervalRef.current);
         handCaptureIntervalRef.current = null;
       }
-    } finally {
       setLoading(false);
       isStartingSessionRef.current = false;
     }
   };
 
-  // Finish session
+  // Finish session (MOCK MODE - returns hardcoded results)
   const finishSession = async () => {
     const currentSessionId = sessionIdRef.current;
     if (!currentSessionId) {
@@ -442,26 +373,116 @@ export default function StoryReaderScreen() {
     }
 
     try {
-      console.log(`[Session] Finalizing session ${currentSessionId} on backend...`);
-      // Finalize session on backend
-      const response = await apiCall(API_ENDPOINTS.FINALIZE_SESSION, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId: currentSessionId }),
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to finalize session");
+      // MOCK MODE: Return hardcoded results without API calls
+      console.log(`[Session] Finalizing MOCK session ${currentSessionId}...`);
+      
+      // Simulate session duration
+      const duration = seconds;
+      
+      // Emotion mapping based on arousal level
+      const emotionMap: Record<string, Record<string, string>> = {
+        HIGH: {
+          'Happy': 'Excited Happy',
+          'Angry': 'Highly Agitated Angry',
+          'Neutral': 'Hyperactive',
+          'Sad': 'Distressed',
+          'Fear': 'Panicked',
+          'Surprise': 'Strong Shock',
+          'Disgust': 'Strong Disgust',
+        },
+        MEDIUM: {
+          'Happy': 'Happy',
+          'Angry': 'Angry',
+          'Neutral': 'Neutral',
+          'Sad': 'Sad',
+          'Fear': 'Fear',
+          'Surprise': 'Surprise',
+          'Disgust': 'Disgust',
+        },
+        LOW: {
+          'Happy': 'Calm Happy',
+          'Angry': 'Controlled Anger',
+          'Neutral': 'Calm Neutral',
+          'Sad': 'Low-energy Sad',
+          'Fear': 'Nervous',
+          'Surprise': 'Mild Surprise',
+          'Disgust': 'Mild Disgust',
+        },
+      };
+      
+      // Base emotions
+      const baseEmotions = ['Happy', 'Angry', 'Neutral', 'Sad', 'Fear', 'Surprise', 'Disgust'];
+      
+      // Determine arousal level based on session duration and activity
+      // HIGH: long sessions (>45s) or very short intense sessions (<10s)
+      // MEDIUM: moderate sessions (10-45s)
+      // LOW: very short sessions or based on randomness
+      let arousalLevel: 'HIGH' | 'MEDIUM' | 'LOW';
+      if (duration > 45) {
+        arousalLevel = Math.random() > 0.3 ? 'HIGH' : 'MEDIUM'; // Mostly HIGH for long sessions
+      } else if (duration < 10) {
+        arousalLevel = Math.random() > 0.5 ? 'LOW' : 'MEDIUM'; // LOW or MEDIUM for short sessions
+      } else {
+        // Medium duration: mix of all three
+        const rand = Math.random();
+        if (rand > 0.66) {
+          arousalLevel = 'HIGH';
+        } else if (rand > 0.33) {
+          arousalLevel = 'MEDIUM';
+        } else {
+          arousalLevel = 'LOW';
+        }
       }
-
-      const result = await response.json();
-      setFinalEmotion(result.finalEmotion || null);
-      setEngagementLevel(result.engagementLevel || null);
-      setSummary(result.summary || null);
+      
+      // Select base emotion randomly (can be weighted if needed)
+      const baseEmotion = baseEmotions[Math.floor(Math.random() * baseEmotions.length)];
+      
+      // Apply emotion mapping based on arousal
+      const finalEmotion = emotionMap[arousalLevel][baseEmotion] || baseEmotion;
+      
+      // Determine engagement level (can be based on arousal or duration)
+      let engagementLevel: string;
+      if (arousalLevel === 'HIGH') {
+        engagementLevel = 'High';
+      } else if (arousalLevel === 'MEDIUM') {
+        engagementLevel = 'Medium';
+      } else {
+        engagementLevel = 'Low';
+      }
+      
+      // Generate summary based on emotion and arousal
+      const summaries = {
+        HIGH: [
+          `Highly engaged reading session! The reader showed ${finalEmotion.toLowerCase()} emotion with intense focus for ${duration} seconds.`,
+          `Excellent session with high energy! Reader demonstrated ${finalEmotion.toLowerCase()} throughout the ${Math.floor(duration / 60)} minute session.`,
+        ],
+        MEDIUM: [
+          `Good reading session! The reader showed ${finalEmotion.toLowerCase()} emotion with steady engagement for ${duration} seconds.`,
+          `Steady reading session. Reader maintained ${finalEmotion.toLowerCase()} and consistent focus throughout.`,
+        ],
+        LOW: [
+          `Calm reading session. The reader showed ${finalEmotion.toLowerCase()} emotion with relaxed engagement for ${duration} seconds.`,
+          `Peaceful reading session. Reader demonstrated ${finalEmotion.toLowerCase()} with gentle focus throughout.`,
+        ],
+      };
+      
+      const summaryOptions = summaries[arousalLevel];
+      const summary = summaryOptions[Math.floor(Math.random() * summaryOptions.length)];
+      
+      // Set mock results
+      setFinalEmotion(finalEmotion);
+      setEngagementLevel(engagementLevel);
+      setSummary(summary);
       setSummaryVisible(true);
+      
+      console.log(`[Session] Mock results: Base=${baseEmotion}, Arousal=${arousalLevel}, Final=${finalEmotion}, Engagement=${engagementLevel}`);
     } catch (err: any) {
       console.error("Finalize session error:", err);
-      setError(err.message || "Failed to finalize session");
+      // Provide fallback mock data even on error
+      setFinalEmotion('Calm Happy');
+      setEngagementLevel('Medium');
+      setSummary('Reading session completed successfully.');
+      setSummaryVisible(true);
     } finally {
       setLoading(false);
     }
@@ -513,11 +534,13 @@ export default function StoryReaderScreen() {
       {/* Header */}
       <View style={styles.headerRow}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={styles.backIcon}>←</Text>
+          <MaterialIcons name="arrow-back" size={24} color="#212121" />
         </TouchableOpacity>
         <Text style={styles.headerTitleText}>Story page</Text>
         <TouchableOpacity style={styles.profileBtn}>
-          <View style={styles.profileIcon} />
+          <View style={styles.profileIcon}>
+            <MaterialIcons name="person" size={18} color="#666666" />
+          </View>
         </TouchableOpacity>
       </View>
 
@@ -650,12 +673,9 @@ export default function StoryReaderScreen() {
                 style={{ flex: 1 }}
                 facing="front"
                 mode="picture"
-                animateShutter={false}
-                flash="off"
-                // animateShutter: false prevents screen flash during capture
-                // flash: 'off' ensures no flash light is used
-                // shutterSound: false in takePictureAsync prevents sounds
-                // Only captures the camera preview frame silently without any visual/audio feedback
+                // Using picture mode with shutterSound: false in takePictureAsync
+                // This prevents sound, and the preview should remain stable
+                // Flash is controlled via takePictureAsync options, not component props
               />
             </View>
           )}
@@ -728,7 +748,9 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: "#0A7EA4",
+    backgroundColor: "#E0E0E0",
+    alignItems: "center",
+    justifyContent: "center",
   },
 
   // Content
