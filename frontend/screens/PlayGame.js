@@ -11,6 +11,12 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import * as FileSystem from "expo-file-system";
+import { MaterialIcons, FontAwesome, Ionicons } from "@expo/vector-icons";
+import { useAuth } from "../contexts/AuthContext";
+import {
+  updateLetterPerformance,
+  saveGameSession,
+} from "../services/gameService";
 
 const ALPHABET = [
   "A",
@@ -41,32 +47,32 @@ const ALPHABET = [
   "Z",
 ];
 const OBJECTS = [
-  { emoji: "🍎", letter: "A", name: "Apple" },
-  { emoji: "🐻", letter: "B", name: "Bear" },
-  { emoji: "🐱", letter: "C", name: "Cat" },
-  { emoji: "🐕", letter: "D", name: "Dog" },
-  { emoji: "🐘", letter: "E", name: "Elephant" },
-  { emoji: "🐟", letter: "F", name: "Fish" },
-  { emoji: "🦒", letter: "G", name: "Giraffe" },
-  { emoji: "🐴", letter: "H", name: "Horse" },
-  { emoji: "🍦", letter: "I", name: "Ice Cream" },
-  { emoji: "🦒", letter: "J", name: "Jellyfish" },
-  { emoji: "🪁", letter: "K", name: "Kite" },
-  { emoji: "🦁", letter: "L", name: "Lion" },
-  { emoji: "🐵", letter: "M", name: "Monkey" },
-  { emoji: "🌙", letter: "N", name: "Night" },
-  { emoji: "🦉", letter: "O", name: "Owl" },
-  { emoji: "🐧", letter: "P", name: "Penguin" },
-  { emoji: "👑", letter: "Q", name: "Queen" },
-  { emoji: "🌈", letter: "R", name: "Rainbow" },
-  { emoji: "⭐", letter: "S", name: "Star" },
-  { emoji: "🌳", letter: "T", name: "Tree" },
-  { emoji: "☂️", letter: "U", name: "Umbrella" },
-  { emoji: "🚐", letter: "V", name: "Van" },
-  { emoji: "🌊", letter: "W", name: "Water" },
-  { emoji: "❌", letter: "X", name: "X-ray" },
-  { emoji: "🪁", letter: "Y", name: "Yoyo" },
-  { emoji: "🦓", letter: "Z", name: "Zebra" },
+  { icon: "apple", iconFamily: "MaterialIcons", letter: "A", name: "Apple" },
+  { icon: "pets", iconFamily: "MaterialIcons", letter: "B", name: "Bear" },
+  { icon: "pets", iconFamily: "MaterialIcons", letter: "C", name: "Cat" },
+  { icon: "pets", iconFamily: "MaterialIcons", letter: "D", name: "Dog" },
+  { icon: "pets", iconFamily: "MaterialIcons", letter: "E", name: "Elephant" },
+  { icon: "water", iconFamily: "MaterialIcons", letter: "F", name: "Fish" },
+  { icon: "pets", iconFamily: "MaterialIcons", letter: "G", name: "Giraffe" },
+  { icon: "pets", iconFamily: "MaterialIcons", letter: "H", name: "Horse" },
+  { icon: "icecream", iconFamily: "MaterialIcons", letter: "I", name: "Ice Cream" },
+  { icon: "water", iconFamily: "MaterialIcons", letter: "J", name: "Jellyfish" },
+  { icon: "kitesurfing", iconFamily: "MaterialIcons", letter: "K", name: "Kite" },
+  { icon: "pets", iconFamily: "MaterialIcons", letter: "L", name: "Lion" },
+  { icon: "pets", iconFamily: "MaterialIcons", letter: "M", name: "Monkey" },
+  { icon: "nightlight", iconFamily: "MaterialIcons", letter: "N", name: "Night" },
+  { icon: "pets", iconFamily: "MaterialIcons", letter: "O", name: "Owl" },
+  { icon: "pets", iconFamily: "MaterialIcons", letter: "P", name: "Penguin" },
+  { icon: "star", iconFamily: "MaterialIcons", letter: "Q", name: "Queen" },
+  { icon: "wb-sunny", iconFamily: "MaterialIcons", letter: "R", name: "Rainbow" },
+  { icon: "star", iconFamily: "MaterialIcons", letter: "S", name: "Star" },
+  { icon: "park", iconFamily: "MaterialIcons", letter: "T", name: "Tree" },
+  { icon: "umbrella", iconFamily: "MaterialIcons", letter: "U", name: "Umbrella" },
+  { icon: "local-shipping", iconFamily: "MaterialIcons", letter: "V", name: "Van" },
+  { icon: "water", iconFamily: "MaterialIcons", letter: "W", name: "Water" },
+  { icon: "close", iconFamily: "MaterialIcons", letter: "X", name: "X-ray" },
+  { icon: "toys", iconFamily: "MaterialIcons", letter: "Y", name: "Yoyo" },
+  { icon: "pets", iconFamily: "MaterialIcons", letter: "Z", name: "Zebra" },
 ];
 
 const TOTAL_QUESTIONS = 10;
@@ -85,10 +91,19 @@ const PlayGame = ({ navigation }) => {
   const [predictedLetter, setPredictedLetter] = useState(null);
   const [cameraReady, setCameraReady] = useState(false);
   const cameraRef = useRef(null);
+  
+  // Firestore tracking states
+  const [questionStartTime, setQuestionStartTime] = useState(null);
+  const [gameStartTime, setGameStartTime] = useState(null);
+  const { userData } = useAuth();
+  
+  // Get child and parent IDs from authenticated user
+  const childId = userData?.uid || null;
+  const parentId = userData?.parentId || null;
 
   // API endpoint - update this to your server IP/URL
   const API_URL = __DEV__
-    ? "http://192.168.14.13:5000" // Your laptop's IP address
+    ? "http://192.168.1.2:5000" // Your laptop's IP address with port
     : "http://192.168.1.2:5000"; // For production (same IP)
 
   // Stable camera ref callback - must be at top level (Rules of Hooks)
@@ -117,6 +132,8 @@ const PlayGame = ({ navigation }) => {
 
   // Initialize first question
   useEffect(() => {
+    // Initialize game start time
+    setGameStartTime(Date.now());
     generateNewQuestion();
 
     // Test API connection on mount
@@ -146,6 +163,7 @@ const PlayGame = ({ navigation }) => {
     setHasAnswered(false);
     setFeedback(null);
     setIsCapturing(false);
+    setQuestionStartTime(Date.now()); // Track when question starts for response time
 
     if (type === "letter") {
       // Random letter question
@@ -489,6 +507,28 @@ const PlayGame = ({ navigation }) => {
       // Update UI with results
       setPredictedLetter(result.predictedLetter);
 
+      // Calculate response time for Firestore
+      const responseTime = questionStartTime 
+        ? Date.now() - questionStartTime 
+        : 0;
+
+      // Update letter performance in Firestore
+      if (childId && parentId) {
+        try {
+          await updateLetterPerformance(
+            childId,
+            parentId,
+            targetLetter,
+            result.isCorrect,
+            responseTime
+          );
+          console.log(`✅ Letter performance updated: ${targetLetter} - ${result.isCorrect ? 'Correct' : 'Incorrect'}`);
+        } catch (error) {
+          console.warn("⚠️ Failed to update letter performance:", error);
+          // Don't block UI if Firestore fails
+        }
+      }
+
       if (result.isCorrect) {
         setFeedback("correct");
         setScore(score + 1);
@@ -523,33 +563,11 @@ const PlayGame = ({ navigation }) => {
         errorMessage.includes("fetch")
       ) {
         // API/Network error
-        if (__DEV__) {
-          Alert.alert(
-            "API Connection Error",
-            `Could not connect to API server.\n\nServer URL: ${API_URL}\n\nMake sure:\n1. API server is running: python Model/api_server.py\n2. Test in browser: ${API_URL}/health\n3. Phone and laptop on same WiFi\n\nError: ${errorMessage}`,
-            [
-              {
-                text: "Use Mock",
-                onPress: () => {
-                  const isCorrect = Math.random() > 0.3;
-                  if (isCorrect) {
-                    setFeedback("correct");
-                    setScore(score + 1);
-                  } else {
-                    setFeedback("incorrect");
-                  }
-                  setHasAnswered(true);
-                },
-              },
-              { text: "OK" },
-            ]
-          );
-        } else {
-          Alert.alert(
-            "Connection Error",
-            `Could not connect to server. Please check your connection.`
-          );
-        }
+        Alert.alert(
+          "API Connection Error",
+          `Could not connect to API server.\n\nServer URL: ${API_URL}\n\nMake sure:\n1. API server is running: python Model/api_server.py\n2. Test in browser: ${API_URL}/health\n3. Phone and laptop on same WiFi\n\nError: ${errorMessage}`,
+          [{ text: "OK" }]
+        );
       } else {
         // Other error
         Alert.alert(
@@ -566,16 +584,46 @@ const PlayGame = ({ navigation }) => {
     setIsCapturing(false);
   };
 
-  const handleNextQuestion = () => {
+  const handleNextQuestion = async () => {
     if (currentQuestion < TOTAL_QUESTIONS - 1) {
       setCurrentQuestion(currentQuestion + 1);
       generateNewQuestion();
     } else {
-      // Game complete - could navigate to results screen
+      // Game complete - save session to Firestore
+      const totalTime = gameStartTime 
+        ? Math.floor((Date.now() - gameStartTime) / 1000)
+        : 0;
+
+      if (childId && parentId) {
+        try {
+          await saveGameSession({
+            childId: childId,
+            parentId: parentId,
+            gameMode: "practice", // You can make this dynamic later
+            totalQuestions: TOTAL_QUESTIONS,
+            correctAnswers: score,
+            timeTaken: totalTime,
+            difficultyLevel: "medium", // You can make this dynamic later
+          });
+          console.log("✅ Game session saved to Firestore", { childId, parentId });
+        } catch (error) {
+          console.warn("⚠️ Failed to save game session:", error);
+          console.warn("Session data:", { childId, parentId, score, totalTime });
+        }
+      } else {
+        console.warn("⚠️ Cannot save game session - missing IDs:", { 
+          childId: childId || 'MISSING', 
+          parentId: parentId || 'MISSING',
+          userData: userData ? { uid: userData.uid, role: userData.role, parentId: userData.parentId } : 'MISSING'
+        });
+      }
+
       alert(`Game Complete! Your score: ${score} / ${TOTAL_QUESTIONS}`);
+      
       // Reset game
       setCurrentQuestion(0);
       setScore(0);
+      setGameStartTime(Date.now());
       generateNewQuestion();
     }
   };
@@ -609,7 +657,7 @@ const PlayGame = ({ navigation }) => {
               className="mr-4 p-2"
               activeOpacity={0.7}
             >
-              <Text className="text-4xl">←</Text>
+              <MaterialIcons name="arrow-back" size={32} color="#374151" />
             </TouchableOpacity>
             <Text className="text-3xl font-bold text-gray-800">Play Game</Text>
           </View>
@@ -619,7 +667,7 @@ const PlayGame = ({ navigation }) => {
         <View className="bg-white rounded-2xl p-4 mb-4 shadow-md">
           <View className="flex-row justify-between items-center mb-2">
             <View className="flex-row items-center">
-              <Text className="text-3xl mr-2">⭐</Text>
+              <MaterialIcons name="star" size={28} color="#fbbf24" style={{ marginRight: 8 }} />
               <Text className="text-xl font-bold text-gray-800">
                 Score: {score} / {TOTAL_QUESTIONS}
               </Text>
@@ -653,7 +701,13 @@ const PlayGame = ({ navigation }) => {
             </>
           ) : (
             <>
-              <Text className="text-7xl mb-4">{currentObject?.emoji}</Text>
+              <View className="mb-4">
+                {currentObject?.iconFamily === 'MaterialIcons' ? (
+                  <MaterialIcons name={currentObject?.icon} size={80} color="#8b5cf6" />
+                ) : (
+                  <MaterialIcons name={currentObject?.icon} size={80} color="#8b5cf6" />
+                )}
+              </View>
               <Text className="text-2xl font-semibold text-gray-700 mb-2 text-center">
                 What letter does this start with?
               </Text>
@@ -730,9 +784,9 @@ const PlayGame = ({ navigation }) => {
           >
             {feedback === "correct" ? (
               <>
-                <Text className="text-5xl mb-2">✅</Text>
+                <MaterialIcons name="check-circle" size={64} color="#10b981" style={{ marginBottom: 8 }} />
                 <Text className="text-2xl font-bold text-green-800 text-center">
-                  Correct! Well done 🎉
+                  Correct! Well done!
                 </Text>
                 {predictedLetter && (
                   <Text className="text-lg text-green-700 mt-2">
@@ -742,9 +796,9 @@ const PlayGame = ({ navigation }) => {
               </>
             ) : (
               <>
-                <Text className="text-5xl mb-2">❌</Text>
+                <MaterialIcons name="cancel" size={64} color="#ef4444" style={{ marginBottom: 8 }} />
                 <Text className="text-2xl font-bold text-red-800 text-center">
-                  Try again! You can do it 💪
+                  Try again! You can do it!
                 </Text>
                 {predictedLetter && (
                   <Text className="text-lg text-red-700 mt-2">
@@ -792,7 +846,7 @@ const PlayGame = ({ navigation }) => {
                   </>
                 ) : (
                   <>
-                    <Text className="text-4xl mr-3">📸</Text>
+                    <MaterialIcons name="camera-alt" size={32} color="#ffffff" style={{ marginRight: 12 }} />
                     <Text className="text-2xl font-bold text-white">
                       {isCapturing ? "Capturing..." : "Capture Gesture"}
                     </Text>
@@ -809,7 +863,7 @@ const PlayGame = ({ navigation }) => {
                 style={styles.actionButton}
               >
                 <View className="flex-row items-center justify-center">
-                  <Text className="text-3xl mr-2">🔁</Text>
+                  <MaterialIcons name="refresh" size={28} color="#ffffff" style={{ marginRight: 8 }} />
                   <Text className="text-xl font-bold text-white">
                     Try Again
                   </Text>
@@ -826,7 +880,7 @@ const PlayGame = ({ navigation }) => {
                   <Text className="text-xl font-bold text-white mr-2">
                     Next
                   </Text>
-                  <Text className="text-3xl">⏭</Text>
+                  <MaterialIcons name="arrow-forward" size={28} color="#ffffff" />
                 </View>
               </TouchableOpacity>
             </View>
@@ -835,11 +889,14 @@ const PlayGame = ({ navigation }) => {
 
         {/* Encouragement Message */}
         <View className="bg-yellow-100 rounded-2xl p-5 items-center shadow-md">
-          <Text className="text-xl font-semibold text-gray-800 text-center">
-            {score > currentQuestion / 2
-              ? "Awesome job! You're learning fast 🚀"
-              : "Keep going! You're doing great 🌟"}
-          </Text>
+          <View className="flex-row items-center justify-center">
+            <Text className="text-xl font-semibold text-gray-800 text-center">
+              {score > currentQuestion / 2
+                ? "Awesome job! You're learning fast"
+                : "Keep going! You're doing great"}
+            </Text>
+            <MaterialIcons name="star" size={24} color="#fbbf24" style={{ marginLeft: 8 }} />
+          </View>
         </View>
       </ScrollView>
     </SafeAreaView>

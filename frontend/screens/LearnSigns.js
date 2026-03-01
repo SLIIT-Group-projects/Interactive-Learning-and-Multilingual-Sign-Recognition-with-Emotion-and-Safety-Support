@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { MaterialIcons } from '@expo/vector-icons';
 
 const ALPHABET = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'];
 const TOTAL_LETTERS = ALPHABET.length;
@@ -71,13 +72,13 @@ const LearnSigns = ({ navigation }) => {
         <View className="bg-white rounded-3xl p-8 mb-6 shadow-lg items-center">
           {/* Placeholder for ASL sign image/video */}
           <View className="w-full h-64 bg-gray-100 rounded-2xl items-center justify-center mb-4">
-            <Text className="text-6xl mb-2">👋</Text>
+            <MaterialIcons name="waving-hand" size={64} color="#8b5cf6" style={{ marginBottom: 8 }} />
             <Text className="text-lg text-gray-500">
               ASL Sign for {currentLetter}
             </Text>
             {isPlaying && (
               <View className="absolute">
-                <Text className="text-4xl">▶</Text>
+                <MaterialIcons name="play-circle-filled" size={48} color="#8b5cf6" />
               </View>
             )}
           </View>
@@ -142,7 +143,7 @@ const LearnSigns = ({ navigation }) => {
                 <Text className="text-xl font-bold text-white mr-2">
                   Next
                 </Text>
-                <Text className="text-3xl">⏭</Text>
+                <MaterialIcons name="arrow-forward" size={28} color="#ffffff" />
               </View>
             </TouchableOpacity>
           </View>
@@ -172,9 +173,12 @@ const LearnSigns = ({ navigation }) => {
 
         {/* Encouragement Text */}
         <View className="bg-yellow-100 rounded-2xl p-5 items-center shadow-md">
-          <Text className="text-xl font-semibold text-gray-800 text-center">
-            Great job! Keep learning 🌟
-          </Text>
+          <View className="flex-row items-center justify-center">
+            <Text className="text-xl font-semibold text-gray-800 text-center">
+              Great job! Keep learning
+            </Text>
+            <MaterialIcons name="star" size={24} color="#fbbf24" style={{ marginLeft: 8 }} />
+          </View>
         </View>
       </View>
     </SafeAreaView>
