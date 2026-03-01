@@ -48,6 +48,8 @@ export default function HazardDetectionScreen() {
   const circleAnimation2 = useRef(new Animated.Value(0)).current;
   const circleAnimation3 = useRef(new Animated.Value(0)).current;
   const soundLevelAnimation = useRef(new Animated.Value(0)).current;
+  const popupAnimation = useRef(new Animated.Value(0)).current;
+  const backdropOpacity = useRef(new Animated.Value(0)).current;
   const router = useRouter();
   const colorScheme = useColorScheme();
   const [soundLevel, setSoundLevel] = useState(0.3); // Mock sound level (0-1)
@@ -584,6 +586,9 @@ export default function HazardDetectionScreen() {
             // Update last alert time
             lastAlertTimeRef.current.set(hazardType, now);
 
+            // Animate popup in
+            showPopup();
+
             // Trigger haptic feedback
             if (hazardAlertService && typeof (hazardAlertService as any).triggerAlert === 'function') {
               await (hazardAlertService as any).triggerAlert(hazard);
@@ -745,6 +750,40 @@ export default function HazardDetectionScreen() {
     ]).start();
   };
 
+  const showPopup = () => {
+    Animated.parallel([
+      Animated.spring(popupAnimation, {
+        toValue: 1,
+        tension: 50,
+        friction: 8,
+        useNativeDriver: true,
+      }),
+      Animated.timing(backdropOpacity, {
+        toValue: 0.6,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  };
+
+  const hidePopup = () => {
+    Animated.parallel([
+      Animated.timing(popupAnimation, {
+        toValue: 0,
+        duration: 250,
+        useNativeDriver: true,
+      }),
+      Animated.timing(backdropOpacity, {
+        toValue: 0,
+        duration: 250,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setAlertMessage(null);
+      setDetections(null);
+    });
+  };
+
   const stopListening = async () => {
     try {
       setIsListening(false);
@@ -791,8 +830,7 @@ export default function HazardDetectionScreen() {
     if (hazardAlertService && typeof (hazardAlertService as any).stopAlert === 'function') {
       (hazardAlertService as any).stopAlert();
     }
-    setAlertMessage(null);
-    setDetections(null);
+    hidePopup();
     // Note: We keep detection history even after dismissing alert
     // This allows the system to still track patterns
   };
@@ -1054,24 +1092,99 @@ export default function HazardDetectionScreen() {
           </TouchableOpacity>
         )}
 
-        {/* Alert Message */}
-        {alertMessage && detections?.highestPriority && (
-          <Animated.View
-            style={[
-              styles.alertBanner,
-              {
-                backgroundColor: getAlertColor(detections.highestPriority.urgency),
-                opacity: flashAnimation.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [1, 0.7],
-                }),
-              },
-            ]}>
-            <Text style={styles.alertBannerText}>{alertMessage}</Text>
-            <TouchableOpacity onPress={dismissAlert} style={styles.alertDismiss}>
-              <Text style={styles.alertDismissText}>✕</Text>
-            </TouchableOpacity>
-          </Animated.View>
+        {/* Critical Alert Full Screen Overlay */}
+        {alertMessage && detections?.highestPriority && detections.highestPriority.priority >= 9 && (
+          <View style={styles.criticalOverlay}>
+            <Animated.View
+              style={[
+                styles.criticalOverlayBackground,
+                {
+                  opacity: flashAnimation.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0.8, 1],
+                  }),
+                }
+              ]}
+            />
+            <View style={styles.criticalContent}>
+              <Text style={styles.criticalEmoji}>🚨</Text>
+              <Text style={styles.criticalTitle}>DANGER!</Text>
+              <Text style={styles.criticalMessage}>{alertMessage}</Text>
+              <TouchableOpacity
+                style={styles.criticalDismissButton}
+                onPress={dismissAlert}
+              >
+                <Text style={styles.criticalDismissButtonText}>I AM SAFE</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
+        {/* Half-Screen Pop-up Alert for Hazards */}
+        {alertMessage && detections?.highestPriority && detections.highestPriority.priority < 9 && (
+          <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
+            {/* Backdrop */}
+            <Animated.View
+              style={[
+                styles.popupBackdrop,
+                { opacity: backdropOpacity }
+              ]}
+            >
+              <TouchableOpacity
+                activeOpacity={1}
+                style={StyleSheet.absoluteFill}
+                onPress={dismissAlert}
+              />
+            </Animated.View>
+
+            {/* Pop-up Card */}
+            <Animated.View
+              style={[
+                styles.popupContainer,
+                {
+                  transform: [{
+                    translateY: popupAnimation.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [600, 0],
+                    })
+                  }]
+                }
+              ]}
+            >
+              <View style={styles.popupHandle} />
+
+              <View style={styles.popupHeader}>
+                <View style={[
+                  styles.popupIconContainer,
+                  { backgroundColor: getAlertColor(detections.highestPriority.urgency) }
+                ]}>
+                  <Text style={styles.popupEmoji}>
+                    {detections.highestPriority.type === 'fire_alarm' ? '🔥' :
+                      detections.highestPriority.type === 'smoke_alarm' ? '💨' :
+                        detections.highestPriority.type === 'siren' ? '🚨' : '⚠️'}
+                  </Text>
+                </View>
+                <Text style={styles.popupTitle}>HAZARD DETECTED</Text>
+              </View>
+
+              <View style={styles.popupContentCard}>
+                <Text style={styles.popupHazardName}>
+                  {formatHazardType(detections.highestPriority.type)}
+                </Text>
+                <Text style={styles.popupMessage}>{alertMessage}</Text>
+              </View>
+
+              <TouchableOpacity
+                style={[
+                  styles.popupActionButton,
+                  { backgroundColor: getAlertColor(detections.highestPriority.urgency) }
+                ]}
+                onPress={dismissAlert}
+              >
+                <Text style={styles.popupActionButtonText}>OK, I HEARD IT</Text>
+              </TouchableOpacity>
+            </Animated.View>
+          </View>
         )}
 
         {/* Processing Indicator */}
@@ -1555,28 +1668,203 @@ const styles = StyleSheet.create({
     color: '#6B7280',
     fontStyle: 'italic',
   },
+  criticalDismissButtonText: {
+    color: '#FF3B30',
+    fontSize: 20,
+    fontWeight: '900',
+  },
   alertBanner: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 16,
-    marginHorizontal: 20,
+    padding: 20,
+    marginHorizontal: 15,
     marginTop: 20,
-    borderRadius: 12,
+    borderRadius: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    elevation: 8,
+  },
+  criticalAlertBanner: {
+    padding: 25,
+    borderWidth: 3,
+    borderColor: '#fff',
+  },
+  alertBannerContent: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 15,
+  },
+  alertEmoji: {
+    fontSize: 32,
+  },
+  alertTextContainer: {
+    flex: 1,
+  },
+  alertBannerTitle: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '900',
+    letterSpacing: 1,
+    marginBottom: 2,
   },
   alertBannerText: {
-    flex: 1,
     color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: 18,
+    fontWeight: 'bold',
   },
   alertDismiss: {
-    padding: 4,
+    padding: 10,
+    marginLeft: 10,
   },
   alertDismissText: {
     color: '#fff',
-    fontSize: 20,
+    fontSize: 24,
     fontWeight: 'bold',
+  },
+  criticalOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 9999,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  criticalOverlayBackground: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#FF3B30',
+  },
+  criticalContent: {
+    alignItems: 'center',
+    padding: 30,
+    width: '90%',
+  },
+  criticalEmoji: {
+    fontSize: 100,
+    marginBottom: 20,
+  },
+  criticalTitle: {
+    fontSize: 40,
+    fontWeight: '900',
+    color: '#fff',
+    marginBottom: 10,
+    textAlign: 'center',
+  },
+  criticalMessage: {
+    fontSize: 24,
+    color: '#fff',
+    textAlign: 'center',
+    fontWeight: '700',
+    marginBottom: 40,
+  },
+  criticalDismissButton: {
+    backgroundColor: '#fff',
+    paddingVertical: 20,
+    paddingHorizontal: 40,
+    borderRadius: 40,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.3,
+    shadowRadius: 15,
+    elevation: 10,
+  },
+  popupBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#000',
+    zIndex: 1000,
+  },
+  popupContainer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+    padding: 24,
+    paddingBottom: 40,
+    alignItems: 'center',
+    zIndex: 1001,
+    minHeight: '45%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -10 },
+    shadowOpacity: 0.2,
+    shadowRadius: 15,
+    elevation: 20,
+  },
+  popupHandle: {
+    width: 60,
+    height: 6,
+    backgroundColor: '#E5E7EB',
+    borderRadius: 3,
+    marginBottom: 24,
+  },
+  popupHeader: {
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  popupIconContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  popupEmoji: {
+    fontSize: 48,
+  },
+  popupTitle: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: '#6B7280',
+    letterSpacing: 2,
+  },
+  popupContentCard: {
+    width: '100%',
+    alignItems: 'center',
+    backgroundColor: '#F9FAFB',
+    padding: 24,
+    borderRadius: 20,
+    marginBottom: 32,
+  },
+  popupHazardName: {
+    fontSize: 28,
+    fontWeight: '900',
+    color: '#111827',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  popupMessage: {
+    fontSize: 18,
+    color: '#4B5563',
+    textAlign: 'center',
+    fontWeight: '500',
+    lineHeight: 26,
+  },
+  popupActionButton: {
+    width: '100%',
+    paddingVertical: 18,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  popupActionButtonText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: 'bold',
+    letterSpacing: 0.5,
   },
   processingIndicator: {
     flexDirection: 'row',

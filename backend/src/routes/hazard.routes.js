@@ -112,6 +112,52 @@ async function saveSoundsToDatabase(detections, context = {}, audioFileUrl = nul
   return savedSoundIds;
 }
 
+/**
+ * Get the last known location for a user from the sounds collection
+ * @param {string} userId - User ID
+ * @returns {Promise<string|null>} Last known location string or null
+ */
+async function getLastKnownLocation(userId) {
+  if (!userId) return null;
+
+  try {
+    const lastSoundSnapshot = await db.collection(SOUNDS_COLLECTION)
+      .where('userId', '==', userId)
+      .where('location', '!=', null)
+      .orderBy('location') // Necessary for the != filter in Firestore
+      .orderBy('timestamp', 'desc')
+      .limit(1)
+      .get();
+
+    if (!lastSoundSnapshot.empty) {
+      const lastSound = lastSoundSnapshot.docs[0].data();
+      console.log(`📍 Found last known location for user ${userId}: ${lastSound.location}`);
+      return lastSound.location;
+    }
+  } catch (error) {
+    console.warn(`⚠️ Error fetching last known location for user ${userId}:`, error.message);
+    // Fallback search without specific ordering if index might be missing
+    try {
+      const fallbackSnapshot = await db.collection(SOUNDS_COLLECTION)
+        .where('userId', '==', userId)
+        .limit(20)
+        .get();
+
+      const lastWithLocation = fallbackSnapshot.docs
+        .map(doc => doc.data())
+        .filter(data => data.location)
+        .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))[0];
+
+      if (lastWithLocation) {
+        return lastWithLocation.location;
+      }
+    } catch (fallbackError) {
+      console.error('❌ Fallback location search failed:', fallbackError.message);
+    }
+  }
+  return null;
+}
+
 // Ensure uploads directory exists
 const uploadsDir = join(__dirname, '../../uploads');
 fs.mkdir(uploadsDir, { recursive: true }).catch(console.error);
@@ -262,6 +308,17 @@ router.post('/detect', upload.single('audio'), async (req, res, next) => {
     const criticalHazards = prioritized.filter(h => getHazardPriority(h.type) >= 9);
     const needsImmediateAlert = criticalHazards.length > 0;
 
+    // Use last known location if critical and location is missing
+    let finalLocation = location;
+    if (needsImmediateAlert && !finalLocation) {
+      const userId = context.userId || req.body.userId;
+      const lastLocation = await getLastKnownLocation(userId);
+      if (lastLocation) {
+        finalLocation = lastLocation;
+        console.log(`🚨 Critical alert triggered! Used last known location: ${finalLocation}`);
+      }
+    }
+
     // Save detected sounds to database
     const audioMetadata = {
       processingTime: Date.now() - new Date(timestamp).getTime(),
@@ -272,7 +329,7 @@ router.post('/detect', upload.single('audio'), async (req, res, next) => {
     // If you want to store audio files, upload them to Firebase Storage first
     const savedSoundIds = await saveSoundsToDatabase(
       prioritized,
-      { ...context, userId: context.userId || req.body.userId },
+      { ...context, userId: context.userId || req.body.userId, location: finalLocation },
       null, // audioFileUrl - set to null since file is deleted
       audioMetadata
     );
@@ -281,7 +338,7 @@ router.post('/detect', upload.single('audio'), async (req, res, next) => {
       success: true,
       data: {
         timestamp,
-        location,
+        location: finalLocation,
         detections: prioritized,
         critical: needsImmediateAlert,
         highestPriority: prioritized.length > 0 ? prioritized[0] : null,
@@ -363,6 +420,21 @@ router.post('/detect-stream', upload.array('audio', 10), async (req, res, next) 
     // Aggregate and prioritize all detections
     const prioritized = prioritizeHazards(allDetections, context);
 
+    // Determine if critical alert needed
+    const criticalHazards = prioritized.filter(h => getHazardPriority(h.type) >= 9);
+    const needsImmediateAlert = criticalHazards.length > 0;
+
+    // Use last known location if critical and location is missing
+    let finalLocation = context.location || null;
+    if (needsImmediateAlert && !finalLocation) {
+      const userId = context.userId || req.body.userId;
+      const lastLocation = await getLastKnownLocation(userId);
+      if (lastLocation) {
+        finalLocation = lastLocation;
+        console.log(`🚨 Critical streaming alert! Used last known location: ${finalLocation}`);
+      }
+    }
+
     // Save detected sounds to database
     const timestamp = new Date().toISOString();
     const audioMetadata = {
@@ -372,7 +444,7 @@ router.post('/detect-stream', upload.array('audio', 10), async (req, res, next) 
 
     const savedSoundIds = await saveSoundsToDatabase(
       prioritized,
-      { ...context, userId: context.userId || req.body.userId },
+      { ...context, userId: context.userId || req.body.userId, location: finalLocation },
       null, // audioFileUrl
       audioMetadata
     );
@@ -381,10 +453,10 @@ router.post('/detect-stream', upload.array('audio', 10), async (req, res, next) 
       success: true,
       data: {
         timestamp,
-        location: context.location || null,
+        location: finalLocation,
         detections: prioritized,
         chunkCount: req.files.length,
-        critical: prioritized.some(h => getHazardPriority(h.type) >= 9),
+        critical: needsImmediateAlert,
         highestPriority: prioritized.length > 0 ? prioritized[0] : null,
         metadata: {
           ...audioMetadata,
