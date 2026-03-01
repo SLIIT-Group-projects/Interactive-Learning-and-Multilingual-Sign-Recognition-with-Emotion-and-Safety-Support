@@ -239,6 +239,24 @@ def extract_embedding(audio_path):
         raise
 
 
+def calculate_loudness(audio):
+    """
+    Calculate normalized loudness of audio based on RMS energy
+    Returns a value between 0 and 1
+    """
+    if len(audio.shape) > 1:
+        # If batch dimension (1, n_samples)
+        audio_flat = audio.reshape(-1)
+    else:
+        audio_flat = audio
+        
+    rms = np.sqrt(np.mean(audio_flat**2))
+    # Normalize RMS to [0, 1] range (rough approximation for digital audio)
+    # A typical loud sound has RMS around 0.1-0.2
+    normalized_loudness = min(1.0, rms * 5.0) 
+    return float(normalized_loudness)
+
+
 def predict(audio_path, threshold=0.3, min_confidence=0.5, return_raw_probabilities=False):
     """
     Predict classes from audio file using YAMNet or CNN14 classifier model
@@ -257,6 +275,16 @@ def predict(audio_path, threshold=0.3, min_confidence=0.5, return_raw_probabilit
     # Load models if not already loaded
     load_models()
     
+    # Extract audio for loudness and duration
+    try:
+        audio, sr = sf.read(audio_path)
+        duration = len(audio) / sr
+        loudness = calculate_loudness(audio)
+    except Exception as e:
+        print(f"Error reading audio for metadata: {e}", file=sys.stderr)
+        loudness = 0.5
+        duration = 4.0 # Default fallback
+    
     # Extract embedding
     embedding = extract_embedding(audio_path)
     
@@ -273,15 +301,24 @@ def predict(audio_path, threshold=0.3, min_confidence=0.5, return_raw_probabilit
         embedding_batch = np.expand_dims(embedding, axis=0)
         predictions = classifier_model.predict(embedding_batch, verbose=0)[0]
     
+    # Get top predictions above threshold
+    detections = _apply_threshold(predictions, threshold, min_confidence)
+    
+    # Add loudness and duration to each detection
+    for d in detections:
+        d['loudness'] = loudness
+        d['duration'] = duration
+    
     # If returning raw probabilities (for averaging multiple chunks)
     if return_raw_probabilities:
         return {
             'predictions': predictions.tolist(),
-            'detections': _apply_threshold(predictions, threshold, min_confidence)
+            'detections': detections,
+            'loudness': loudness,
+            'duration': duration
         }
     
-    # Get top predictions above threshold
-    return _apply_threshold(predictions, threshold, min_confidence)
+    return detections
 
 
 def _apply_threshold(predictions, threshold, min_confidence=0.5):

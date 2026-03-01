@@ -105,7 +105,10 @@ def predict_endpoint():
         
         # Run prediction
         start_time = time.time()
-        detections = predict(audio_path, threshold=threshold, min_confidence=min_confidence)
+        result = predict(audio_path, threshold=threshold, min_confidence=min_confidence, return_raw_probabilities=True)
+        detections = result['detections']
+        loudness = result['loudness']
+        duration = result['duration']
         inference_time = time.time() - start_time
         
         # Add timestamp
@@ -117,6 +120,8 @@ def predict_endpoint():
         return jsonify({
             'success': True,
             'detections': detections,
+            'loudness': loudness,
+            'duration': duration,
             'inference_time': inference_time
         })
     except Exception as e:
@@ -166,6 +171,10 @@ def predict_averaged_endpoint():
         start_time = time.time()
         detections = predict_averaged(audio_paths, threshold=threshold, min_confidence=min_confidence)
         inference_time = time.time() - start_time
+        
+        # Note: averaged prediction currently uses the loudness/duration of the last chunk processed in predict_averaged
+        # In a real scenario, we might want to average these too.
+        # For now, we rely on the fact that individual detections already have these fields in predict_averaged's implementation
         
         # Add timestamp
         import datetime

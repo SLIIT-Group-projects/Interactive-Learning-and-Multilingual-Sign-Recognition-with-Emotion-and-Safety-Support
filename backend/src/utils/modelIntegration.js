@@ -40,7 +40,7 @@ async function checkModelServer() {
   if (!USE_MODEL_SERVER) {
     return false;
   }
-  
+
   try {
     const response = await fetch(`${MODEL_SERVER_URL}/health`, {
       method: 'GET',
@@ -76,7 +76,7 @@ async function predictWithModelServer(audioFilePath) {
   }
 
   const result = await response.json();
-  
+
   if (!result.success) {
     throw new Error(result.error || 'Model prediction failed');
   }
@@ -138,7 +138,7 @@ function predictWithSubprocess(audioFilePath) {
         // Look for lines that start with '{' (JSON object)
         const lines = stdout.trim().split('\n');
         let jsonLine = '';
-        
+
         // Find the last line that looks like JSON (starts with '{')
         for (let i = lines.length - 1; i >= 0; i--) {
           const line = lines[i].trim();
@@ -147,15 +147,15 @@ function predictWithSubprocess(audioFilePath) {
             break;
           }
         }
-        
+
         if (!jsonLine) {
           // Fallback: try parsing entire stdout
           jsonLine = stdout.trim();
         }
-        
+
         // Parse JSON output
         const result = JSON.parse(jsonLine);
-        
+
         if (!result.success) {
           reject(new Error(result.error || 'Model prediction failed'));
           return;
@@ -165,7 +165,9 @@ function predictWithSubprocess(audioFilePath) {
         const timestamp = new Date().toISOString();
         const detections = result.detections.map(detection => ({
           ...detection,
-          timestamp: detection.timestamp || timestamp
+          timestamp: detection.timestamp || timestamp,
+          loudness: detection.loudness !== undefined ? detection.loudness : (result.loudness || 0.5),
+          duration: detection.duration !== undefined ? detection.duration : (result.duration || 4.0)
         }));
 
         resolve(detections);
@@ -203,7 +205,7 @@ export async function predictWithModel(audioFilePath, context = {}) {
       console.warn('⚠️ Model server error, falling back to subprocess mode:', error.message);
     }
   }
-  
+
   // Fallback to subprocess mode
   console.log('🔄 Using subprocess mode (slower - consider starting model server)');
   const startTime = Date.now();
@@ -220,11 +222,11 @@ export async function predictWithModel(audioFilePath, context = {}) {
 export async function checkPythonAvailability() {
   return new Promise((resolve) => {
     const pythonProcess = spawn(PYTHON_EXECUTABLE, ['--version']);
-    
+
     pythonProcess.on('error', () => {
       resolve(false);
     });
-    
+
     pythonProcess.on('close', (code) => {
       resolve(code === 0);
     });

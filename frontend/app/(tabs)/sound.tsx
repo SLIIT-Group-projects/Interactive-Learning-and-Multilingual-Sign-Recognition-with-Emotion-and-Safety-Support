@@ -1,10 +1,10 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  TouchableOpacity, 
-  ScrollView, 
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  ScrollView,
   Alert,
   ActivityIndicator,
   Animated,
@@ -51,7 +51,7 @@ export default function HazardDetectionScreen() {
   const router = useRouter();
   const colorScheme = useColorScheme();
   const [soundLevel, setSoundLevel] = useState(0.3); // Mock sound level (0-1)
-  
+
   // Smart detection tracking with temporal smoothing
   // Track recent detections in a sliding window for better accuracy
   interface DetectionHistory {
@@ -90,111 +90,111 @@ export default function HazardDetectionScreen() {
     }
   };
 
-// Separate useEffect for animations (runs when isListening changes)
-useEffect(() => {
-  if (isListening) {
-    // Pulse animation for circles
-    Animated.loop(
-      Animated.parallel([
-        Animated.sequence([
-          Animated.timing(circleAnimation1, {
-            toValue: 1,
-            duration: 1500,
-            useNativeDriver: true,
-          }),
-          Animated.timing(circleAnimation1, {
-            toValue: 0,
-            duration: 0,
-            useNativeDriver: true,
-          }),
-        ]),
-        Animated.sequence([
-          Animated.delay(300),
-          Animated.timing(circleAnimation2, {
-            toValue: 1,
-            duration: 1500,
-            useNativeDriver: true,
-          }),
-          Animated.timing(circleAnimation2, {
-            toValue: 0,
-            duration: 0,
-            useNativeDriver: true,
-          }),
-        ]),
-        Animated.sequence([
-          Animated.delay(600),
-          Animated.timing(circleAnimation3, {
-            toValue: 1,
-            duration: 1500,
-            useNativeDriver: true,
-          }),
-          Animated.timing(circleAnimation3, {
-            toValue: 0,
-            duration: 0,
-            useNativeDriver: true,
-          }),
-        ]),
-      ])
-    ).start();
+  // Separate useEffect for animations (runs when isListening changes)
+  useEffect(() => {
+    if (isListening) {
+      // Pulse animation for circles
+      Animated.loop(
+        Animated.parallel([
+          Animated.sequence([
+            Animated.timing(circleAnimation1, {
+              toValue: 1,
+              duration: 1500,
+              useNativeDriver: true,
+            }),
+            Animated.timing(circleAnimation1, {
+              toValue: 0,
+              duration: 0,
+              useNativeDriver: true,
+            }),
+          ]),
+          Animated.sequence([
+            Animated.delay(300),
+            Animated.timing(circleAnimation2, {
+              toValue: 1,
+              duration: 1500,
+              useNativeDriver: true,
+            }),
+            Animated.timing(circleAnimation2, {
+              toValue: 0,
+              duration: 0,
+              useNativeDriver: true,
+            }),
+          ]),
+          Animated.sequence([
+            Animated.delay(600),
+            Animated.timing(circleAnimation3, {
+              toValue: 1,
+              duration: 1500,
+              useNativeDriver: true,
+            }),
+            Animated.timing(circleAnimation3, {
+              toValue: 0,
+              duration: 0,
+              useNativeDriver: true,
+            }),
+          ]),
+        ])
+      ).start();
 
-    // Sound level animation
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(soundLevelAnimation, {
-          toValue: 1,
-          duration: 2000,
-          useNativeDriver: false,
-        }),
-        Animated.timing(soundLevelAnimation, {
-          toValue: 0.2,
-          duration: 2000,
-          useNativeDriver: false,
-        }),
-      ])
-    ).start();
-  } else {
-    pulseAnimation.setValue(1);
-    circleAnimation1.setValue(0);
-    circleAnimation2.setValue(0);
-    circleAnimation3.setValue(0);
-    soundLevelAnimation.setValue(0);
-  }
-}, [isListening]);
+      // Sound level animation
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(soundLevelAnimation, {
+            toValue: 1,
+            duration: 2000,
+            useNativeDriver: false,
+          }),
+          Animated.timing(soundLevelAnimation, {
+            toValue: 0.2,
+            duration: 2000,
+            useNativeDriver: false,
+          }),
+        ])
+      ).start();
+    } else {
+      pulseAnimation.setValue(1);
+      circleAnimation1.setValue(0);
+      circleAnimation2.setValue(0);
+      circleAnimation3.setValue(0);
+      soundLevelAnimation.setValue(0);
+    }
+  }, [isListening]);
 
-// Separate useEffect for initialization and cleanup (only runs on mount/unmount)
-useEffect(() => {
-  if (!permissionResponse?.granted) {
-    requestPermission();
-  }
-  checkBackendHealth();
+  // Separate useEffect for initialization and cleanup (only runs on mount/unmount)
+  useEffect(() => {
+    if (!permissionResponse?.granted) {
+      requestPermission();
+    }
+    checkBackendHealth();
 
-  // Cleanup on unmount only (not when recording changes)
-  return () => {
-    if (processingIntervalRef.current) {
-      clearInterval(processingIntervalRef.current);
-      processingIntervalRef.current = null;
-    }
-    // Stop any ongoing alerts
-    if (hazardAlertService && typeof (hazardAlertService as any).stopAlert === 'function') {
-      (hazardAlertService as any).stopAlert();
-    }
-    const currentRecording = recordingRef.current;
-    if (currentRecording) {
-      currentRecording.getStatusAsync()
-        .then((status) => {
-          if (status.isRecording || status.canRecord) {
-            return currentRecording.stopAndUnloadAsync();
-          }
-        })
-        .catch((error) => {
-          if (!error.message?.includes('already been unloaded')) {
-            console.error('Error stopping recording in cleanup:', error);
-          }
-        });
-    }
-    recordingRef.current = null;
-  };
-}, []); // Empty dependency array - only run on mount/unmount
+    // Cleanup on unmount only (not when recording changes)
+    return () => {
+      if (processingIntervalRef.current) {
+        clearInterval(processingIntervalRef.current);
+        processingIntervalRef.current = null;
+      }
+      // Stop any ongoing alerts
+      if (hazardAlertService && typeof (hazardAlertService as any).stopAlert === 'function') {
+        (hazardAlertService as any).stopAlert();
+      }
+      const currentRecording = recordingRef.current;
+      if (currentRecording) {
+        currentRecording.getStatusAsync()
+          .then((status) => {
+            if (status.isRecording || status.canRecord) {
+              return currentRecording.stopAndUnloadAsync();
+            }
+          })
+          .catch((error) => {
+            if (!error.message?.includes('already been unloaded')) {
+              console.error('Error stopping recording in cleanup:', error);
+            }
+          });
+      }
+      recordingRef.current = null;
+    };
+  }, []); // Empty dependency array - only run on mount/unmount
 
   const startListening = async () => {
     try {
@@ -206,18 +206,18 @@ useEffect(() => {
         }
       }
 
-    console.log('🎤 Starting microphone...');
-      
-    await Audio.setAudioModeAsync({
-      allowsRecordingIOS: true,
-      playsInSilentModeIOS: true,
+      console.log('🎤 Starting microphone...');
+
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: true,
+        playsInSilentModeIOS: true,
         staysActiveInBackground: true,
         shouldDuckAndroid: false,
-    });
+      });
 
       const { recording: newRecording } = await Audio.Recording.createAsync(
-      Audio.RecordingOptionsPresets.HIGH_QUALITY
-    );
+        Audio.RecordingOptionsPresets.HIGH_QUALITY
+      );
 
       setRecording(newRecording);
       recordingRef.current = newRecording;
@@ -227,7 +227,7 @@ useEffect(() => {
       isListeningRef.current = true;
       setError(null);
       setAlertMessage(null);
-      
+
       // Verify ref is still set after state updates
       setTimeout(() => {
         console.log('🔍 Verifying ref after state update:', recordingRef.current ? 'exists' : 'null');
@@ -237,14 +237,14 @@ useEffect(() => {
       // Track recording start time to ensure we capture full 4-second chunks
       const CHUNK_DURATION_MS = 4000; // 4 seconds
       const MIN_CHUNK_DURATION_MS = 3500; // Minimum 3.5 seconds to account for processing delays
-      
+
       processingIntervalRef.current = setInterval(async () => {
         console.log('⏰ Interval triggered - checking recording...');
         // Check if recording is still active using ref
         const currentRecording = recordingRef.current;
         console.log('📹 Current recording:', currentRecording ? 'exists' : 'null');
         console.log('🎧 isListening state:', isListening);
-        
+
         if (!currentRecording) {
           console.warn('⚠️ No recording ref available, trying to restart...');
           // Try to restart recording if it's missing
@@ -264,7 +264,7 @@ useEffect(() => {
           }
           return;
         }
-        
+
         // Use a ref to track listening state instead of closure
         if (!isListeningRef.current) {
           console.warn('⚠️ Not listening (ref), clearing interval');
@@ -275,23 +275,23 @@ useEffect(() => {
           }
           return;
         }
-        
+
         try {
           const status = await currentRecording.getStatusAsync();
           const durationSeconds = (status.durationMillis || 0) / 1000;
-          console.log('📊 Recording status:', { 
-            isRecording: status.isRecording, 
+          console.log('📊 Recording status:', {
+            isRecording: status.isRecording,
             canRecord: status.canRecord,
             durationSeconds: durationSeconds.toFixed(2)
           });
-          
+
           if (status.isRecording) {
             // Only process if recording has been running for at least MIN_CHUNK_DURATION_MS
             if (status.durationMillis && status.durationMillis >= MIN_CHUNK_DURATION_MS) {
               console.log(`✅ Recording is active (${durationSeconds.toFixed(2)}s), processing chunk...`);
               await processAudioChunk(currentRecording);
             } else {
-              console.log(`⏳ Recording too short (${durationSeconds.toFixed(2)}s), waiting for ${(MIN_CHUNK_DURATION_MS/1000).toFixed(1)}s minimum...`);
+              console.log(`⏳ Recording too short (${durationSeconds.toFixed(2)}s), waiting for ${(MIN_CHUNK_DURATION_MS / 1000).toFixed(1)}s minimum...`);
             }
           } else {
             console.warn('⚠️ Recording is not active, trying to restart...');
@@ -328,9 +328,9 @@ useEffect(() => {
           }
         }
       }, CHUNK_DURATION_MS); // Process every 4 seconds
-      
-      console.log(`✅ Interval set up, will trigger every ${CHUNK_DURATION_MS/1000} seconds`);
-      
+
+      console.log(`✅ Interval set up, will trigger every ${CHUNK_DURATION_MS / 1000} seconds`);
+
       // Process first chunk after 4 seconds (not 1 second) to ensure full duration
       setTimeout(async () => {
         try {
@@ -338,32 +338,32 @@ useEffect(() => {
           const firstRecording = recordingRef.current;
           console.log('📹 First recording ref:', firstRecording ? 'exists' : 'null');
           console.log('🎧 isListeningRef:', isListeningRef.current);
-          
+
           if (!firstRecording) {
             console.error('❌ No recording ref available for first chunk');
             return;
           }
-          
+
           if (!isListeningRef.current) {
             console.error('❌ Not listening, cannot process first chunk');
             return;
           }
-          
+
           console.log('📊 Getting recording status for first chunk...');
           const status = await firstRecording.getStatusAsync();
           const durationSeconds = (status.durationMillis || 0) / 1000;
-          console.log('📊 First chunk recording status:', { 
-            isRecording: status.isRecording, 
+          console.log('📊 First chunk recording status:', {
+            isRecording: status.isRecording,
             canRecord: status.canRecord,
             durationSeconds: durationSeconds.toFixed(2)
           });
-          
+
           if (status.isRecording && status.durationMillis && status.durationMillis >= MIN_CHUNK_DURATION_MS) {
             console.log(`✅ Recording is active (${durationSeconds.toFixed(2)}s), calling processAudioChunk...`);
             await processAudioChunk(firstRecording);
             console.log('✅ Finished processing first chunk');
           } else {
-            console.warn(`⚠️ Recording not ready for first chunk (duration: ${durationSeconds.toFixed(2)}s, min: ${(MIN_CHUNK_DURATION_MS/1000).toFixed(1)}s)`);
+            console.warn(`⚠️ Recording not ready for first chunk (duration: ${durationSeconds.toFixed(2)}s, min: ${(MIN_CHUNK_DURATION_MS / 1000).toFixed(1)}s)`);
           }
         } catch (error: any) {
           console.error('❌ Error in first chunk setTimeout:', error);
@@ -387,7 +387,7 @@ useEffect(() => {
       const statusBeforeStop = await recording.getStatusAsync();
       const durationSeconds = (statusBeforeStop.durationMillis || 0) / 1000;
       console.log(`🎵 Processing audio chunk (duration: ${durationSeconds.toFixed(2)}s)...`);
-      
+
       // Stop the current recording to access the file
       if (!statusBeforeStop.isRecording) {
         console.warn('⚠️ Recording is not active, trying to restart...');
@@ -412,12 +412,12 @@ useEffect(() => {
 
       // Stop and unload to finalize the recording file
       await recording.stopAndUnloadAsync();
-      
+
       // Small delay to ensure file is fully written
       await new Promise(resolve => setTimeout(resolve, 100));
-      
+
       const uri = recording.getURI();
-      
+
       if (!uri) {
         console.warn('⚠️ No audio URI available after stopping recording');
         setIsProcessing(false);
@@ -466,7 +466,7 @@ useEffect(() => {
             priority = detectionInArray?.priority || 0;
           }
           priority = priority || 0;
-          
+
           let urgency = hazard.urgency;
           if (!urgency) {
             // Determine urgency from priority if not provided
@@ -475,13 +475,13 @@ useEffect(() => {
             else if (priority >= 5) urgency = 'medium';
             else urgency = 'low';
           }
-          
+
           const now = Date.now();
-          
+
           // Debug: Log the full hazard object
           console.log('📊 Full hazard object:', JSON.stringify(hazard, null, 2));
           console.log(`📊 Extracted values: type=${hazardType}, confidence=${confidence}, priority=${priority}, urgency=${urgency}`);
-          
+
           // Add to detection history
           const detection: DetectionHistory = {
             type: hazardType,
@@ -489,53 +489,53 @@ useEffect(() => {
             priority,
             timestamp: now
           };
-          
+
           detectionHistoryRef.current.push(detection);
           // Keep only recent detections (last MAX_HISTORY_SIZE)
           if (detectionHistoryRef.current.length > MAX_HISTORY_SIZE) {
             detectionHistoryRef.current.shift();
           }
-          
+
           // Debug logging
-          console.log(`🔍 Detection: ${hazardType}, confidence: ${(confidence*100).toFixed(1)}%, priority: ${priority}, urgency: ${urgency}`);
-          
+          console.log(`🔍 Detection: ${hazardType}, confidence: ${(confidence * 100).toFixed(1)}%, priority: ${priority}, urgency: ${urgency}`);
+
           // Check cooldown - don't alert same hazard too frequently
           const lastAlertTime = lastAlertTimeRef.current.get(hazardType) || 0;
           const timeSinceLastAlert = now - lastAlertTime;
           const isOnCooldown = timeSinceLastAlert < ALERT_COOLDOWN_MS;
-          
+
           if (isOnCooldown) {
-            console.log(`⏳ ${hazardType} alert on cooldown (${Math.round(timeSinceLastAlert/1000)}s ago)`);
+            console.log(`⏳ ${hazardType} alert on cooldown (${Math.round(timeSinceLastAlert / 1000)}s ago)`);
             // Don't return - continue to check rules but skip alerting if on cooldown
           }
-          
+
           // Smart alerting rules based on confidence and priority
           let shouldAlert = false;
           let alertReason = '';
-          
+
           // Rule 1: Critical hazards (fire, gunshot) with high confidence - alert immediately
           if (priority >= 9 && confidence >= 0.75) {
             shouldAlert = true;
-            alertReason = `Critical hazard with high confidence (${(confidence*100).toFixed(0)}%)`;
-            console.log(`✅ Rule 1 matched: priority ${priority} >= 9, confidence ${(confidence*100).toFixed(1)}% >= 75%`);
+            alertReason = `Critical hazard with high confidence (${(confidence * 100).toFixed(0)}%)`;
+            console.log(`✅ Rule 1 matched: priority ${priority} >= 9, confidence ${(confidence * 100).toFixed(1)}% >= 75%`);
           }
           // Rule 2: High priority hazards (siren, glass breaking) with medium-high confidence - alert immediately
           else if (priority >= 7 && confidence >= 0.70) {
             shouldAlert = true;
-            alertReason = `High priority hazard with good confidence (${(confidence*100).toFixed(0)}%)`;
-            console.log(`✅ Rule 2 matched: priority ${priority} >= 7, confidence ${(confidence*100).toFixed(1)}% >= 70%`);
+            alertReason = `High priority hazard with good confidence (${(confidence * 100).toFixed(0)}%)`;
+            console.log(`✅ Rule 2 matched: priority ${priority} >= 7, confidence ${(confidence * 100).toFixed(1)}% >= 70%`);
           }
           // Rule 3: Medium confidence (0.6-0.7) - require 2 out of last 3 detections to be same type
           else if (confidence >= 0.60 && confidence < 0.70) {
             const recentSameType = detectionHistoryRef.current
               .filter(d => d.type === hazardType)
               .slice(-3); // Last 3 detections
-            
+
             if (recentSameType.length >= 2) {
               shouldAlert = true;
-              alertReason = `Confirmed by ${recentSameType.length} recent detections (confidence: ${(confidence*100).toFixed(0)}%)`;
+              alertReason = `Confirmed by ${recentSameType.length} recent detections (confidence: ${(confidence * 100).toFixed(0)}%)`;
             } else {
-              console.log(`⏳ ${hazardType} needs confirmation (${recentSameType.length}/2 detections, confidence: ${(confidence*100).toFixed(0)}%)`);
+              console.log(`⏳ ${hazardType} needs confirmation (${recentSameType.length}/2 detections, confidence: ${(confidence * 100).toFixed(0)}%)`);
             }
           }
           // Rule 4: Lower confidence (<0.6) - require 3 out of last 5 detections
@@ -543,52 +543,52 @@ useEffect(() => {
             const recentSameType = detectionHistoryRef.current
               .filter(d => d.type === hazardType)
               .slice(-5); // Last 5 detections
-            
+
             if (recentSameType.length >= 3) {
               shouldAlert = true;
-              alertReason = `Confirmed by ${recentSameType.length} recent detections (confidence: ${(confidence*100).toFixed(0)}%)`;
+              alertReason = `Confirmed by ${recentSameType.length} recent detections (confidence: ${(confidence * 100).toFixed(0)}%)`;
             } else {
-              console.log(`⏳ ${hazardType} needs more confirmation (${recentSameType.length}/3 detections, confidence: ${(confidence*100).toFixed(0)}%)`);
+              console.log(`⏳ ${hazardType} needs more confirmation (${recentSameType.length}/3 detections, confidence: ${(confidence * 100).toFixed(0)}%)`);
             }
           }
           // Rule 5: Very low confidence - don't alert
           else {
-            console.log(`⏭️ Skipping ${hazardType} - confidence too low (${(confidence*100).toFixed(0)}%)`);
+            console.log(`⏭️ Skipping ${hazardType} - confidence too low (${(confidence * 100).toFixed(0)}%)`);
           }
-          
+
           // Only alert if shouldAlert is true AND not on cooldown
           if (shouldAlert && !isOnCooldown) {
             console.log(`✅ Alerting: ${hazardType} - ${alertReason}`);
-            
+
             const message = hazard.type === 'fire_alarm' ? '🔥 Fire alarm detected! Evacuate immediately!' :
-                            hazard.type === 'smoke_alarm' ? '⚠️ Smoke alarm detected! Check for smoke or fire!' :
-                            hazard.type === 'siren' ? '🚨 Emergency siren detected nearby!' :
-                            hazard.type === 'gun_shot' ? '🔫 Gunshot detected! Stay safe!' :
-                            hazard.type === 'glass_breaking' ? '💥 Glass breaking sound detected!' :
-                            hazard.type === 'car_horn' ? '🚗 Car horn detected - be careful!' :
-                            hazard.type === 'dog' ? '🐕 Dog barking detected!' :
-                            hazard.type === 'dog_barking' ? '🐕 Dog barking detected!' :
+              hazard.type === 'smoke_alarm' ? '⚠️ Smoke alarm detected! Check for smoke or fire!' :
+                hazard.type === 'siren' ? '🚨 Emergency siren detected nearby!' :
+                  hazard.type === 'gun_shot' ? '🔫 Gunshot detected! Stay safe!' :
+                    hazard.type === 'glass_breaking' ? '💥 Glass breaking sound detected!' :
+                      hazard.type === 'car_horn' ? '🚗 Car horn detected - be careful!' :
+                        hazard.type === 'dog' ? '🐕 Dog barking detected!' :
+                          hazard.type === 'dog_barking' ? '🐕 Dog barking detected!' :
                             hazard.type === 'crying_baby' ? '👶 Baby crying detected!' :
-                            hazard.type === 'baby_crying' ? '👶 Baby crying detected!' :
-                            hazard.type === 'coughing' ? '😷 Coughing detected!' :
-                            hazard.type === 'sneezing' ? '🤧 Sneezing detected!' :
-                            hazard.type === 'train' ? '🚂 Train sound detected!' :
-                            hazard.type === 'clock_alarm' ? '⏰ Clock alarm detected!' :
-                            hazard.type === 'crackling_fire' ? '🔥 Fire crackling detected!' :
-                            hazard.type === 'door_wood_knock' ? '🚪 Door knock detected!' :
-                            hazard.type === 'footsteps' ? '👣 Footsteps detected!' :
-                            `Alert: ${hazard.type} detected`;
-            
+                              hazard.type === 'baby_crying' ? '👶 Baby crying detected!' :
+                                hazard.type === 'coughing' ? '😷 Coughing detected!' :
+                                  hazard.type === 'sneezing' ? '🤧 Sneezing detected!' :
+                                    hazard.type === 'train' ? '🚂 Train sound detected!' :
+                                      hazard.type === 'clock_alarm' ? '⏰ Clock alarm detected!' :
+                                        hazard.type === 'crackling_fire' ? '🔥 Fire crackling detected!' :
+                                          hazard.type === 'door_wood_knock' ? '🚪 Door knock detected!' :
+                                            hazard.type === 'footsteps' ? '👣 Footsteps detected!' :
+                                              `Alert: ${hazard.type} detected`;
+
             setAlertMessage(message);
-            
+
             // Update last alert time
             lastAlertTimeRef.current.set(hazardType, now);
-            
+
             // Trigger haptic feedback
             if (hazardAlertService && typeof (hazardAlertService as any).triggerAlert === 'function') {
               await (hazardAlertService as any).triggerAlert(hazard);
             }
-            
+
             // Visual alert animation
             triggerFlashAnimation(urgency);
           } else if (shouldAlert && isOnCooldown) {
@@ -596,7 +596,7 @@ useEffect(() => {
             // Keep detection in history but don't alert
           } else {
             // Don't alert yet, but keep detection in history
-            console.log(`⏳ Not alerting yet: ${hazardType} (confidence: ${(confidence*100).toFixed(1)}%, priority: ${priority})`);
+            console.log(`⏳ Not alerting yet: ${hazardType} (confidence: ${(confidence * 100).toFixed(1)}%, priority: ${priority})`);
             setAlertMessage(null);
           }
         } else {
@@ -632,7 +632,7 @@ useEffect(() => {
           }
         }
       }
-      
+
       if (!newRecording && isListeningRef.current) {
         console.error('❌ Failed to restart recording after all retries');
         setError('Failed to keep listening. Please try stopping and starting again.');
@@ -681,7 +681,7 @@ useEffect(() => {
     }
 
     isRestartingRef.current = true;
-    
+
     const restartPromise = (async (): Promise<Audio.Recording | null> => {
       try {
         if (!isListeningRef.current) {
@@ -749,7 +749,7 @@ useEffect(() => {
     try {
       setIsListening(false);
       isListeningRef.current = false;
-      
+
       if (processingIntervalRef.current) {
         clearInterval(processingIntervalRef.current);
         processingIntervalRef.current = null;
@@ -775,7 +775,7 @@ useEffect(() => {
         (hazardAlertService as any).stopAlert();
       }
       setAlertMessage(null);
-      
+
       // Clear detection history when stopping
       detectionHistoryRef.current = [];
       lastAlertTimeRef.current.clear();
@@ -788,9 +788,9 @@ useEffect(() => {
   };
 
   const dismissAlert = () => {
-      if (hazardAlertService && typeof (hazardAlertService as any).stopAlert === 'function') {
-        (hazardAlertService as any).stopAlert();
-      }
+    if (hazardAlertService && typeof (hazardAlertService as any).stopAlert === 'function') {
+      (hazardAlertService as any).stopAlert();
+    }
     setAlertMessage(null);
     setDetections(null);
     // Note: We keep detection history even after dismissing alert
@@ -809,7 +809,7 @@ useEffect(() => {
       {/* Header */}
 
       {/* Main Content */}
-    <ScrollView 
+      <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
@@ -879,16 +879,16 @@ useEffect(() => {
                   },
                 ]}
               />
-              
-               {/* Dinosaur Image */}
-               <View style={styles.dinoCircle}>
-                 <Image 
-                   source={require('../../assets/images/dino-listening.png')}
-                   style={styles.dinoImage}
-                   resizeMode="cover"
-                   defaultSource={require('../../assets/images/icon.png')}
-                 />
-               </View>
+
+              {/* Dinosaur Image */}
+              <View style={styles.dinoCircle}>
+                <Image
+                  source={require('../../assets/images/dino-listening.png')}
+                  style={styles.dinoImage}
+                  resizeMode="cover"
+                  defaultSource={require('../../assets/images/icon.png')}
+                />
+              </View>
 
               {/* Leaf Icons */}
               <View style={styles.leaf1}>
@@ -982,63 +982,63 @@ useEffect(() => {
         {/* My Sounds Section - Only show when not listening */}
         {!isListening && (
           <View style={styles.mySoundsSection}>
-          <View style={styles.mySoundsHeader}>
-            <View style={styles.mySoundsHeaderLeft}>
-              <Text style={styles.folderIcon}>📁</Text>
-              <Text style={styles.mySoundsTitle}>My Sounds</Text>
+            <View style={styles.mySoundsHeader}>
+              <View style={styles.mySoundsHeaderLeft}>
+                <Text style={styles.folderIcon}>📁</Text>
+                <Text style={styles.mySoundsTitle}>My Sounds</Text>
+              </View>
+              <TouchableOpacity style={styles.seeAllButton}>
+                <Text style={styles.seeAllText}>See All</Text>
+              </TouchableOpacity>
             </View>
-            <TouchableOpacity style={styles.seeAllButton}>
-              <Text style={styles.seeAllText}>See All</Text>
-            </TouchableOpacity>
-          </View>
 
-          {/* Detected Sounds Cards */}
-          {detections && detections.detections.length > 0 ? (
-            <View style={styles.soundsCardsContainer}>
-              {detections.detections.slice(0, 2).map((detection, index) => {
-                const hazardEmoji = 
-                  detection.type === 'fire_alarm' ? '🔥' :
-                  detection.type === 'smoke_alarm' ? '💨' :
-                  detection.type === 'gun_shot' ? '🔫' :
-                  detection.type === 'siren' ? '🚨' :
-                  detection.type === 'glass_breaking' ? '💥' :
-                  detection.type === 'car_horn' ? '🚗' :
-                  detection.type === 'dog_barking' ? '🐕' :
-                  detection.type === 'baby_crying' ? '👶' : '🔊';
-                
-                const cardColors = [
-                  { bg: '#FFF5E6', border: '#FFA500' }, // Light orange
-                  { bg: '#E6F3FF', border: '#4A90E2' }, // Light blue
-                ];
-                
-                return (
-                  <View 
-                    key={index} 
-                    style={[
-                      styles.soundCard,
-                      { 
-                        backgroundColor: cardColors[index % 2].bg,
-                        borderColor: cardColors[index % 2].border,
-                      }
-                    ]}>
-                    <View style={styles.soundCardImage}>
-                      <Text style={styles.soundCardEmoji}>{hazardEmoji}</Text>
+            {/* Detected Sounds Cards */}
+            {detections && detections.detections.length > 0 ? (
+              <View style={styles.soundsCardsContainer}>
+                {detections.detections.slice(0, 2).map((detection, index) => {
+                  const hazardEmoji =
+                    detection.type === 'fire_alarm' ? '🔥' :
+                      detection.type === 'smoke_alarm' ? '💨' :
+                        detection.type === 'gun_shot' ? '🔫' :
+                          detection.type === 'siren' ? '🚨' :
+                            detection.type === 'glass_breaking' ? '💥' :
+                              detection.type === 'car_horn' ? '🚗' :
+                                detection.type === 'dog_barking' ? '🐕' :
+                                  detection.type === 'baby_crying' ? '👶' : '🔊';
+
+                  const cardColors = [
+                    { bg: '#FFF5E6', border: '#FFA500' }, // Light orange
+                    { bg: '#E6F3FF', border: '#4A90E2' }, // Light blue
+                  ];
+
+                  return (
+                    <View
+                      key={index}
+                      style={[
+                        styles.soundCard,
+                        {
+                          backgroundColor: cardColors[index % 2].bg,
+                          borderColor: cardColors[index % 2].border,
+                        }
+                      ]}>
+                      <View style={styles.soundCardImage}>
+                        <Text style={styles.soundCardEmoji}>{hazardEmoji}</Text>
+                      </View>
+                      <Text style={styles.soundCardLabel}>
+                        {formatHazardType(detection.type)}
+                      </Text>
+                      <View style={styles.checkmarkBadge}>
+                        <Text style={styles.checkmark}>✓</Text>
+                      </View>
                     </View>
-                    <Text style={styles.soundCardLabel}>
-                      {formatHazardType(detection.type)}
-                    </Text>
-                    <View style={styles.checkmarkBadge}>
-                      <Text style={styles.checkmark}>✓</Text>
-                    </View>
-                  </View>
-                );
-              })}
-            </View>
-          ) : (
-            <View style={styles.noSoundsContainer}>
-              <Text style={styles.noSoundsText}>No sounds detected yet</Text>
-            </View>
-          )}
+                  );
+                })}
+              </View>
+            ) : (
+              <View style={styles.noSoundsContainer}>
+                <Text style={styles.noSoundsText}>No sounds detected yet</Text>
+              </View>
+            )}
           </View>
         )}
 
@@ -1055,40 +1055,40 @@ useEffect(() => {
         )}
 
         {/* Alert Message */}
-      {alertMessage && detections?.highestPriority && (
-        <Animated.View
-          style={[
+        {alertMessage && detections?.highestPriority && (
+          <Animated.View
+            style={[
               styles.alertBanner,
-            {
+              {
                 backgroundColor: getAlertColor(detections.highestPriority.urgency),
-              opacity: flashAnimation.interpolate({
-                inputRange: [0, 1],
-                outputRange: [1, 0.7],
-              }),
-            },
+                opacity: flashAnimation.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [1, 0.7],
+                }),
+              },
             ]}>
             <Text style={styles.alertBannerText}>{alertMessage}</Text>
             <TouchableOpacity onPress={dismissAlert} style={styles.alertDismiss}>
               <Text style={styles.alertDismissText}>✕</Text>
-          </TouchableOpacity>
-        </Animated.View>
-      )}
+            </TouchableOpacity>
+          </Animated.View>
+        )}
 
         {/* Processing Indicator */}
         {isProcessing && !isListening && (
           <View style={styles.processingIndicator}>
             <ActivityIndicator size="small" color={GREEN_BUTTON} />
             <Text style={[styles.processingText, { color: GREEN_BUTTON }]}>Listening...</Text>
-        </View>
-      )}
+          </View>
+        )}
 
         {/* Error Message */}
         {error && (
           <View style={styles.errorBanner}>
             <Text style={styles.errorText}>⚠️ {error}</Text>
-        </View>
-      )}
-    </ScrollView>
+          </View>
+        )}
+      </ScrollView>
     </View>
   );
 }
@@ -1224,21 +1224,21 @@ const styles = StyleSheet.create({
     width: 280,
     height: 280,
   },
-   dinoCircle: {
-     width: 200,
-     height: 200,
-     borderRadius: 100,
-     backgroundColor: 'transparent', // Transparent to show image background
-     alignItems: 'center',
-     justifyContent: 'center',
-     zIndex: 10,
-     overflow: 'visible', // Allow image to extend beyond circle if needed
-   },
-   dinoImage: {
-     width: 200,
-     height: 200,
-     borderRadius: 100,
-   },
+  dinoCircle: {
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+    backgroundColor: 'transparent', // Transparent to show image background
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 10,
+    overflow: 'visible', // Allow image to extend beyond circle if needed
+  },
+  dinoImage: {
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+  },
   leaf1: {
     position: 'absolute',
     top: 20,
