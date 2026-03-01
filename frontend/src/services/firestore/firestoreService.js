@@ -13,7 +13,7 @@ import {
   increment,
   serverTimestamp,
 } from 'firebase/firestore';
-import { db } from './firebaseConfig';
+import { db } from '../firebase/firebaseConfig';
 
 // ============================================
 // MOCK DATA CREATION FUNCTIONS

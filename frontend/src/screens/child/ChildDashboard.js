@@ -2,9 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, Animated, StyleSheet, ActivityIndicator, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
-import { useAuth } from '../contexts/AuthContext';
-import { logoutUser } from '../services/authService';
-import { getChildAnalytics } from '../services/gameService';
+import { useAuth } from '../../contexts/AuthContext';
+import { logoutUser } from '../../services/auth/authService';
+import { getChildAnalytics } from '../../services/firestore/gameService';
 
 const ChildDashboard = ({ navigation }) => {
   const { userData } = useAuth();

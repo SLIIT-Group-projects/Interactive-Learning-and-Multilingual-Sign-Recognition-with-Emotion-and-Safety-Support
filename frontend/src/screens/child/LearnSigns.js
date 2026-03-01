@@ -3,8 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 
-const ALPHABET = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'];
-const TOTAL_LETTERS = ALPHABET.length;
+import { ALPHABET, TOTAL_LETTERS } from '../../constants/gameConstants';
 
 const LearnSigns = ({ navigation }) => {
   const [currentLetterIndex, setCurrentLetterIndex] = useState(0);

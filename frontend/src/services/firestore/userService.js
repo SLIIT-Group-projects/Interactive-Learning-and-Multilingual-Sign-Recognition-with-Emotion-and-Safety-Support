@@ -1,5 +1,5 @@
 import { doc, setDoc, getDoc, collection, addDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from './firebaseConfig';
+import { db } from '../firebase/firebaseConfig';
 
 /**
  * Create a user document in Firestore
@@ -148,7 +148,7 @@ export const getParentChildren = async (parentId) => {
  */
 export const registerParent = async (email, password, name) => {
   try {
-    const { registerUser } = await import('./authService');
+    const { registerUser } = await import('../auth/authService');
     const { createUserDocument } = await import('./userService');
 
     // Create Firebase Auth account
@@ -174,7 +174,7 @@ export const registerParent = async (email, password, name) => {
  */
 export const registerChild = async (email, password, name, parentId) => {
   try {
-    const { registerUser } = await import('./authService');
+    const { registerUser } = await import('../auth/authService');
     const { createUserDocument } = await import('./userService');
 
     // Create Firebase Auth account for child

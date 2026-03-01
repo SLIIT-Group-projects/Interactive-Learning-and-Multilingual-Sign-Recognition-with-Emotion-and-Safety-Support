@@ -3,10 +3,10 @@ import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Dimensions, Alert
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LineChart } from 'react-native-chart-kit';
 import { MaterialIcons, FontAwesome, Ionicons } from '@expo/vector-icons';
-import { useAuth } from '../contexts/AuthContext';
-import { logoutUser } from '../services/authService';
-import { getParentChildren } from '../services/userService';
-import { getChildAnalytics, getParentGameSessions } from '../services/gameService';
+import { useAuth } from '../../contexts/AuthContext';
+import { logoutUser } from '../../services/auth/authService';
+import { getParentChildren } from '../../services/firestore/userService';
+import { getChildAnalytics, getParentGameSessions } from '../../services/firestore/gameService';
 
 const ParentDashboard = ({ navigation }) => {
   const { userData } = useAuth();

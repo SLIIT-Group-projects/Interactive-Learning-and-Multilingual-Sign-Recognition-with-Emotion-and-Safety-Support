@@ -12,70 +12,13 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import * as FileSystem from "expo-file-system";
 import { MaterialIcons, FontAwesome, Ionicons } from "@expo/vector-icons";
-import { useAuth } from "../contexts/AuthContext";
+import { useAuth } from "../../contexts/AuthContext";
 import {
   updateLetterPerformance,
   saveGameSession,
-} from "../services/gameService";
+} from "../../services/firestore/gameService";
 
-const ALPHABET = [
-  "A",
-  "B",
-  "C",
-  "D",
-  "E",
-  "F",
-  "G",
-  "H",
-  "I",
-  "J",
-  "K",
-  "L",
-  "M",
-  "N",
-  "O",
-  "P",
-  "Q",
-  "R",
-  "S",
-  "T",
-  "U",
-  "V",
-  "W",
-  "X",
-  "Y",
-  "Z",
-];
-const OBJECTS = [
-  { icon: "apple", iconFamily: "MaterialIcons", letter: "A", name: "Apple" },
-  { icon: "pets", iconFamily: "MaterialIcons", letter: "B", name: "Bear" },
-  { icon: "pets", iconFamily: "MaterialIcons", letter: "C", name: "Cat" },
-  { icon: "pets", iconFamily: "MaterialIcons", letter: "D", name: "Dog" },
-  { icon: "pets", iconFamily: "MaterialIcons", letter: "E", name: "Elephant" },
-  { icon: "water", iconFamily: "MaterialIcons", letter: "F", name: "Fish" },
-  { icon: "pets", iconFamily: "MaterialIcons", letter: "G", name: "Giraffe" },
-  { icon: "pets", iconFamily: "MaterialIcons", letter: "H", name: "Horse" },
-  { icon: "icecream", iconFamily: "MaterialIcons", letter: "I", name: "Ice Cream" },
-  { icon: "water", iconFamily: "MaterialIcons", letter: "J", name: "Jellyfish" },
-  { icon: "kitesurfing", iconFamily: "MaterialIcons", letter: "K", name: "Kite" },
-  { icon: "pets", iconFamily: "MaterialIcons", letter: "L", name: "Lion" },
-  { icon: "pets", iconFamily: "MaterialIcons", letter: "M", name: "Monkey" },
-  { icon: "nightlight", iconFamily: "MaterialIcons", letter: "N", name: "Night" },
-  { icon: "pets", iconFamily: "MaterialIcons", letter: "O", name: "Owl" },
-  { icon: "pets", iconFamily: "MaterialIcons", letter: "P", name: "Penguin" },
-  { icon: "star", iconFamily: "MaterialIcons", letter: "Q", name: "Queen" },
-  { icon: "wb-sunny", iconFamily: "MaterialIcons", letter: "R", name: "Rainbow" },
-  { icon: "star", iconFamily: "MaterialIcons", letter: "S", name: "Star" },
-  { icon: "park", iconFamily: "MaterialIcons", letter: "T", name: "Tree" },
-  { icon: "umbrella", iconFamily: "MaterialIcons", letter: "U", name: "Umbrella" },
-  { icon: "local-shipping", iconFamily: "MaterialIcons", letter: "V", name: "Van" },
-  { icon: "water", iconFamily: "MaterialIcons", letter: "W", name: "Water" },
-  { icon: "close", iconFamily: "MaterialIcons", letter: "X", name: "X-ray" },
-  { icon: "toys", iconFamily: "MaterialIcons", letter: "Y", name: "Yoyo" },
-  { icon: "pets", iconFamily: "MaterialIcons", letter: "Z", name: "Zebra" },
-];
-
-const TOTAL_QUESTIONS = 10;
+import { ALPHABET, OBJECTS, TOTAL_QUESTIONS } from "../../constants/gameConstants";
 
 const PlayGame = ({ navigation }) => {
   const [currentQuestion, setCurrentQuestion] = useState(0);

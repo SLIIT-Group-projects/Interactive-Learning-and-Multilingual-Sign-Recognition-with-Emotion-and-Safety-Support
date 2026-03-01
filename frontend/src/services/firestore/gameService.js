@@ -9,7 +9,7 @@ import {
   limit,
   serverTimestamp,
 } from 'firebase/firestore';
-import { db } from './firebaseConfig';
+import { db } from '../firebase/firebaseConfig';
 
 /**
  * Save a game session with parent-child linking

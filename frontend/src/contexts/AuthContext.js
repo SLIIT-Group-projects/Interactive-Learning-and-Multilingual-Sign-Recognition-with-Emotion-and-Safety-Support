@@ -1,6 +1,6 @@
 import React, { createContext, useState, useEffect, useContext } from 'react';
-import { onAuthStateChange, getCurrentUser } from '../services/authService';
-import { getUserDocument } from '../services/userService';
+import { onAuthStateChange, getCurrentUser } from '../services/auth/authService';
+import { getUserDocument } from '../services/firestore/userService';
 
 const AuthContext = createContext({});
 

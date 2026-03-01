@@ -11,16 +11,18 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
-import { registerParent } from '../services/userService';
+import { useAuth } from '../../contexts/AuthContext';
+import { registerChild } from '../../services/firestore/userService';
 
-const RegisterScreen = ({ navigation }) => {
+const AddChildScreen = ({ navigation }) => {
+  const { userData } = useAuth();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const handleRegister = async () => {
+  const handleAddChild = async () => {
     // Validation
     if (!name || !email || !password || !confirmPassword) {
       Alert.alert('Error', 'Please fill in all fields');
@@ -37,33 +39,38 @@ const RegisterScreen = ({ navigation }) => {
       return;
     }
 
+    if (!userData || userData.role !== 'parent') {
+      Alert.alert('Error', 'Only parents can create child accounts');
+      return;
+    }
+
     setLoading(true);
     try {
-      await registerParent(email, password, name);
+      await registerChild(email, password, name, userData.uid);
       
       Alert.alert(
         'Success',
-        'Account created successfully! You can now login.',
+        `Child account created for ${name}! They can now login with their email and password.`,
         [
           {
             text: 'OK',
-            onPress: () => navigation.navigate('Login'),
+            onPress: () => navigation.goBack(),
           },
         ]
       );
     } catch (error) {
-      console.error('Registration error:', error);
-      let errorMessage = 'Failed to create account. Please try again.';
+      console.error('Add child error:', error);
+      let errorMessage = 'Failed to create child account. Please try again.';
 
       if (error.code === 'auth/email-already-in-use') {
-        errorMessage = 'This email is already registered. Please login instead.';
+        errorMessage = 'This email is already registered.';
       } else if (error.code === 'auth/invalid-email') {
         errorMessage = 'Invalid email address.';
       } else if (error.code === 'auth/weak-password') {
         errorMessage = 'Password is too weak. Please use a stronger password.';
       }
 
-      Alert.alert('Registration Error', errorMessage);
+      Alert.alert('Error', errorMessage);
     } finally {
       setLoading(false);
     }
@@ -76,23 +83,23 @@ const RegisterScreen = ({ navigation }) => {
         keyboardShouldPersistTaps="handled"
       >
         <View className="items-center mb-8">
-          <MaterialIcons name="family-restroom" size={64} color="#8b5cf6" style={{ marginBottom: 16 }} />
+          <MaterialIcons name="child-care" size={64} color="#8b5cf6" style={{ marginBottom: 16 }} />
           <Text className="text-4xl font-bold text-gray-800 mb-2">
-            Parent Registration
+            Add Child Account
           </Text>
           <Text className="text-lg text-gray-600 text-center px-4">
-            Create your parent account to manage your child's learning
+            Create an account for your child to start learning
           </Text>
         </View>
 
         <View className="bg-white rounded-3xl p-6 shadow-lg mb-6">
           <View className="mb-4">
             <Text className="text-lg font-semibold text-gray-700 mb-2">
-              Full Name
+              Child's Name
             </Text>
             <TextInput
               style={styles.input}
-              placeholder="Enter your full name"
+              placeholder="Enter child's name"
               value={name}
               onChangeText={setName}
               autoCapitalize="words"
@@ -101,11 +108,11 @@ const RegisterScreen = ({ navigation }) => {
 
           <View className="mb-4">
             <Text className="text-lg font-semibold text-gray-700 mb-2">
-              Email
+              Child's Email
             </Text>
             <TextInput
               style={styles.input}
-              placeholder="Enter your email"
+              placeholder="Enter child's email"
               value={email}
               onChangeText={setEmail}
               keyboardType="email-address"
@@ -134,7 +141,7 @@ const RegisterScreen = ({ navigation }) => {
             </Text>
             <TextInput
               style={styles.input}
-              placeholder="Confirm your password"
+              placeholder="Confirm password"
               value={confirmPassword}
               onChangeText={setConfirmPassword}
               secureTextEntry
@@ -144,28 +151,25 @@ const RegisterScreen = ({ navigation }) => {
 
           <TouchableOpacity
             style={[styles.button, loading && styles.buttonDisabled]}
-            onPress={handleRegister}
+            onPress={handleAddChild}
             disabled={loading}
           >
             {loading ? (
               <ActivityIndicator color="#ffffff" />
             ) : (
               <Text className="text-xl font-bold text-white">
-                Create Account
+                Create Child Account
               </Text>
             )}
           </TouchableOpacity>
         </View>
 
-        <View className="items-center">
-          <Text className="text-gray-600 mb-2">Already have an account?</Text>
-          <TouchableOpacity
-            onPress={() => navigation.navigate('Login')}
-            className="p-2"
-          >
-            <Text className="text-purple-600 font-bold text-lg">Login</Text>
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          className="p-2"
+        >
+          <Text className="text-purple-600 font-bold text-lg">Cancel</Text>
+        </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
   );
@@ -198,5 +202,5 @@ const styles = StyleSheet.create({
   },
 });
 
-export default RegisterScreen;
+export default AddChildScreen;
 
