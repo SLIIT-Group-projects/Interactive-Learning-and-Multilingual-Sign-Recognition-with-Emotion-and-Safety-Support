@@ -59,3 +59,5 @@ export const OBJECTS = [
 export const TOTAL_QUESTIONS = 10;
 export const TOTAL_LETTERS = ALPHABET.length;
 
+
+
