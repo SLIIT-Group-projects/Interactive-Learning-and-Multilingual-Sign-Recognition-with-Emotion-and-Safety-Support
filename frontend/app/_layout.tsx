@@ -1,70 +1,3 @@
-// import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-// import { Stack, useRouter, useSegments } from 'expo-router';
-// import { StatusBar } from 'expo-status-bar';
-// import { useEffect, useState } from 'react';
-// import { ActivityIndicator, View } from 'react-native';
-// import 'react-native-reanimated';
-
-// import { useColorScheme } from '@/hooks/use-color-scheme';
-// import authService from '@/services/auth.service';
-// import { User } from 'firebase/auth';
-
-// export const unstable_settings = {
-//   anchor: '(tabs)',
-// };
-
-// export default function RootLayout() {
-//   const colorScheme = useColorScheme();
-//   const [user, setUser] = useState<User | null>(null);
-//   const [loading, setLoading] = useState(true);
-//   const segments = useSegments();
-//   const router = useRouter();
-
-//   useEffect(() => {
-//     // Subscribe to auth state changes
-//     const unsubscribe = authService.onAuthStateChanged((currentUser) => {
-//       setUser(currentUser);
-//       setLoading(false);
-//     });
-
-//     return unsubscribe;
-//   }, []);
-
-//   useEffect(() => {
-//     if (loading) return;
-
-//     const inAuthGroup = segments[0] === '(tabs)';
-
-//     if (!user && inAuthGroup) {
-//       // User is not signed in and trying to access protected route
-//       router.replace('/login');
-//     } else if (user && !inAuthGroup) {
-//       // User is signed in and trying to access login
-//       router.replace('/(tabs)');
-//     }
-//   }, [user, segments, loading]);
-
-//   if (loading) {
-//     return (
-//       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-//         <ActivityIndicator size="large" />
-//       </View>
-//     );
-//   }
-
-//   return (
-//     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-//       <Stack>
-//         <Stack.Screen name="login" options={{ headerShown: false }} />
-//         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-//         <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
-//       </Stack>
-//       <StatusBar style="auto" />
-//     </ThemeProvider>
-//   );
-// }
-
-
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -139,21 +72,21 @@ export default function RootLayout() {
         <Stack.Screen name="login" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
-        <Stack.Screen 
-          name="profile" 
-          options={{ 
+        <Stack.Screen
+          name="profile"
+          options={{
             presentation: 'card',
             title: 'Profile',
             headerShown: true,
-          }} 
+          }}
         />
-        <Stack.Screen 
-          name="dashboard" 
-          options={{ 
+        <Stack.Screen
+          name="dashboard"
+          options={{
             presentation: 'card',
             title: 'Parent Dashboard',
             headerShown: true,
-          }} 
+          }}
         />
       </Stack>
       <StatusBar style="auto" />

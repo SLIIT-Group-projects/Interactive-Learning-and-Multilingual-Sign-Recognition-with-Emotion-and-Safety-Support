@@ -195,8 +195,7 @@ export default function LoginScreen() {
           Welcome
         </ThemedText>
         <ThemedText style={styles.subtitle}>
-          {/* TEMPORARY: Authentication bypassed for development */}
-          Click below to continue (Auth bypassed)
+          Sign in to start recording and analyzing sounds
         </ThemedText>
 
         <TouchableOpacity
@@ -208,14 +207,13 @@ export default function LoginScreen() {
             <ActivityIndicator color="#fff" />
           ) : (
             <>
-              {/* TEMPORARY: Google icon commented out */}
-              {/* <Image
+              <Image
                 source={{
                   uri: 'https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg',
                 }}
                 style={styles.googleIcon}
-              /> */}
-              <Text style={styles.buttonText}>Continue to App</Text>
+              />
+              <Text style={styles.buttonText}>Sign in with Google</Text>
             </>
           )}
         </TouchableOpacity>

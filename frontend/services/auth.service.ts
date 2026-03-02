@@ -3,9 +3,9 @@
  * Handles Google Sign-In and authentication state
  */
 
-import { 
-  signInWithCredential, 
-  signOut, 
+import {
+  signInWithCredential,
+  signOut,
   onAuthStateChanged,
   User,
   GoogleAuthProvider,
@@ -37,17 +37,20 @@ class AuthService {
     onAuthStateChanged(auth, (user) => {
       this.currentUser = user;
       this.notifyListeners(user);
-      
-      // Store user in AsyncStorage for persistence
-      if (user) {
-        AsyncStorage.setItem('user', JSON.stringify({
-          uid: user.uid,
-          email: user.email,
-          displayName: user.displayName,
-          photoURL: user.photoURL,
-        }));
-      } else {
-        AsyncStorage.removeItem('user');
+
+      // Store user in AsyncStorage for persistence (skip during SSR)
+      const isClient = Platform.OS !== 'web' || typeof window !== 'undefined';
+      if (isClient) {
+        if (user) {
+          AsyncStorage.setItem('user', JSON.stringify({
+            uid: user.uid,
+            email: user.email,
+            displayName: user.displayName,
+            photoURL: user.photoURL,
+          })).catch(err => console.error('Error saving user to storage:', err));
+        } else {
+          AsyncStorage.removeItem('user').catch(err => console.error('Error removing user from storage:', err));
+        }
       }
     });
 
@@ -56,6 +59,11 @@ class AuthService {
   }
 
   private async restoreUser() {
+    // Only run on client-side
+    if (Platform.OS === 'web' && typeof window === 'undefined') {
+      return;
+    }
+
     try {
       const userData = await AsyncStorage.getItem('user');
       if (userData) {
@@ -78,7 +86,7 @@ class AuthService {
         const provider = new GoogleAuthProvider();
         provider.addScope('profile');
         provider.addScope('email');
-        
+
         const result = await signInWithPopup(auth, provider);
         return result.user;
       } else {
@@ -103,8 +111,8 @@ class AuthService {
       // For Firebase Auth OAuth flows, use the Web Client ID (works for both iOS and Android)
       // You can get this from Firebase Console > Authentication > Sign-in method > Google
       // Priority: Web Client ID > Platform-specific IDs
-      const clientId = 
-        process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID || 
+      const clientId =
+        process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID ||
         GOOGLE_CLIENT_ID ||
         Platform.select({
           ios: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || GOOGLE_IOS_CLIENT_ID,
@@ -166,7 +174,7 @@ If you don't see a Web client ID, you may need to enable Google Sign-In first.
         if (result.type === 'error') {
           const errorMessage = result.error?.message || 'Unknown error';
           const errorCode = result.error?.code || 'unknown';
-          
+
           // Provide helpful error messages for common issues
           if (errorCode === 'access_denied' || errorMessage.includes('access_denied') || errorMessage.includes('blocked')) {
             throw new Error(
@@ -187,25 +195,25 @@ If you don't see a Web client ID, you may need to enable Google Sign-In first.
           throw new Error(`Google Sign-In Error: ${errorMessage} (Code: ${errorCode})`);
         }
         throw new Error(
-          result.type === 'cancel' 
-            ? 'Sign-in was cancelled' 
+          result.type === 'cancel'
+            ? 'Sign-in was cancelled'
             : `Failed to complete Google sign-in: ${result.type}`
         );
       }
 
       // Get the ID token from the result
       const { id_token } = result.params;
-      
+
       if (!id_token) {
         throw new Error('No ID token received from Google');
       }
 
       // Create a credential from the ID token
       const credential = GoogleAuthProvider.credential(id_token);
-      
+
       // Sign in to Firebase with the credential
       const userCredential = await signInWithCredential(auth, credential);
-      
+
       return userCredential.user;
     } catch (error: any) {
       console.error('Mobile Google Sign-In Error:', error);
@@ -245,10 +253,10 @@ If you don't see a Web client ID, you may need to enable Google Sign-In first.
    */
   onAuthStateChanged(callback: (user: User | null) => void): () => void {
     this.authStateListeners.push(callback);
-    
+
     // Call immediately with current user
     callback(this.getCurrentUser());
-    
+
     // Return unsubscribe function
     return () => {
       const index = this.authStateListeners.indexOf(callback);
