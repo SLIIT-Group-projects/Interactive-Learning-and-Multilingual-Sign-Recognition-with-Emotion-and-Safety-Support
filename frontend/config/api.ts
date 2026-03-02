@@ -1,5 +1,6 @@
 import { Platform } from "react-native";
 import Constants from "expo-constants";
+import * as FileSystem from "expo-file-system/legacy";
 
 /**
  * Get the base URL for API calls based on the platform
@@ -183,62 +184,167 @@ export async function apiCall(
 
 /**
  * Upload file with FormData
+ * For React Native: saves base64 to temp file first, then uploads
  */
 export async function uploadFile(
   endpoint: string,
   file: { uri: string; type: string; name: string },
   body: Record<string, any> = {},
-  retries = 2
+  retries = 2,
+  timeout = 30000 // 30 seconds default for ML operations
 ): Promise<any> {
   console.log(`[Upload] Preparing upload - endpoint: ${endpoint}, file: ${file.name}`);
   console.log(`[Upload] URI type: ${file.uri?.startsWith('data:') ? 'base64' : file.uri?.startsWith('file://') ? 'file' : 'other'}`);
   
-  const formData = new FormData();
+  let fileUri = file.uri;
+  let shouldCleanup = false;
   
-  // Handle base64 data URIs - convert to Blob for web, or use file URI for native
+  // Handle base64 data URIs - save to temp file for React Native, use Blob for web
   if (file.uri.startsWith('data:')) {
-    console.log(`[Upload] Converting base64 data URI to Blob...`);
-    try {
-      // Extract base64 data and mime type
-      const base64Data = file.uri.split(',')[1];
-      const mimeType = file.uri.split(',')[0].split(':')[1].split(';')[0];
-      
-      // Convert base64 to binary
-      const binaryString = atob(base64Data);
-      const bytes = new Uint8Array(binaryString.length);
-      for (let i = 0; i < binaryString.length; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
-      }
-      
-      // Create Blob from bytes
-      const blob = new Blob([bytes], { type: mimeType || file.type || "image/jpeg" });
-      
-      // Append Blob to FormData (works on web)
-      formData.append("file", blob, file.name || "image.jpg");
-      console.log(`[Upload] ✅ Converted base64 to Blob (${bytes.length} bytes, ${mimeType})`);
-    } catch (err: any) {
-      console.error(`[Upload] Error converting base64 to Blob:`, err);
-      // Fallback: try sending as data URI (might work on some platforms)
-      formData.append("file", {
-        uri: file.uri,
-        type: file.type || "image/jpeg",
-        name: file.name || "image.jpg",
-      } as any);
+    console.log(`[Upload] Converting base64 data URI...`);
+    
+    // Extract actual base64 data - handle nested data URIs
+    // Format might be: data:image/jpeg;base64,data:image/png;base64,ACTUAL_BASE64
+    let actualBase64Data = file.uri;
+    
+    // Find the last comma (in case of nested data URIs)
+    if (actualBase64Data.includes(',')) {
+      const lastCommaIndex = actualBase64Data.lastIndexOf(',');
+      actualBase64Data = actualBase64Data.substring(lastCommaIndex + 1);
     }
-  } else {
-    // Regular file URI (native platforms)
-    formData.append("file", {
-      uri: file.uri,
-      type: file.type || "image/jpeg",
-      name: file.name || "image.jpg",
-    } as any);
+    
+    // If still contains data: prefix, extract again
+    if (actualBase64Data.includes('base64,')) {
+      actualBase64Data = actualBase64Data.split('base64,')[1] || actualBase64Data;
+    }
+    
+    // Reconstruct a clean data URI
+    const cleanDataUri = `data:image/jpeg;base64,${actualBase64Data}`;
+    console.log(`[Upload] Cleaned data URI length: ${cleanDataUri.length} chars, base64 data: ${actualBase64Data.length} chars`);
+    
+    // Check if running on web
+    if (Platform.OS === 'web') {
+      // On web, use Blob directly - no need for temp file
+      console.log(`[Upload] Web platform detected - using Blob directly`);
+      // Use the cleaned data URI
+      fileUri = cleanDataUri;
+      shouldCleanup = false;
+    } else {
+      // Native platforms - save to temp file
+      try {
+        // Extract base64 data - handle nested data URIs
+        // Format might be: data:image/jpeg;base64,data:image/png;base64,ACTUAL_BASE64_DATA
+        // or: data:image/jpeg;base64,ACTUAL_BASE64_DATA
+        let base64Data = file.uri;
+        
+        // Remove the data URI prefix(es)
+        if (base64Data.includes(',')) {
+          // Find the last comma (in case of nested data URIs)
+          const lastCommaIndex = base64Data.lastIndexOf(',');
+          base64Data = base64Data.substring(lastCommaIndex + 1);
+        }
+        
+        // If still contains data: prefix, extract again
+        if (base64Data.includes('base64,')) {
+          base64Data = base64Data.split('base64,')[1] || base64Data;
+        }
+        
+        console.log(`[Upload] Extracted base64 data length: ${base64Data.length} chars`);
+        
+        // Check cacheDirectory exists (not available on web)
+        if (!FileSystem.cacheDirectory) {
+          throw new Error('FileSystem.cacheDirectory is not available on this platform');
+        }
+        
+        // Create temp file path
+        const tempFilePath = `${FileSystem.cacheDirectory}${file.name || `temp_${Date.now()}.jpg`}`;
+        console.log(`[Upload] Writing base64 data to: ${tempFilePath}`);
+        
+        // Write base64 to file using legacy API
+        await FileSystem.writeAsStringAsync(tempFilePath, base64Data, {
+          encoding: 'base64' as any,
+        });
+        console.log(`[Upload] ✅ File written successfully`);
+        
+        // Ensure file:// prefix for React Native
+        fileUri = tempFilePath.startsWith('file://') ? tempFilePath : `file://${tempFilePath}`;
+        shouldCleanup = true;
+        
+        // Verify file was created
+        const fileInfo = await FileSystem.getInfoAsync(tempFilePath);
+        if (!fileInfo.exists) {
+          throw new Error(`Temp file was not created: ${tempFilePath}`);
+        }
+        console.log(`[Upload] ✅ Saved base64 to temp file: ${fileUri} (${fileInfo.size} bytes)`);
+      } catch (err: any) {
+        console.error(`[Upload] ❌ Error saving base64 to file:`, err);
+        throw new Error(`Failed to prepare image file: ${err.message}`);
+      }
+    }
+  } else if (!fileUri.startsWith('file://') && Platform.OS !== 'web') {
+    // Ensure file:// prefix for existing file URIs (not on web)
+    fileUri = `file://${fileUri}`;
   }
   
-  // Add other body fields
+  const formData = new FormData();
+  
+  // CRITICAL: Add body fields FIRST (before file) so multer can access them in destination callback
   Object.entries(body).forEach(([key, value]) => {
-    console.log(`[Upload] Adding field: ${key} = ${value}`);
-    formData.append(key, String(value));
+    const stringValue = String(value);
+    console.log(`[Upload] Adding field: ${key} = ${stringValue}`);
+    formData.append(key, stringValue);
   });
+  
+  // Append file - different format for web vs native
+  if (Platform.OS === 'web') {
+    // Web: Convert data URI to Blob
+    if (fileUri.startsWith('data:')) {
+      const response = await fetch(fileUri);
+      const blob = await response.blob();
+      formData.append("file", blob, file.name || "image.jpg");
+      console.log(`[Upload] Appended Blob to FormData (web)`);
+    } else {
+      formData.append("file", fileUri as any);
+    }
+  } else {
+    // Native: React Native FormData format
+    const fileObject = {
+      uri: fileUri,
+      type: file.type || "image/jpeg",
+      name: file.name || "image.jpg",
+    };
+    
+    console.log(`[Upload] File object to append:`, {
+      uri: fileUri.substring(0, 100) + '...',
+      type: fileObject.type,
+      name: fileObject.name
+    });
+    
+    formData.append("file", fileObject as any);
+  }
+  
+  // Verify file exists before uploading (skip on web)
+  if (Platform.OS !== 'web') {
+    try {
+      const filePath = fileUri.replace('file://', '');
+      const fileInfo = await FileSystem.getInfoAsync(filePath);
+      if (!fileInfo.exists) {
+        throw new Error(`File does not exist: ${filePath}`);
+      }
+      console.log(`[Upload] File verified: ${fileInfo.size} bytes`);
+    } catch (verifyErr: any) {
+      console.error(`[Upload] File verification error:`, verifyErr);
+      // Continue anyway - might be a platform difference
+    }
+  }
+  
+  // Debug: Try to inspect FormData (works differently on web vs native)
+  if (Platform.OS === 'web') {
+    // On web, we can't enumerate FormData entries, but we can log what we appended
+    console.log(`[Upload] FormData prepared with ${Object.keys(body).length} body fields + 1 file`);
+  } else {
+    console.log(`[Upload] FormData prepared with ${Object.keys(body).length} body fields + 1 file`);
+  }
   
   console.log(`[Upload] Uploading to ${BASE_URL}${endpoint}...`);
   
@@ -250,8 +356,20 @@ export async function uploadFile(
         body: formData,
         // CRITICAL: Don't set Content-Type header - FormData sets it automatically with boundary
       },
-      retries
+      retries,
+      timeout
     );
+    
+    // Cleanup temp file if we created one
+    if (shouldCleanup && fileUri) {
+      try {
+        const filePath = fileUri.replace('file://', '');
+        await FileSystem.deleteAsync(filePath, { idempotent: true });
+        console.log(`[Upload] Cleaned up temp file: ${fileUri}`);
+      } catch (cleanupErr) {
+        console.warn(`[Upload] Failed to cleanup temp file:`, cleanupErr);
+      }
+    }
     
     if (!response.ok) {
       const errorText = await response.text().catch(() => "Unknown error");
@@ -263,6 +381,15 @@ export async function uploadFile(
     console.log(`[Upload] ✅ Upload successful:`, result);
     return result;
   } catch (error: any) {
+    // Cleanup temp file on error too
+    if (shouldCleanup && fileUri) {
+      try {
+        const filePath = fileUri.replace('file://', '');
+        await FileSystem.deleteAsync(filePath, { idempotent: true });
+      } catch (cleanupErr) {
+        // Ignore cleanup errors
+      }
+    }
     console.error("[Upload] Upload error:", error);
     throw error;
   }
@@ -270,56 +397,146 @@ export async function uploadFile(
 
 /**
  * Upload multiple files (for hand analysis)
+ * For React Native: saves base64 to temp files first, then uploads
  */
 export async function uploadFiles(
   endpoint: string,
   files: Array<{ uri: string; type: string; name: string }>,
   body: Record<string, any> = {},
-  retries = 2
+  retries = 2,
+  timeout = 60000 // 60 seconds default for hand analysis (multiple frames)
 ): Promise<any> {
   console.log(`[Upload] Preparing upload of ${files.length} files...`);
   const formData = new FormData();
+  const tempFiles: string[] = []; // Track temp files for cleanup
   
-  // Add all files with field name "frames"
-  files.forEach((file, index) => {
-    if (file.uri.startsWith('data:')) {
-      // Convert base64 to Blob
-      try {
-        const base64Data = file.uri.split(',')[1];
-        const mimeType = file.uri.split(',')[0].split(':')[1].split(';')[0];
-        const binaryString = atob(base64Data);
-        const bytes = new Uint8Array(binaryString.length);
-        for (let i = 0; i < binaryString.length; i++) {
-          bytes[i] = binaryString.charCodeAt(i);
-        }
-        const blob = new Blob([bytes], { type: mimeType || file.type || "image/jpeg" });
-        formData.append("frames", blob, file.name || `frame_${index}.jpg`);
-        console.log(`[Upload] Converted frame ${index + 1} from base64 to Blob`);
-      } catch (err: any) {
-        console.error(`[Upload] Error converting frame ${index + 1}:`, err);
-        // Fallback
-        formData.append("frames", {
-          uri: file.uri,
-          type: file.type || "image/jpeg",
-          name: file.name || "frame.jpg",
-        } as any);
-      }
-    } else {
-      // Regular file URI
-      formData.append("frames", {
-        uri: file.uri,
-        type: file.type || "image/jpeg",
-        name: file.name || "frame.jpg",
-      } as any);
-    }
-  });
-  
-  // Add other body fields
+  // CRITICAL: Add body fields FIRST (before files) so multer can access them
   Object.entries(body).forEach(([key, value]) => {
-    formData.append(key, String(value));
+    const stringValue = String(value);
+    console.log(`[Upload] Adding field: ${key} = ${stringValue}`);
+    formData.append(key, stringValue);
   });
   
   try {
+    // Process all files - convert base64 to temp files if needed
+    for (let index = 0; index < files.length; index++) {
+      const file = files[index];
+      let fileUri = file.uri;
+      
+      if (file.uri.startsWith('data:')) {
+        if (Platform.OS === 'web') {
+          // Web: Clean the data URI and use it
+          // Extract actual base64 data - handle nested data URIs
+          let actualBase64Data = file.uri;
+          if (actualBase64Data.includes(',')) {
+            const lastCommaIndex = actualBase64Data.lastIndexOf(',');
+            actualBase64Data = actualBase64Data.substring(lastCommaIndex + 1);
+          }
+          if (actualBase64Data.includes('base64,')) {
+            actualBase64Data = actualBase64Data.split('base64,')[1] || actualBase64Data;
+          }
+          // Reconstruct clean data URI
+          fileUri = `data:image/jpeg;base64,${actualBase64Data}`;
+          console.log(`[Upload] Frame ${index + 1} - cleaned data URI (web), base64 length: ${actualBase64Data.length} chars`);
+        } else {
+          // Native: Save to temp file
+          console.log(`[Upload] Converting frame ${index + 1} from base64 to temp file...`);
+          try {
+            // Extract base64 data - handle nested data URIs
+            // Format might be: data:image/jpeg;base64,data:image/png;base64,ACTUAL_BASE64
+            let base64Data = file.uri;
+            
+            // Find the last comma (in case of nested data URIs)
+            if (base64Data.includes(',')) {
+              const lastCommaIndex = base64Data.lastIndexOf(',');
+              base64Data = base64Data.substring(lastCommaIndex + 1);
+            }
+            
+            // If still contains data: prefix, extract again
+            if (base64Data.includes('base64,')) {
+              base64Data = base64Data.split('base64,')[1] || base64Data;
+            }
+            
+            console.log(`[Upload] Extracted base64 data length: ${base64Data.length} chars`);
+            
+            if (!FileSystem.cacheDirectory) {
+              throw new Error('FileSystem.cacheDirectory is not available');
+            }
+            
+            const tempFilePath = `${FileSystem.cacheDirectory}${file.name || `frame_${Date.now()}_${index}.jpg`}`;
+            console.log(`[Upload] Writing frame ${index + 1} base64 data to: ${tempFilePath}`);
+            await FileSystem.writeAsStringAsync(tempFilePath, base64Data, {
+              encoding: 'base64' as any,
+            });
+            console.log(`[Upload] ✅ Frame ${index + 1} written successfully`);
+            
+            fileUri = tempFilePath.startsWith('file://') ? tempFilePath : `file://${tempFilePath}`;
+            tempFiles.push(fileUri);
+            console.log(`[Upload] ✅ Saved frame ${index + 1} to temp file: ${fileUri}`);
+          } catch (err: any) {
+            console.error(`[Upload] Error saving frame ${index + 1}:`, err);
+            throw new Error(`Failed to prepare frame ${index + 1}: ${err.message}`);
+          }
+        }
+      }
+      
+      // Append file to FormData - different format for web vs native
+      if (Platform.OS === 'web') {
+        // Web: Convert data URI to Blob
+        if (fileUri.startsWith('data:')) {
+          try {
+            // Use the cleaned data URI
+            const response = await fetch(fileUri);
+            const blob = await response.blob();
+            formData.append("frames", blob, file.name || `frame_${index}.jpg`);
+            console.log(`[Upload] ✅ Frame ${index + 1} appended as Blob, size: ${blob.size} bytes`);
+          } catch (fetchErr) {
+            console.error(`[Upload] ❌ Error converting data URI to Blob for frame ${index + 1}:`, fetchErr);
+            // Fallback: convert base64 to Blob manually
+            try {
+              const base64Data = fileUri.split(',')[1];
+              const binaryString = atob(base64Data);
+              const bytes = new Uint8Array(binaryString.length);
+              for (let i = 0; i < binaryString.length; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+              }
+              const blob = new Blob([bytes], { type: 'image/jpeg' });
+              formData.append("frames", blob, file.name || `frame_${index}.jpg`);
+              console.log(`[Upload] ✅ Frame ${index + 1} appended using manual conversion, size: ${blob.size} bytes`);
+            } catch (manualErr) {
+              console.error(`[Upload] ❌ Manual conversion failed for frame ${index + 1}:`, manualErr);
+              throw new Error(`Failed to convert data URI to Blob for frame ${index + 1}: ${fetchErr.message}`);
+            }
+          }
+        } else {
+          formData.append("frames", fileUri as any);
+        }
+      } else {
+        // Native: Ensure file:// prefix
+        if (!fileUri.startsWith('file://')) {
+          fileUri = `file://${fileUri}`;
+        }
+        
+        // Append file to FormData - React Native format
+        const fileObject = {
+          uri: fileUri,
+          type: file.type || "image/jpeg",
+          name: file.name || `frame_${index}.jpg`,
+        };
+        
+        console.log(`[Upload] Frame ${index + 1} object:`, {
+          uri: fileUri.substring(0, 100) + '...',
+          type: fileObject.type,
+          name: fileObject.name
+        });
+        
+        formData.append("frames", fileObject as any);
+      }
+    }
+    
+    console.log(`[Upload] FormData prepared with ${Object.keys(body).length} body fields + ${files.length} files`);
+    console.log(`[Upload] Uploading ${files.length} files to ${BASE_URL}${endpoint}...`);
+    
     const response = await apiCall(
       endpoint,
       {
@@ -327,8 +544,24 @@ export async function uploadFiles(
         body: formData,
         // Don't set Content-Type - React Native FormData sets it automatically with boundary
       },
-      retries
+      retries,
+      timeout
     );
+    
+    // Cleanup temp files
+    if (tempFiles.length > 0) {
+      try {
+        await Promise.all(
+          tempFiles.map(fileUri => {
+            const filePath = fileUri.replace('file://', '');
+            return FileSystem.deleteAsync(filePath, { idempotent: true });
+          })
+        );
+        console.log(`[Upload] Cleaned up ${tempFiles.length} temp files`);
+      } catch (cleanupErr) {
+        console.warn(`[Upload] Failed to cleanup some temp files:`, cleanupErr);
+      }
+    }
     
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ error: "Unknown error" }));
@@ -337,6 +570,19 @@ export async function uploadFiles(
     
     return await response.json();
   } catch (error: any) {
+    // Cleanup temp files on error
+    if (tempFiles.length > 0) {
+      try {
+        await Promise.all(
+          tempFiles.map(fileUri => {
+            const filePath = fileUri.replace('file://', '');
+            return FileSystem.deleteAsync(filePath, { idempotent: true });
+          })
+        );
+      } catch (cleanupErr) {
+        // Ignore cleanup errors
+      }
+    }
     console.error("Upload error:", error);
     throw error;
   }

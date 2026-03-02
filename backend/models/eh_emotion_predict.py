@@ -9,8 +9,9 @@ except Exception:
     tf = None
     cv2 = None
 
-# Use your saved model path
-MODEL_PATH = os.path.normpath(r"D:\SLIIT UNI\Y4S1\RP\final_model_files\FER_then_CK_finetune_KEEP_NEUTRAL_best.keras")
+# Use your saved model path - relative to this script
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+MODEL_PATH = os.path.normpath(os.path.join(SCRIPT_DIR, "emotion_cnn_48x48_best.keras"))
 CLASSES = ["angry","disgust","fear","happy","neutral","sad","surprise"]
 IMG_SIZE = (48, 48)
 
