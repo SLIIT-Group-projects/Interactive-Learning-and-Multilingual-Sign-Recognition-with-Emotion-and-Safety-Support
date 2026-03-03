@@ -9,11 +9,15 @@ import {
     ActivityIndicator,
     Animated,
     Dimensions,
-    Image
+    Image,
+    Platform,
+    Vibration
 } from 'react-native';
 import { Audio } from 'expo-av';
 import * as Haptics from 'expo-haptics';
+import * as Location from 'expo-location';
 import { useNavigation } from '@react-navigation/native';
+import { useAuth } from '../../contexts/AuthContext';
 import apiService from '../../../services/api.service';
 import hazardAlertService from '../../../services/hazardAlert.service';
 
@@ -24,6 +28,7 @@ const GREEN_BUTTON = '#10B981'; // Bright green
 const ORANGE_ACCENT = '#F59E0B'; // Orange for accents
 
 export default function HazardDetectionScreen() {
+    const { userData } = useAuth();
     const [permissionResponse, requestPermission] = Audio.usePermissions();
     const [recording, setRecording] = useState(null);
     const [isListening, setIsListening] = useState(false);
@@ -31,12 +36,15 @@ export default function HazardDetectionScreen() {
     const [detections, setDetections] = useState(null);
     const [alertMessage, setAlertMessage] = useState(null);
     const [error, setError] = useState(null);
+    const [currentLocation, setCurrentLocation] = useState(null);
+    const [isCriticalAlert, setIsCriticalAlert] = useState(false);
     const processingIntervalRef = useRef(null);
     const recordingRef = useRef(null);
     const isListeningRef = useRef(false);
     const isRestartingRef = useRef(false);
     const restartPromiseRef = useRef(null);
     const isProcessingRef = useRef(false);
+    const vibrationIntervalRef = useRef(null);
     const flashAnimation = useRef(new Animated.Value(0)).current;
     const pulseAnimation = useRef(new Animated.Value(1)).current;
     const circleAnimation1 = useRef(new Animated.Value(0)).current;
@@ -216,7 +224,12 @@ export default function HazardDetectionScreen() {
             setIsListening(true);
             isListeningRef.current = true;
             setError(null);
-      setAlertMessage(null);
+      // Clear any non-critical alerts when starting to listen
+      // Check detections directly to see if there's a critical alert
+      const currentPriority = detections?.highestPriority?.priority || 0;
+      if (currentPriority < 9) {
+        setAlertMessage(null);
+      }
 
       // Verify ref is still set after state updates
       setTimeout(() => {
@@ -426,11 +439,37 @@ export default function HazardDetectionScreen() {
 
       console.log('📁 Audio URI:', uri);
 
-      // Get current context (time, location, etc.)
+      // Get user ID from auth context
+      const userId = userData?.uid || null;
+
+      // Get GPS location
+      let locationData = null;
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status === 'granted') {
+          const loc = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.Balanced,
+          });
+          locationData = {
+            type: 'Point',
+            coordinates: [loc.coords.longitude, loc.coords.latitude],
+            latitude: loc.coords.latitude,
+            longitude: loc.coords.longitude,
+          };
+          setCurrentLocation(locationData);
+          console.log('📍 GPS location captured:', locationData);
+        } else {
+          console.warn('⚠️ Location permission not granted');
+        }
+      } catch (locationError) {
+        console.error('❌ Error getting location:', locationError);
+        // Continue without location if it fails
+      }
+
+      // Get current context (time, location, userId, etc.)
       const context = {
-        location: {
-          type: 'indoor', // TODO: Get actual location
-        },
+        userId: userId,
+        location: locationData,
         time: new Date().toISOString(),
       };
 
@@ -571,6 +610,83 @@ export default function HazardDetectionScreen() {
 
             setAlertMessage(message);
 
+            // Check if this is a critical alert (priority >= 9)
+            const isCritical = priority >= 9;
+            setIsCriticalAlert(isCritical);
+
+            // Start continuous vibration for critical alerts
+            if (isCritical) {
+              // Clear any existing vibration interval
+              if (vibrationIntervalRef.current) {
+                clearInterval(vibrationIntervalRef.current);
+                vibrationIntervalRef.current = null;
+              }
+              
+              // CRITICAL: Strong vibration for deaf users - use BOTH haptics AND vibration API
+              console.log('🚨 CRITICAL ALERT - Starting aggressive vibration pattern');
+              
+              try {
+                // Use React Native Vibration API for maximum reliability (works on both iOS and Android)
+                // Strong initial pattern: vibrate 800ms, pause 100ms, vibrate 800ms, pause 100ms, vibrate 800ms
+                Vibration.vibrate([0, 800, 100, 800, 100, 800], true); // true = repeat pattern
+                console.log('📳 Vibration API triggered with aggressive pattern');
+                
+                // ALSO use haptics on iOS for additional tactile feedback
+                if (Platform.OS === 'ios') {
+                  try {
+                    const hapticsAvailable = await Haptics.isAvailableAsync();
+                    if (hapticsAvailable) {
+                      // Multiple strong haptic bursts
+                      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+                      await new Promise(resolve => setTimeout(resolve, 50));
+                      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+                      await new Promise(resolve => setTimeout(resolve, 50));
+                      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+                      await new Promise(resolve => setTimeout(resolve, 50));
+                      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+                      console.log('📳 iOS haptics triggered');
+                    } else {
+                      console.warn('⚠️ Haptics not available, using Vibration API only');
+                    }
+                  } catch (hapticError) {
+                    console.warn('⚠️ Haptic error (falling back to Vibration API):', hapticError);
+                  }
+                }
+              } catch (vibError) {
+                console.error('❌ Vibration error:', vibError);
+                // Fallback: try simple vibration
+                try {
+                  Vibration.vibrate(1000);
+                } catch (fallbackError) {
+                  console.error('❌ Fallback vibration also failed:', fallbackError);
+                }
+              }
+              
+              // Start continuous aggressive vibration pattern (every 400ms for maximum frequency)
+              vibrationIntervalRef.current = setInterval(async () => {
+                try {
+                  // Use Vibration API for reliable continuous feedback
+                  // Pattern: vibrate 300ms, pause 100ms (repeats every interval)
+                  Vibration.vibrate([0, 300, 100], false); // false = don't repeat (we handle repetition with interval)
+                  
+                  // ALSO trigger haptics on iOS every other interval for variety
+                  if (Platform.OS === 'ios') {
+                    try {
+                      const hapticsAvailable = await Haptics.isAvailableAsync();
+                      if (hapticsAvailable) {
+                        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+                      }
+                    } catch (hapticError) {
+                      // Silently fail - Vibration API is primary
+                    }
+                  }
+                } catch (vibError) {
+                  console.error('❌ Continuous vibration error:', vibError);
+                }
+              }, 400); // Very frequent: every 400ms for maximum tactile feedback
+              console.log('🔔 Started AGGRESSIVE continuous vibration (every 400ms) for critical alert');
+            }
+
             // Update last alert time
             lastAlertTimeRef.current.set(hazardType, now);
 
@@ -590,15 +706,27 @@ export default function HazardDetectionScreen() {
           } else {
             // Don't alert yet, but keep detection in history
             console.log(`⏳ Not alerting yet: ${hazardType} (confidence: ${(confidence * 100).toFixed(1)}%, priority: ${priority})`);
-            setAlertMessage(null);
+            // Don't clear critical alerts - check priority directly from detection
+            const currentPriority = response.data.highestPriority?.priority || priority;
+            if (currentPriority < 9) {
+              setAlertMessage(null);
+            }
           }
         } else {
-          // No detection in this chunk - clear alert but keep history
-          setAlertMessage(null);
+          // No detection in this chunk - clear alert but keep history (unless critical)
+          // Check if we have a critical alert currently displayed
+          const currentPriority = detections?.highestPriority?.priority || 0;
+          if (currentPriority < 9) {
+            setAlertMessage(null);
+          }
         }
       } else {
-        // No detection - clear alert but keep history
-        setAlertMessage(null);
+        // No detection - clear alert but keep history (unless critical)
+        // Check if we have a critical alert currently displayed
+        const currentPriority = detections?.highestPriority?.priority || 0;
+        if (currentPriority < 9) {
+          setAlertMessage(null);
+        }
       }
 
       // ALWAYS restart recording for the next chunk - this is critical for continuous listening
@@ -755,6 +883,14 @@ export default function HazardDetectionScreen() {
   };
 
   const hidePopup = () => {
+    // Don't auto-dismiss critical alerts - they must be explicitly dismissed by user
+    // Check both state and detections to be safe
+    const currentPriority = detections?.highestPriority?.priority || 0;
+    if (isCriticalAlert || currentPriority >= 9) {
+      console.log('⚠️ Critical alert cannot be auto-dismissed - user must explicitly dismiss');
+      return;
+    }
+
     Animated.parallel([
       Animated.timing(popupAnimation, {
         toValue: 0,
@@ -769,6 +905,7 @@ export default function HazardDetectionScreen() {
     ]).start(() => {
       setAlertMessage(null);
       setDetections(null);
+      setIsCriticalAlert(false);
     });
     };
 
@@ -801,7 +938,23 @@ export default function HazardDetectionScreen() {
       if (hazardAlertService && typeof hazardAlertService.stopAlert === 'function') {
         hazardAlertService.stopAlert();
       }
+      
+      // Clear continuous vibration if active
+      if (vibrationIntervalRef.current) {
+        clearInterval(vibrationIntervalRef.current);
+        vibrationIntervalRef.current = null;
+        console.log('🔕 Stopped continuous vibration');
+      }
+      
+      // Cancel any ongoing vibration (works on both iOS and Android)
+      try {
+        Vibration.cancel();
+      } catch (cancelError) {
+        console.warn('⚠️ Error canceling vibration:', cancelError);
+      }
+      
       setAlertMessage(null);
+      setIsCriticalAlert(false);
 
       // Clear detection history when stopping
       detectionHistoryRef.current = [];
@@ -815,10 +968,46 @@ export default function HazardDetectionScreen() {
     };
 
     const dismissAlert = () => {
+    // Stop any ongoing alerts
     if (hazardAlertService && typeof hazardAlertService.stopAlert === 'function') {
       hazardAlertService.stopAlert();
     }
-        hidePopup();
+    
+    // Clear continuous vibration if active
+    if (vibrationIntervalRef.current) {
+      clearInterval(vibrationIntervalRef.current);
+      vibrationIntervalRef.current = null;
+      console.log('🔕 Stopped continuous vibration');
+    }
+    
+    // Cancel any ongoing vibration (works on both iOS and Android)
+    try {
+      Vibration.cancel();
+      console.log('🔕 Vibration canceled');
+    } catch (cancelError) {
+      console.warn('⚠️ Error canceling vibration:', cancelError);
+    }
+    
+    // Reset critical alert state
+    setIsCriticalAlert(false);
+    
+    // Hide popup (will work for critical alerts since user explicitly dismissed)
+    Animated.parallel([
+      Animated.timing(popupAnimation, {
+        toValue: 0,
+        duration: 250,
+        useNativeDriver: true,
+      }),
+      Animated.timing(backdropOpacity, {
+        toValue: 0,
+        duration: 250,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setAlertMessage(null);
+      setDetections(null);
+    });
+    
     // Note: We keep detection history even after dismissing alert
     // This allows the system to still track patterns
   };

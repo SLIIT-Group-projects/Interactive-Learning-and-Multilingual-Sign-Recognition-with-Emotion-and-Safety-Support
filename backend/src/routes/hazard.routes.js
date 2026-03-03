@@ -38,15 +38,15 @@ async function saveSoundsToDatabase(detections, context = {}, audioFileUrl = nul
       const confidence = detection.confidence || 0;
       const priority = detection.priority || getHazardPriority(hazardType);
 
-      // Only save identified hazard alerts:
-      // 1. Must be a recognized hazard type (priority > 0 means it's in the hazard priorities list)
+      // Only save critical alerts (priority >= 9):
+      // 1. Must be a critical alert (priority >= 9)
       // 2. Must have sufficient confidence
       // 3. Must not be 'unknown' type
-      const isRecognizedHazard = priority > 0 && hazardType !== 'unknown';
+      const isCriticalAlert = priority >= 9 && hazardType !== 'unknown';
       const hasSufficientConfidence = confidence >= MIN_CONFIDENCE_THRESHOLD;
 
-      if (!isRecognizedHazard || !hasSufficientConfidence) {
-        console.log(`⏭️ Skipping save - ${hazardType} (confidence: ${confidence.toFixed(2)}, priority: ${priority}) - not a recognized hazard alert`);
+      if (!isCriticalAlert || !hasSufficientConfidence) {
+        console.log(`⏭️ Skipping save - ${hazardType} (confidence: ${confidence.toFixed(2)}, priority: ${priority}) - not a critical alert`);
         continue;
       }
 
@@ -99,7 +99,7 @@ async function saveSoundsToDatabase(detections, context = {}, audioFileUrl = nul
         const soundDoc = createSoundDocument(soundData);
         const docRef = await db.collection(SOUNDS_COLLECTION).add(soundDoc);
         savedSoundIds.push(docRef.id);
-        console.log(`💾 Saved hazard alert: ${hazardType} (confidence: ${confidence.toFixed(2)}, priority: ${priority}, ID: ${docRef.id})`);
+        console.log(`💾 Saved critical alert: ${hazardType} (confidence: ${confidence.toFixed(2)}, priority: ${priority}, ID: ${docRef.id})`);
       } else {
         console.warn(`⚠️ Skipped saving invalid sound data:`, validation.errors);
       }
