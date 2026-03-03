@@ -22,7 +22,7 @@ app.use(
   cors({
     origin: process.env.CORS_ORIGIN || "*", // Allow all origins in development
     credentials: true,
-  })
+  }),
 );
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));

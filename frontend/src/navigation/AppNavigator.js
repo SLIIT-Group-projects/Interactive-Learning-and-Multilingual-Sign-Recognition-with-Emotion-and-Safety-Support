@@ -5,6 +5,10 @@ import { useAuth } from '../contexts/AuthContext';
 import { LoginScreen, RegisterScreen } from '../screens/auth';
 import { ParentDashboard, AddChildScreen } from '../screens/parent';
 import { ChildDashboard, LearnSigns, PlayGame } from '../screens/child';
+import { HazardDetectionScreen } from '../screens/common';
+import PlacesScreen from '../screens/parent/PlacesScreen';
+import HazardHistoryScreen from '../screens/parent/HazardHistoryScreen';
+
 
 const Stack = createNativeStackNavigator();
 
@@ -48,7 +52,11 @@ export default function AppNavigator() {
         <>
           <Stack.Screen name="ParentDashboard" component={ParentDashboard} />
           <Stack.Screen name="AddChild" component={AddChildScreen} />
+          <Stack.Screen name="ParentPlaces" component={PlacesScreen} />
+          <Stack.Screen name="HazardHistory" component={HazardHistoryScreen} />
+          <Stack.Screen name="HazardDetection" component={HazardDetectionScreen} />
           <Stack.Screen name="Login" component={LoginScreen} />
+
         </>
       ) : isChild ? (
         // Child screens
@@ -56,7 +64,9 @@ export default function AppNavigator() {
           <Stack.Screen name="ChildDashboard" component={ChildDashboard} />
           <Stack.Screen name="LearnSigns" component={LearnSigns} />
           <Stack.Screen name="PlayGame" component={PlayGame} />
+          <Stack.Screen name="HazardDetection" component={HazardDetectionScreen} />
         </>
+
       ) : (
         // Fallback to login if role is unknown
         <Stack.Screen name="Login" component={LoginScreen} />

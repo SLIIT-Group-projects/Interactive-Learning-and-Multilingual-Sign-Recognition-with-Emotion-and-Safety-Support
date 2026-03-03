@@ -218,6 +218,58 @@ const ParentDashboard = ({ navigation }) => {
               </View>
             )}
           </View>
+
+          {/* Safety & Hazard Section */}
+          <View className="bg-white rounded-2xl p-4 mb-6 shadow-md">
+            <Text className="text-xl font-bold text-gray-800 mb-3">
+              Safety & Hazard Monitoring
+            </Text>
+            <View className="flex-row">
+              {/* Hazard History Button */}
+              <TouchableOpacity
+                onPress={() => navigation.navigate('HazardHistory')}
+                className="flex-1 bg-red-500 rounded-2xl p-4 mr-2 flex-row items-center justify-between"
+                activeOpacity={0.85}
+              >
+                <View className="flex-row items-center">
+                  <View className="bg-white rounded-full p-2 mr-3">
+                    <MaterialIcons name="warning" size={24} color="#ef4444" />
+                  </View>
+                  <View>
+                    <Text className="text-white font-semibold text-base">
+                      Hazard Alerts
+                    </Text>
+                    <Text className="text-red-100 text-xs">
+                      View recorded dangerous sounds
+                    </Text>
+                  </View>
+                </View>
+                <MaterialIcons name="chevron-right" size={24} color="#fee2e2" />
+              </TouchableOpacity>
+
+              {/* Places Button */}
+              <TouchableOpacity
+                onPress={() => navigation.navigate('ParentPlaces')}
+                className="flex-1 bg-indigo-500 rounded-2xl p-4 ml-2 flex-row items-center justify-between"
+                activeOpacity={0.85}
+              >
+                <View className="flex-row items-center">
+                  <View className="bg-white rounded-full p-2 mr-3">
+                    <MaterialIcons name="place" size={24} color="#4f46e5" />
+                  </View>
+                  <View>
+                    <Text className="text-white font-semibold text-base">
+                      Safe Places
+                    </Text>
+                    <Text className="text-indigo-100 text-xs">
+                      Manage home, school, and more
+                    </Text>
+                  </View>
+                </View>
+                <MaterialIcons name="chevron-right" size={24} color="#e0e7ff" />
+              </TouchableOpacity>
+            </View>
+          </View>
           
           {/* Progress Overview Cards */}
           {analyticsLoading ? (
@@ -271,6 +323,30 @@ const ParentDashboard = ({ navigation }) => {
               <Text className="text-gray-500 text-center">No data available yet</Text>
             </View>
           )}
+          
+          {/* Hazard Detection Button */}
+          <TouchableOpacity
+            onPress={() => navigation.navigate('HazardDetection')}
+            className="bg-red-500 rounded-2xl p-5 mb-6 shadow-lg"
+            activeOpacity={0.8}
+          >
+            <View className="flex-row items-center justify-between">
+              <View className="flex-row items-center flex-1">
+                <View className="bg-white rounded-full p-3 mr-4">
+                  <MaterialIcons name="warning" size={32} color="#ef4444" />
+                </View>
+                <View className="flex-1">
+                  <Text className="text-xl font-bold text-white mb-1">
+                    Hazard Alert System
+                  </Text>
+                  <Text className="text-sm text-red-100">
+                    Detect and identify dangerous sounds
+                  </Text>
+                </View>
+              </View>
+              <MaterialIcons name="arrow-forward" size={24} color="#ffffff" />
+            </View>
+          </TouchableOpacity>
           
           {/* Weekly Learning Chart */}
           <View className="bg-white rounded-2xl p-5 mb-6 shadow-md">

@@ -259,7 +259,7 @@ const ChildDashboard = ({ navigation }) => {
           {/* Play Game Button */}
           <TouchableOpacity
             onPress={handlePlayGame}
-            className="rounded-3xl p-6 shadow-lg"
+            className="rounded-3xl p-6 mb-4 shadow-lg"
             activeOpacity={0.8}
             style={styles.gameButton}
           >
@@ -267,6 +267,21 @@ const ChildDashboard = ({ navigation }) => {
               <MaterialIcons name="sports-esports" size={40} color="#ffffff" style={{ marginRight: 16 }} />
               <Text className="text-2xl font-bold text-white">
                 Play Game
+              </Text>
+            </View>
+          </TouchableOpacity>
+
+          {/* Hazard Detection Button */}
+          <TouchableOpacity
+            onPress={() => navigation.navigate('HazardDetection')}
+            className="rounded-3xl p-6 shadow-lg"
+            activeOpacity={0.8}
+            style={styles.hazardButton}
+          >
+            <View className="flex-row items-center justify-center">
+              <MaterialIcons name="warning" size={40} color="#ffffff" style={{ marginRight: 16 }} />
+              <Text className="text-2xl font-bold text-white">
+                Hazard Alert
               </Text>
             </View>
           </TouchableOpacity>
@@ -303,6 +318,9 @@ const styles = StyleSheet.create({
   },
   gameButton: {
     backgroundColor: '#a855f7', // purple-500
+  },
+  hazardButton: {
+    backgroundColor: '#ef4444', // red-500
   },
 });
 

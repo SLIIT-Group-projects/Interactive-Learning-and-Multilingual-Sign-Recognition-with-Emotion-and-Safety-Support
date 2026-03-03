@@ -18,7 +18,11 @@ import {
   saveGameSession,
 } from "../../services/firestore/gameService";
 
-import { ALPHABET, OBJECTS, TOTAL_QUESTIONS } from "../../constants/gameConstants";
+import {
+  ALPHABET,
+  OBJECTS,
+  TOTAL_QUESTIONS,
+} from "../../constants/gameConstants";
 
 const PlayGame = ({ navigation }) => {
   const [currentQuestion, setCurrentQuestion] = useState(0);
@@ -34,20 +38,20 @@ const PlayGame = ({ navigation }) => {
   const [predictedLetter, setPredictedLetter] = useState(null);
   const [cameraReady, setCameraReady] = useState(false);
   const cameraRef = useRef(null);
-  
+
   // Firestore tracking states
   const [questionStartTime, setQuestionStartTime] = useState(null);
   const [gameStartTime, setGameStartTime] = useState(null);
   const { userData } = useAuth();
-  
+
   // Get child and parent IDs from authenticated user
   const childId = userData?.uid || null;
   const parentId = userData?.parentId || null;
 
   // API endpoint - update this to your server IP/URL
   const API_URL = __DEV__
-    ? "http://192.168.1.2:5000" // Your laptop's IP address with port
-    : "http://192.168.1.2:5000"; // For production (same IP)
+    ? "http://192.168.1.9:5000" // Your laptop's IP address with port
+    : "http://192.168.1.9:5000"; // For production (same IP)
 
   // Stable camera ref callback - must be at top level (Rules of Hooks)
   const handleCameraRef = useCallback(
@@ -70,7 +74,7 @@ const PlayGame = ({ navigation }) => {
         }
       }
     },
-    [isCapturing, isProcessing]
+    [isCapturing, isProcessing],
   );
 
   // Initialize first question
@@ -129,7 +133,7 @@ const PlayGame = ({ navigation }) => {
       if (!result.granted) {
         Alert.alert(
           "Permission Required",
-          "Camera permission is needed to capture gestures"
+          "Camera permission is needed to capture gestures",
         );
         return;
       }
@@ -141,7 +145,7 @@ const PlayGame = ({ navigation }) => {
       console.log(
         `Camera check attempt ${
           retries + 1
-        }: Ready=${cameraReady}, Ref=${!!cameraRef.current}`
+        }: Ready=${cameraReady}, Ref=${!!cameraRef.current}`,
       );
       await new Promise((resolve) => setTimeout(resolve, 200));
       retries++;
@@ -151,7 +155,7 @@ const PlayGame = ({ navigation }) => {
       console.error("Camera still not ready after retries");
       Alert.alert(
         "Camera Not Ready",
-        "Please wait for the camera to fully initialize. Make sure the camera view is visible on screen."
+        "Please wait for the camera to fully initialize. Make sure the camera view is visible on screen.",
       );
       return;
     }
@@ -204,7 +208,7 @@ const PlayGame = ({ navigation }) => {
         if (typeof actualCamera.takePictureAsync === "function") {
           console.log(
             "Using takePictureAsync on:",
-            actualCamera === camera ? "main ref" : "internal ref"
+            actualCamera === camera ? "main ref" : "internal ref",
           );
           try {
             // Wait longer to ensure camera is fully stable and ready
@@ -248,16 +252,16 @@ const PlayGame = ({ navigation }) => {
                   photo.uri,
                   {
                     encoding: FileSystem.EncodingType.Base64,
-                  }
+                  },
                 );
                 photo.base64 = base64Data;
                 console.log(
                   "Base64 read successfully, length:",
-                  base64Data.length
+                  base64Data.length,
                 );
               } else {
                 throw new Error(
-                  "Photo file does not exist at URI: " + photo.uri
+                  "Photo file does not exist at URI: " + photo.uri,
                 );
               }
             } else {
@@ -266,7 +270,7 @@ const PlayGame = ({ navigation }) => {
           } catch (takePictureError) {
             console.error(
               "takePictureAsync with base64 failed:",
-              takePictureError
+              takePictureError,
             );
             console.error("Error details:", {
               code: takePictureError.code,
@@ -276,7 +280,7 @@ const PlayGame = ({ navigation }) => {
 
             // Try without base64 option - capture to file first
             console.log(
-              "Retrying without base64 option (will read from file)..."
+              "Retrying without base64 option (will read from file)...",
             );
             try {
               // Wait a bit more before retry to let camera stabilize
@@ -286,7 +290,7 @@ const PlayGame = ({ navigation }) => {
               const cameraToUse = actualCamera || camera;
               console.log(
                 "Attempting capture with:",
-                cameraToUse === camera ? "main ref" : "internal ref"
+                cameraToUse === camera ? "main ref" : "internal ref",
               );
 
               const photoWithoutBase64 = await cameraToUse.takePictureAsync({
@@ -299,21 +303,21 @@ const PlayGame = ({ navigation }) => {
                 "Photo keys:",
                 photoWithoutBase64
                   ? Object.keys(photoWithoutBase64)
-                  : "undefined"
+                  : "undefined",
               );
 
               // If we got a photo without base64, read it from URI
               if (photoWithoutBase64 && photoWithoutBase64.uri) {
                 console.log("Reading base64 from file URI...");
                 const fileInfo = await FileSystem.getInfoAsync(
-                  photoWithoutBase64.uri
+                  photoWithoutBase64.uri,
                 );
                 if (fileInfo.exists) {
                   const base64Data = await FileSystem.readAsStringAsync(
                     photoWithoutBase64.uri,
                     {
                       encoding: FileSystem.EncodingType.Base64,
-                    }
+                    },
                   );
                   photo = {
                     ...photoWithoutBase64,
@@ -321,24 +325,24 @@ const PlayGame = ({ navigation }) => {
                   };
                   console.log(
                     "Photo read from URI successfully, base64 length:",
-                    base64Data.length
+                    base64Data.length,
                   );
                 } else {
                   throw new Error(
                     "Photo file does not exist at URI: " +
-                      photoWithoutBase64.uri
+                      photoWithoutBase64.uri,
                   );
                 }
               } else {
                 throw new Error(
                   "No URI in photo object: " +
-                    JSON.stringify(photoWithoutBase64)
+                    JSON.stringify(photoWithoutBase64),
                 );
               }
             } catch (retryError) {
               console.error("Retry also failed:", retryError);
               throw new Error(
-                `Failed to capture image: ${takePictureError.message}. Retry also failed: ${retryError.message}`
+                `Failed to capture image: ${takePictureError.message}. Retry also failed: ${retryError.message}`,
               );
             }
           }
@@ -356,10 +360,10 @@ const PlayGame = ({ navigation }) => {
           console.error("Camera prototype:", Object.getPrototypeOf(camera));
           console.error(
             "All camera properties:",
-            Object.getOwnPropertyNames(camera || {})
+            Object.getOwnPropertyNames(camera || {}),
           );
           throw new Error(
-            "No capture method found. Available: " + refMethods.join(", ")
+            "No capture method found. Available: " + refMethods.join(", "),
           );
         }
       } catch (captureError) {
@@ -404,11 +408,11 @@ const PlayGame = ({ navigation }) => {
       if (!base64Data) {
         console.error(
           "Photo object keys:",
-          photo ? Object.keys(photo) : "No photo"
+          photo ? Object.keys(photo) : "No photo",
         );
         console.error("Photo URI:", photo?.uri);
         throw new Error(
-          "Photo captured but base64 encoding failed. Check console logs for details."
+          "Photo captured but base64 encoding failed. Check console logs for details.",
         );
       }
 
@@ -427,7 +431,7 @@ const PlayGame = ({ navigation }) => {
       }).catch((fetchError) => {
         console.error("Fetch error details:", fetchError);
         throw new Error(
-          `Network error: ${fetchError.message}. Make sure API server is running at ${API_URL}`
+          `Network error: ${fetchError.message}. Make sure API server is running at ${API_URL}`,
         );
       });
 
@@ -451,8 +455,8 @@ const PlayGame = ({ navigation }) => {
       setPredictedLetter(result.predictedLetter);
 
       // Calculate response time for Firestore
-      const responseTime = questionStartTime 
-        ? Date.now() - questionStartTime 
+      const responseTime = questionStartTime
+        ? Date.now() - questionStartTime
         : 0;
 
       // Update letter performance in Firestore
@@ -463,9 +467,11 @@ const PlayGame = ({ navigation }) => {
             parentId,
             targetLetter,
             result.isCorrect,
-            responseTime
+            responseTime,
           );
-          console.log(`✅ Letter performance updated: ${targetLetter} - ${result.isCorrect ? 'Correct' : 'Incorrect'}`);
+          console.log(
+            `✅ Letter performance updated: ${targetLetter} - ${result.isCorrect ? "Correct" : "Incorrect"}`,
+          );
         } catch (error) {
           console.warn("⚠️ Failed to update letter performance:", error);
           // Don't block UI if Firestore fails
@@ -498,7 +504,7 @@ const PlayGame = ({ navigation }) => {
         Alert.alert(
           "Camera Error",
           `Failed to capture image.\n\nError: ${errorMessage}\n\nPlease try again. Make sure:\n- Camera permission is granted\n- Camera is not being used by another app`,
-          [{ text: "OK" }]
+          [{ text: "OK" }],
         );
       } else if (
         errorMessage.includes("Network error") ||
@@ -509,13 +515,13 @@ const PlayGame = ({ navigation }) => {
         Alert.alert(
           "API Connection Error",
           `Could not connect to API server.\n\nServer URL: ${API_URL}\n\nMake sure:\n1. API server is running: python Model/api_server.py\n2. Test in browser: ${API_URL}/health\n3. Phone and laptop on same WiFi\n\nError: ${errorMessage}`,
-          [{ text: "OK" }]
+          [{ text: "OK" }],
         );
       } else {
         // Other error
         Alert.alert(
           "Error",
-          `Failed to process gesture.\n\nError: ${errorMessage}`
+          `Failed to process gesture.\n\nError: ${errorMessage}`,
         );
       }
     }
@@ -533,7 +539,7 @@ const PlayGame = ({ navigation }) => {
       generateNewQuestion();
     } else {
       // Game complete - save session to Firestore
-      const totalTime = gameStartTime 
+      const totalTime = gameStartTime
         ? Math.floor((Date.now() - gameStartTime) / 1000)
         : 0;
 
@@ -548,21 +554,35 @@ const PlayGame = ({ navigation }) => {
             timeTaken: totalTime,
             difficultyLevel: "medium", // You can make this dynamic later
           });
-          console.log("✅ Game session saved to Firestore", { childId, parentId });
+          console.log("✅ Game session saved to Firestore", {
+            childId,
+            parentId,
+          });
         } catch (error) {
           console.warn("⚠️ Failed to save game session:", error);
-          console.warn("Session data:", { childId, parentId, score, totalTime });
+          console.warn("Session data:", {
+            childId,
+            parentId,
+            score,
+            totalTime,
+          });
         }
       } else {
-        console.warn("⚠️ Cannot save game session - missing IDs:", { 
-          childId: childId || 'MISSING', 
-          parentId: parentId || 'MISSING',
-          userData: userData ? { uid: userData.uid, role: userData.role, parentId: userData.parentId } : 'MISSING'
+        console.warn("⚠️ Cannot save game session - missing IDs:", {
+          childId: childId || "MISSING",
+          parentId: parentId || "MISSING",
+          userData: userData
+            ? {
+                uid: userData.uid,
+                role: userData.role,
+                parentId: userData.parentId,
+              }
+            : "MISSING",
         });
       }
 
       alert(`Game Complete! Your score: ${score} / ${TOTAL_QUESTIONS}`);
-      
+
       // Reset game
       setCurrentQuestion(0);
       setScore(0);
@@ -610,7 +630,12 @@ const PlayGame = ({ navigation }) => {
         <View className="bg-white rounded-2xl p-4 mb-4 shadow-md">
           <View className="flex-row justify-between items-center mb-2">
             <View className="flex-row items-center">
-              <MaterialIcons name="star" size={28} color="#fbbf24" style={{ marginRight: 8 }} />
+              <MaterialIcons
+                name="star"
+                size={28}
+                color="#fbbf24"
+                style={{ marginRight: 8 }}
+              />
               <Text className="text-xl font-bold text-gray-800">
                 Score: {score} / {TOTAL_QUESTIONS}
               </Text>
@@ -645,10 +670,18 @@ const PlayGame = ({ navigation }) => {
           ) : (
             <>
               <View className="mb-4">
-                {currentObject?.iconFamily === 'MaterialIcons' ? (
-                  <MaterialIcons name={currentObject?.icon} size={80} color="#8b5cf6" />
+                {currentObject?.iconFamily === "MaterialIcons" ? (
+                  <MaterialIcons
+                    name={currentObject?.icon}
+                    size={80}
+                    color="#8b5cf6"
+                  />
                 ) : (
-                  <MaterialIcons name={currentObject?.icon} size={80} color="#8b5cf6" />
+                  <MaterialIcons
+                    name={currentObject?.icon}
+                    size={80}
+                    color="#8b5cf6"
+                  />
                 )}
               </View>
               <Text className="text-2xl font-semibold text-gray-700 mb-2 text-center">
@@ -727,7 +760,12 @@ const PlayGame = ({ navigation }) => {
           >
             {feedback === "correct" ? (
               <>
-                <MaterialIcons name="check-circle" size={64} color="#10b981" style={{ marginBottom: 8 }} />
+                <MaterialIcons
+                  name="check-circle"
+                  size={64}
+                  color="#10b981"
+                  style={{ marginBottom: 8 }}
+                />
                 <Text className="text-2xl font-bold text-green-800 text-center">
                   Correct! Well done!
                 </Text>
@@ -739,7 +777,12 @@ const PlayGame = ({ navigation }) => {
               </>
             ) : (
               <>
-                <MaterialIcons name="cancel" size={64} color="#ef4444" style={{ marginBottom: 8 }} />
+                <MaterialIcons
+                  name="cancel"
+                  size={64}
+                  color="#ef4444"
+                  style={{ marginBottom: 8 }}
+                />
                 <Text className="text-2xl font-bold text-red-800 text-center">
                   Try again! You can do it!
                 </Text>
@@ -789,7 +832,12 @@ const PlayGame = ({ navigation }) => {
                   </>
                 ) : (
                   <>
-                    <MaterialIcons name="camera-alt" size={32} color="#ffffff" style={{ marginRight: 12 }} />
+                    <MaterialIcons
+                      name="camera-alt"
+                      size={32}
+                      color="#ffffff"
+                      style={{ marginRight: 12 }}
+                    />
                     <Text className="text-2xl font-bold text-white">
                       {isCapturing ? "Capturing..." : "Capture Gesture"}
                     </Text>
@@ -806,7 +854,12 @@ const PlayGame = ({ navigation }) => {
                 style={styles.actionButton}
               >
                 <View className="flex-row items-center justify-center">
-                  <MaterialIcons name="refresh" size={28} color="#ffffff" style={{ marginRight: 8 }} />
+                  <MaterialIcons
+                    name="refresh"
+                    size={28}
+                    color="#ffffff"
+                    style={{ marginRight: 8 }}
+                  />
                   <Text className="text-xl font-bold text-white">
                     Try Again
                   </Text>
@@ -823,7 +876,11 @@ const PlayGame = ({ navigation }) => {
                   <Text className="text-xl font-bold text-white mr-2">
                     Next
                   </Text>
-                  <MaterialIcons name="arrow-forward" size={28} color="#ffffff" />
+                  <MaterialIcons
+                    name="arrow-forward"
+                    size={28}
+                    color="#ffffff"
+                  />
                 </View>
               </TouchableOpacity>
             </View>
@@ -838,7 +895,12 @@ const PlayGame = ({ navigation }) => {
                 ? "Awesome job! You're learning fast"
                 : "Keep going! You're doing great"}
             </Text>
-            <MaterialIcons name="star" size={24} color="#fbbf24" style={{ marginLeft: 8 }} />
+            <MaterialIcons
+              name="star"
+              size={24}
+              color="#fbbf24"
+              style={{ marginLeft: 8 }}
+            />
           </View>
         </View>
       </ScrollView>
