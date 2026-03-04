@@ -8,7 +8,6 @@ import {
     Alert,
     ActivityIndicator,
     Animated,
-    Dimensions,
     Image,
     Platform,
     Vibration
@@ -20,8 +19,6 @@ import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../../contexts/AuthContext';
 import apiService from '../../../services/api.service';
 import hazardAlertService from '../../../services/hazardAlert.service';
-
-const { width } = Dimensions.get('window');
 
 const PURPLE_GRADIENT = ['#5452e6ff', '#7C3AED']; // Purple gradient
 const GREEN_BUTTON = '#10B981'; // Bright green

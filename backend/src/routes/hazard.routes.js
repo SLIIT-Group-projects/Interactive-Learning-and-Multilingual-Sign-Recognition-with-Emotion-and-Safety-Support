@@ -8,7 +8,7 @@ import { audioToLogMelSpectrogram, prepareSpectrogramForModel } from '../utils/a
 import { prioritizeHazards, getHazardPriority } from '../utils/hazardPriority.js';
 import { convertToWav } from "../utils/audioConverter.js";
 import { predictWithModel } from '../utils/modelIntegration.js';
-import { db } from '../firebase/admin.js';
+import { db, messaging } from '../firebase/admin.js';
 import { createSoundDocument, validateSoundData } from '../models/sound.model.js';
 
 
@@ -229,7 +229,49 @@ function formatLocation(location) {
 }
 
 /**
+ * Send Expo Push Notification
+ * @param {string} expoPushToken - Expo push token
+ * @param {Object} notification - Notification data
+ * @returns {Promise<void>}
+ */
+async function sendExpoPushNotification(expoPushToken, notification) {
+  try {
+    const response = await fetch('https://exp.host/--/api/v2/push/send', {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Accept-Encoding': 'gzip, deflate',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify([
+        {
+          to: expoPushToken,
+          sound: 'default',
+          title: notification.title,
+          body: notification.body,
+          data: notification.data,
+          priority: 'high',
+          channelId: 'critical_alerts',
+        },
+      ]),
+    });
+
+    const result = await response.json();
+    if (result.data && result.data.status === 'ok') {
+      console.log('✅ Expo push notification sent successfully');
+    } else {
+      console.error('❌ Expo push notification failed:', result);
+      throw new Error('Expo push notification failed');
+    }
+  } catch (error) {
+    console.error('❌ Error sending Expo push notification:', error);
+    throw error;
+  }
+}
+
+/**
  * Create a notification for parent when child triggers critical alert
+ * Also sends push notification (FCM or Expo) if parent has token
  * @param {string} parentId - Parent user ID
  * @param {Object} alertData - Alert data (hazard type, child info, location, etc.)
  * @returns {Promise<string|null>} Notification document ID or null
@@ -272,8 +314,101 @@ async function notifyParent(parentId, alertData) {
       updatedAt: new Date(),
     };
 
+    // Create Firestore notification document
     const notificationRef = await db.collection(NOTIFICATIONS_COLLECTION).add(notificationData);
     console.log(`📬 Created notification ${notificationRef.id} for parent ${parentId} with location: ${locationText}`);
+
+    // Send push notification if parent has token (FCM or Expo)
+    try {
+      const parentDoc = await db.collection(USERS_COLLECTION).doc(parentId).get();
+      if (parentDoc.exists) {
+        const parentData = parentDoc.data();
+        const fcmToken = parentData.fcmToken || parentData.fcmTokens?.[0];
+        const expoPushToken = parentData.expoPushToken;
+        
+        // Try FCM first (for production builds)
+        if (fcmToken && fcmToken.startsWith && !fcmToken.startsWith('ExponentPushToken')) {
+          try {
+            const fcmMessage = {
+              token: fcmToken,
+              notification: {
+                title: '🚨 Critical Alert Detected',
+                body: message,
+              },
+              data: {
+                type: 'critical_hazard_alert',
+                notificationId: notificationRef.id,
+                hazardType: alertData.hazardType || '',
+                childUserId: alertData.childUserId || '',
+                childName: alertData.childName || 'Your child',
+                priority: String(alertData.priority || 9),
+                soundId: alertData.soundId || '',
+                locationText: locationText || '',
+              },
+              android: {
+                priority: 'high',
+                notification: {
+                  channelId: 'critical_alerts',
+                  sound: 'default',
+                  priority: 'high',
+                  visibility: 'public',
+                },
+              },
+              apns: {
+                payload: {
+                  aps: {
+                    sound: 'default',
+                    badge: 1,
+                    alert: {
+                      title: '🚨 Critical Alert Detected',
+                      body: message,
+                    },
+                    'content-available': 1,
+                  },
+                },
+              },
+            };
+
+            const response = await messaging.send(fcmMessage);
+            console.log(`📱 FCM push notification sent successfully to parent ${parentId}:`, response);
+          } catch (fcmError) {
+            console.error(`❌ Error sending FCM push notification:`, fcmError);
+            // Fall through to try Expo push
+          }
+        }
+        
+        // Try Expo Push Notification (for Expo Go)
+        if (expoPushToken || (fcmToken && fcmToken.startsWith && fcmToken.startsWith('ExponentPushToken'))) {
+          const token = expoPushToken || fcmToken;
+          await sendExpoPushNotification(token, {
+            title: '🚨 Critical Alert Detected',
+            body: message,
+            data: {
+              type: 'critical_hazard_alert',
+              notificationId: notificationRef.id,
+              hazardType: alertData.hazardType || '',
+              childUserId: alertData.childUserId || '',
+              childName: alertData.childName || 'Your child',
+              priority: String(alertData.priority || 9),
+              soundId: alertData.soundId || '',
+              locationText: locationText || '',
+            },
+          });
+          console.log(`📱 Expo push notification sent successfully to parent ${parentId}`);
+        }
+        
+        if (!fcmToken && !expoPushToken) {
+          console.log(`ℹ️ No push token found for parent ${parentId} - skipping push notification`);
+        }
+      } else {
+        console.warn(`⚠️ Parent document ${parentId} not found - skipping push notification`);
+      }
+    } catch (pushError) {
+      // Don't fail the notification creation if push fails
+      console.error(`❌ Error sending push notification to parent ${parentId}:`, pushError);
+      // Continue - Firestore notification was already created
+    }
+
     return notificationRef.id;
   } catch (error) {
     console.error(`❌ Error creating notification for parent ${parentId}:`, error);

@@ -6,4 +6,5 @@ admin.initializeApp({
 });
 
 export const db = admin.firestore(); // Firestore
+export const messaging = admin.messaging(); // FCM for push notifications
 // export const db = admin.database(); // Realtime DB (if you prefer)

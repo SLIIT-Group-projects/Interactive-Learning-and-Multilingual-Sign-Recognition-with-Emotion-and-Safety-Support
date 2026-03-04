@@ -3,6 +3,7 @@ import { db } from '../firebase/admin.js';
 
 const router = express.Router();
 const NOTIFICATIONS_COLLECTION = 'notifications';
+const USERS_COLLECTION = 'users';
 
 /**
  * GET /api/notifications
@@ -160,6 +161,126 @@ router.delete('/:id', async (req, res, next) => {
     res.json({
       success: true,
       message: 'Notification deleted',
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/notifications/register-push-token
+ * Register push token (FCM or Expo) for a parent to receive push notifications
+ * Supports both FCM tokens and Expo push tokens
+ */
+router.post('/register-push-token', async (req, res, next) => {
+  try {
+    const { userId, pushToken } = req.body;
+    // Support legacy 'fcmToken' parameter name
+    const token = pushToken || req.body.fcmToken || req.body.expoPushToken;
+
+    if (!userId || !token) {
+      return res.status(400).json({
+        error: 'userId and pushToken (or fcmToken/expoPushToken) are required',
+      });
+    }
+
+    // Verify user exists and is a parent
+    const userRef = db.collection(USERS_COLLECTION).doc(userId);
+    const userDoc = await userRef.get();
+
+    if (!userDoc.exists) {
+      return res.status(404).json({
+        error: 'User not found',
+      });
+    }
+
+    const userData = userDoc.data();
+    if (userData.role !== 'parent') {
+      return res.status(403).json({
+        error: 'Only parents can register push tokens',
+      });
+    }
+
+    // Determine token type and update accordingly
+    const isExpoToken = token.startsWith('ExponentPushToken');
+    const updateData = {
+      updatedAt: new Date(),
+    };
+
+    if (isExpoToken) {
+      updateData.expoPushToken = token;
+      updateData.expoPushTokenUpdatedAt = new Date();
+      console.log(`✅ Expo push token registered for parent ${userId}`);
+    } else {
+      updateData.fcmToken = token;
+      updateData.fcmTokenUpdatedAt = new Date();
+      console.log(`✅ FCM token registered for parent ${userId}`);
+    }
+
+    await userRef.update(updateData);
+
+    res.json({
+      success: true,
+      message: `${isExpoToken ? 'Expo' : 'FCM'} push token registered successfully`,
+      tokenType: isExpoToken ? 'expo' : 'fcm',
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/notifications/register-fcm-token
+ * Register FCM token for a parent to receive push notifications
+ * @deprecated Use /register-push-token instead (supports both FCM and Expo)
+ */
+router.post('/register-fcm-token', async (req, res, next) => {
+  // Use the same logic as register-push-token for backward compatibility
+  req.body.pushToken = req.body.fcmToken;
+  const { userId, pushToken } = req.body;
+  const token = pushToken || req.body.fcmToken;
+
+  if (!userId || !token) {
+    return res.status(400).json({
+      error: 'userId and fcmToken are required',
+    });
+  }
+
+  try {
+    const userRef = db.collection(USERS_COLLECTION).doc(userId);
+    const userDoc = await userRef.get();
+
+    if (!userDoc.exists) {
+      return res.status(404).json({
+        error: 'User not found',
+      });
+    }
+
+    const userData = userDoc.data();
+    if (userData.role !== 'parent') {
+      return res.status(403).json({
+        error: 'Only parents can register FCM tokens',
+      });
+    }
+
+    const isExpoToken = token.startsWith('ExponentPushToken');
+    const updateData = {
+      updatedAt: new Date(),
+    };
+
+    if (isExpoToken) {
+      updateData.expoPushToken = token;
+      updateData.expoPushTokenUpdatedAt = new Date();
+    } else {
+      updateData.fcmToken = token;
+      updateData.fcmTokenUpdatedAt = new Date();
+    }
+
+    await userRef.update(updateData);
+
+    res.json({
+      success: true,
+      message: 'Push token registered successfully',
     });
   } catch (error) {
     next(error);
