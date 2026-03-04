@@ -474,9 +474,18 @@ export default function HazardDetectionScreen() {
       };
 
       console.log('📤 Sending audio to backend...');
+      console.log('📋 Context being sent:', {
+        userId: context.userId,
+        hasLocation: !!context.location,
+        locationType: context.location?.type,
+        coordinates: context.location?.coordinates,
+      });
       // Send to backend for hazard detection
       const response = await apiService.detectHazards(uri, context);
       console.log('✅ Received response from backend:', response.success);
+      if (response.success && response.data?.metadata?.savedSoundIds) {
+        console.log(`💾 Saved ${response.data.metadata.savedSoundIds.length} sound(s) to database`);
+      }
 
                 if (response.success && response.data) {
                     setDetections(response.data);

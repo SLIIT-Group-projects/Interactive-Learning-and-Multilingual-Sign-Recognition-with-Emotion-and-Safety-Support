@@ -39,6 +39,7 @@ class HazardDatabaseService {
    */
   async getHazardAlerts(params?: {
     userId?: string;
+    userIds?: string[]; // Support multiple userIds for parent viewing children's hazards
     type?: string;
     status?: string;
     startDate?: string;
@@ -51,8 +52,22 @@ class HazardDatabaseService {
         isHazard: 'true',
         sortBy: 'timestamp',
         order: 'desc',
-        ...params,
       };
+
+      // Use userIds if provided (for parent viewing multiple children), otherwise use userId
+      if (params?.userIds && params.userIds.length > 0) {
+        queryParams.userIds = params.userIds.join(',');
+      } else if (params?.userId) {
+        queryParams.userId = params.userId;
+      }
+
+      // Add other params
+      if (params?.type) queryParams.type = params.type;
+      if (params?.status) queryParams.status = params.status;
+      if (params?.startDate) queryParams.startDate = params.startDate;
+      if (params?.endDate) queryParams.endDate = params.endDate;
+      if (params?.limit) queryParams.limit = params.limit;
+      if (params?.offset) queryParams.offset = params.offset;
 
       const response = await apiService.client.get('/api/sounds', {
         params: queryParams,
@@ -83,15 +98,28 @@ class HazardDatabaseService {
    */
   async getHazardStats(params?: {
     userId?: string;
+    userIds?: string[]; // Support multiple userIds for parent viewing children's hazards
     startDate?: string;
     endDate?: string;
   }): Promise<HazardStats> {
     try {
+      const queryParams: any = {
+        isHazard: 'true',
+      };
+
+      // Use userIds if provided (for parent viewing multiple children), otherwise use userId
+      if (params?.userIds && params.userIds.length > 0) {
+        queryParams.userIds = params.userIds.join(',');
+      } else if (params?.userId) {
+        queryParams.userId = params.userId;
+      }
+
+      // Add other params
+      if (params?.startDate) queryParams.startDate = params.startDate;
+      if (params?.endDate) queryParams.endDate = params.endDate;
+
       const response = await apiService.client.get('/api/sounds/stats/summary', {
-        params: {
-          ...params,
-          isHazard: 'true',
-        },
+        params: queryParams,
       });
 
       return response.data.data;

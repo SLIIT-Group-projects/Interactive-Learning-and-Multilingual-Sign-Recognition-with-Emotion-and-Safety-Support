@@ -33,22 +33,41 @@ async function saveSoundsToDatabase(detections, context = {}, audioFileUrl = nul
   const MIN_CONFIDENCE_THRESHOLD = parseFloat(process.env.SAVE_CONFIDENCE_THRESHOLD || '0.4');
 
   try {
+    console.log(`💾 Attempting to save ${detections.length} detections to database...`);
     for (const detection of detections) {
       const hazardType = detection.type || 'unknown';
       const confidence = detection.confidence || 0;
-      const priority = detection.priority || getHazardPriority(hazardType);
+      
+      // Get base priority from hazard type (from env config)
+      const basePriority = getHazardPriority(hazardType);
+      // Use calculated priority from detection (set by prioritizeHazards) if available
+      const calculatedPriority = detection.priority !== undefined ? detection.priority : basePriority;
+      
+      // For saving, use base priority to determine if it's critical
+      // This ensures critical hazard types (fire_alarm, smoke_alarm, etc.) are saved even if urgency score is low
+      const priority = basePriority >= 9 ? basePriority : calculatedPriority;
 
-      // Only save critical alerts (priority >= 9):
-      // 1. Must be a critical alert (priority >= 9)
-      // 2. Must have sufficient confidence
-      // 3. Must not be 'unknown' type
-      const isCriticalAlert = priority >= 9 && hazardType !== 'unknown';
+      console.log(`🔍 Checking detection: ${hazardType} (confidence: ${confidence.toFixed(2)}, basePriority: ${basePriority}, calculatedPriority: ${calculatedPriority}, finalPriority: ${priority})`);
+
+      // Save all identified sounds (not just critical):
+      // 1. Must have sufficient confidence
+      // 2. Must not be 'unknown' type
+      // 3. Must have a valid userId (to associate with user)
       const hasSufficientConfidence = confidence >= MIN_CONFIDENCE_THRESHOLD;
+      const isValidType = hazardType !== 'unknown';
+      const hasUserId = context.userId !== null && context.userId !== undefined;
 
-      if (!isCriticalAlert || !hasSufficientConfidence) {
-        console.log(`⏭️ Skipping save - ${hazardType} (confidence: ${confidence.toFixed(2)}, priority: ${priority}) - not a critical alert`);
+      if (!hasSufficientConfidence || !isValidType) {
+        console.log(`⏭️ Skipping save - ${hazardType} (confidence: ${confidence.toFixed(2)}, priority: ${priority}) - ${!hasSufficientConfidence ? 'insufficient confidence' : 'invalid type'}`);
         continue;
       }
+
+      if (!hasUserId) {
+        console.warn(`⚠️ Warning: Saving sound without userId - ${hazardType}`);
+      }
+
+      const isCriticalAlert = (basePriority >= 9 || calculatedPriority >= 9);
+      console.log(`✅ Will save ${isCriticalAlert ? 'CRITICAL' : 'identified'} sound: ${hazardType} (confidence: ${confidence.toFixed(2)}, priority: ${priority}, userId: ${context.userId || 'none'})`);
 
       // Clean context to remove undefined values
       const cleanContext = {};
@@ -88,10 +107,20 @@ async function saveSoundsToDatabase(detections, context = {}, audioFileUrl = nul
           ...metadata,
           ...(detection.metadata || {}),
         },
-        priority: priority,
+        priority: priority, // Use the final priority (base priority for critical hazards)
         isHazard: true, // All detections from hazard endpoint are hazards
         status: 'detected',
       };
+      
+      console.log(`📝 Sound data to save:`, {
+        userId: soundData.userId,
+        type: soundData.type,
+        confidence: soundData.confidence,
+        priority: soundData.priority,
+        hasLocation: !!soundData.location,
+        locationType: soundData.location?.type,
+        coordinates: soundData.location?.coordinates,
+      });
 
       // Validate before saving
       const validation = validateSoundData(soundData);
@@ -239,6 +268,15 @@ router.post('/detect', upload.single('audio'), async (req, res, next) => {
     const context = req.body.context ? JSON.parse(req.body.context) : {};
     const timestamp = new Date().toISOString();
     const location = context.location || null;
+    
+    // Log context for debugging
+    console.log('📋 Context received:', {
+      userId: context.userId,
+      hasLocation: !!context.location,
+      locationType: context.location?.type,
+      coordinates: context.location?.coordinates,
+      time: context.time
+    });
 
     const wavPath = req.file.path + "-converted.wav";
 
@@ -298,6 +336,13 @@ router.post('/detect', upload.single('audio'), async (req, res, next) => {
 
     // Prioritize detected hazards
     const prioritized = prioritizeHazards(detections, context);
+    
+    console.log(`📊 Prioritized ${prioritized.length} detections:`, prioritized.map(d => ({
+      type: d.type,
+      confidence: d.confidence?.toFixed(2),
+      priority: d.priority,
+      urgencyScore: d.urgencyScore?.toFixed(2)
+    })));
 
     // Clean up uploaded file - mark as deleted to avoid double-unlink
     const uploadedFilePath = req.file.path;
@@ -305,8 +350,11 @@ router.post('/detect', upload.single('audio'), async (req, res, next) => {
     req.file.deleted = true;
 
     // Determine if critical alert needed
-    const criticalHazards = prioritized.filter(h => getHazardPriority(h.type) >= 9);
+    // Use the priority field from prioritized detections (not getHazardPriority)
+    const criticalHazards = prioritized.filter(h => (h.priority !== undefined ? h.priority : getHazardPriority(h.type)) >= 9);
     const needsImmediateAlert = criticalHazards.length > 0;
+    
+    console.log(`🚨 Critical hazards found: ${criticalHazards.length}, needsImmediateAlert: ${needsImmediateAlert}`);
 
     // Use last known location if critical and location is missing
     let finalLocation = location;
@@ -325,11 +373,26 @@ router.post('/detect', upload.single('audio'), async (req, res, next) => {
       detectionsCount: detections.length,
     };
 
+    // Prepare context for saving - ensure userId and location are included
+    const saveContext = {
+      ...context,
+      userId: context.userId || req.body.userId || null,
+      location: finalLocation || context.location || null,
+      time: context.time || timestamp,
+    };
+    
+    console.log('💾 Saving with context:', {
+      userId: saveContext.userId,
+      hasLocation: !!saveContext.location,
+      locationType: saveContext.location?.type,
+      coordinates: saveContext.location?.coordinates,
+    });
+    
     // Note: audioFileUrl is null since we delete the file after processing
     // If you want to store audio files, upload them to Firebase Storage first
     const savedSoundIds = await saveSoundsToDatabase(
       prioritized,
-      { ...context, userId: context.userId || req.body.userId, location: finalLocation },
+      saveContext,
       null, // audioFileUrl - set to null since file is deleted
       audioMetadata
     );
@@ -421,8 +484,15 @@ router.post('/detect-stream', upload.array('audio', 10), async (req, res, next) 
     const prioritized = prioritizeHazards(allDetections, context);
 
     // Determine if critical alert needed
-    const criticalHazards = prioritized.filter(h => getHazardPriority(h.type) >= 9);
+    // Use the priority field from prioritized detections (calculated from urgency score)
+    // Fallback to getHazardPriority if priority is not set
+    const criticalHazards = prioritized.filter(h => {
+      const priority = h.priority !== undefined ? h.priority : getHazardPriority(h.type);
+      return priority >= 9;
+    });
     const needsImmediateAlert = criticalHazards.length > 0;
+    
+    console.log(`🚨 Critical hazards found: ${criticalHazards.length}, needsImmediateAlert: ${needsImmediateAlert}`);
 
     // Use last known location if critical and location is missing
     let finalLocation = context.location || null;

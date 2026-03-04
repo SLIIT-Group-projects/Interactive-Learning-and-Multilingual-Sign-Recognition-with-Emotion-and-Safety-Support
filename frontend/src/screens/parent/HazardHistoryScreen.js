@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
+import { getParentChildren } from '../../services/firestore/userService';
 import hazardDatabaseService from '../../../services/hazardDatabase.service';
 
 /**
@@ -28,10 +29,26 @@ const HazardHistoryScreen = () => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [filter, setFilter] = useState('all'); // 'all' | 'critical' | 'high' | 'medium' | 'low'
+  const [children, setChildren] = useState([]);
+
+  // Load children for parent users
+  useEffect(() => {
+    const loadChildren = async () => {
+      if (userData && userData.role === 'parent') {
+        try {
+          const childrenList = await getParentChildren(userData.uid);
+          setChildren(childrenList);
+        } catch (error) {
+          console.error('Error loading children:', error);
+        }
+      }
+    };
+    loadChildren();
+  }, [userData]);
 
   useEffect(() => {
     loadData();
-  }, [filter, userId]);
+  }, [filter, userId, children]);
 
   const getUrgencyLevel = (priority) => {
     if (priority >= 9) return 'critical';
@@ -86,14 +103,28 @@ const HazardHistoryScreen = () => {
   const loadData = async () => {
     try {
       setLoading(true);
-      // Filter by userId so parent sees their family's alerts
+      
+      // For parent users, get hazards from all children
+      // For child users, get their own hazards
+      let queryParams = {};
+      if (userData?.role === 'parent' && children.length > 0) {
+        // Get all children's userIds
+        const childrenUserIds = children.map(child => child.uid).filter(Boolean);
+        if (childrenUserIds.length > 0) {
+          queryParams.userIds = childrenUserIds;
+        }
+      } else if (userId) {
+        // Single userId for child users
+        queryParams.userId = userId;
+      }
+
       const [alertsData, statsData] = await Promise.all([
         hazardDatabaseService.getHazardAlerts({
-          userId: userId || undefined,
+          ...queryParams,
           limit: 100,
         }),
         hazardDatabaseService.getHazardStats({
-          userId: userId || undefined,
+          ...queryParams,
         }),
       ]);
 

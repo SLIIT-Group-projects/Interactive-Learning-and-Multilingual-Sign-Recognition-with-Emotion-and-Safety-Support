@@ -60,6 +60,7 @@ router.get('/', async (req, res, next) => {
   try {
     const {
       userId,
+      userIds, // Support multiple userIds (comma-separated or array)
       type,
       isHazard,
       status,
@@ -74,7 +75,28 @@ router.get('/', async (req, res, next) => {
     let query = db.collection(SOUNDS_COLLECTION);
     
     // Apply filters
-    if (userId) {
+    // Support multiple userIds for parent viewing children's hazards
+    if (userIds) {
+      // Parse userIds - can be comma-separated string or array
+      const userIdArray = Array.isArray(userIds) 
+        ? userIds 
+        : typeof userIds === 'string' 
+          ? userIds.split(',').map(id => id.trim()).filter(Boolean)
+          : [];
+      
+      if (userIdArray.length > 0) {
+        // Firestore 'in' operator supports up to 10 values
+        if (userIdArray.length <= 10) {
+          query = query.where('userId', 'in', userIdArray);
+        } else {
+          // If more than 10, we need to split into multiple queries
+          // For now, just use the first 10
+          console.warn(`⚠️ More than 10 userIds provided (${userIdArray.length}), using first 10`);
+          query = query.where('userId', 'in', userIdArray.slice(0, 10));
+        }
+      }
+    } else if (userId) {
+      // Single userId filter (backward compatibility)
       query = query.where('userId', '==', userId);
     }
     

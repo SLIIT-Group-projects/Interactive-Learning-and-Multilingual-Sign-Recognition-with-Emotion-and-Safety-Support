@@ -7,6 +7,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { logoutUser } from '../../services/auth/authService';
 import { getParentChildren } from '../../services/firestore/userService';
 import { getChildAnalytics, getParentGameSessions } from '../../services/firestore/gameService';
+import hazardDatabaseService from '../../../services/hazardDatabase.service';
 
 const ParentDashboard = ({ navigation }) => {
   const { userData } = useAuth();
@@ -16,6 +17,8 @@ const ParentDashboard = ({ navigation }) => {
   const [analytics, setAnalytics] = useState(null);
   const [sessions, setSessions] = useState([]);
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
+  const [recentHazards, setRecentHazards] = useState([]);
+  const [hazardsLoading, setHazardsLoading] = useState(false);
   
   // Load children on mount
   useEffect(() => {
@@ -46,6 +49,13 @@ const ParentDashboard = ({ navigation }) => {
     }
   }, [selectedChild]);
 
+  // Load recent hazards from all children
+  useEffect(() => {
+    if (children.length > 0) {
+      loadRecentHazards();
+    }
+  }, [children]);
+
   const loadChildAnalytics = async (childId) => {
     if (!childId || !userData) return;
     
@@ -62,6 +72,26 @@ const ParentDashboard = ({ navigation }) => {
       console.error('Error loading analytics:', error);
     } finally {
       setAnalyticsLoading(false);
+    }
+  };
+
+  const loadRecentHazards = async () => {
+    if (children.length === 0) return;
+    
+    setHazardsLoading(true);
+    try {
+      const childrenUserIds = children.map(child => child.uid).filter(Boolean);
+      if (childrenUserIds.length > 0) {
+        const hazards = await hazardDatabaseService.getHazardAlerts({
+          userIds: childrenUserIds,
+          limit: 5, // Show 5 most recent hazards
+        });
+        setRecentHazards(hazards);
+      }
+    } catch (error) {
+      console.error('Error loading recent hazards:', error);
+    } finally {
+      setHazardsLoading(false);
     }
   };
 
@@ -269,6 +299,66 @@ const ParentDashboard = ({ navigation }) => {
                 <MaterialIcons name="chevron-right" size={24} color="#e0e7ff" />
               </TouchableOpacity>
             </View>
+
+            {/* Recent Hazards Summary */}
+            {hazardsLoading ? (
+              <View className="mt-4 py-4 items-center">
+                <ActivityIndicator size="small" color="#ef4444" />
+              </View>
+            ) : recentHazards.length > 0 ? (
+              <View className="mt-4">
+                <View className="flex-row items-center justify-between mb-2">
+                  <Text className="text-sm font-semibold text-gray-700">
+                    Recent Hazards Detected
+                  </Text>
+                  <TouchableOpacity onPress={() => navigation.navigate('HazardHistory')}>
+                    <Text className="text-xs text-red-500 font-semibold">View All</Text>
+                  </TouchableOpacity>
+                </View>
+                {recentHazards.slice(0, 3).map((hazard, index) => {
+                  const getUrgencyColor = (priority) => {
+                    if (priority >= 9) return '#FF3B30';
+                    if (priority >= 7) return '#FF9500';
+                    if (priority >= 5) return '#FFCC00';
+                    return '#34C759';
+                  };
+                  const formatHazardType = (type) => {
+                    return type.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+                  };
+                  const formatDate = (dateString) => {
+                    try {
+                      const date = new Date(dateString);
+                      const now = new Date();
+                      const diffMins = Math.floor((now.getTime() - date.getTime()) / 60000);
+                      if (diffMins < 1) return 'Just now';
+                      if (diffMins < 60) return `${diffMins}m ago`;
+                      const diffHours = Math.floor(diffMins / 60);
+                      if (diffHours < 24) return `${diffHours}h ago`;
+                      return date.toLocaleDateString();
+                    } catch {
+                      return dateString;
+                    }
+                  };
+                  const color = getUrgencyColor(hazard.priority);
+                  return (
+                    <View
+                      key={hazard.id || index}
+                      className="bg-gray-50 rounded-xl p-3 mb-2 flex-row items-center"
+                    >
+                      <View className="w-2 h-2 rounded-full mr-3" style={{ backgroundColor: color }} />
+                      <View className="flex-1">
+                        <Text className="text-sm font-semibold text-gray-800">
+                          {formatHazardType(hazard.type)}
+                        </Text>
+                        <Text className="text-xs text-gray-500">
+                          {formatDate(hazard.timestamp)} • {(hazard.confidence * 100).toFixed(0)}% confidence
+                        </Text>
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            ) : null}
           </View>
           
           {/* Progress Overview Cards */}
