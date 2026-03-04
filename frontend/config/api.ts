@@ -294,7 +294,7 @@ export async function uploadFile(
     console.log(`[Upload] Adding field: ${key} = ${stringValue}`);
     formData.append(key, stringValue);
   });
-  
+      
   // Append file - different format for web vs native
   if (Platform.OS === 'web') {
     // Web: Convert data URI to Blob
@@ -423,7 +423,7 @@ export async function uploadFiles(
       const file = files[index];
       let fileUri = file.uri;
       
-      if (file.uri.startsWith('data:')) {
+    if (file.uri.startsWith('data:')) {
         if (Platform.OS === 'web') {
           // Web: Clean the data URI and use it
           // Extract actual base64 data - handle nested data URIs
@@ -495,13 +495,13 @@ export async function uploadFiles(
             // Fallback: convert base64 to Blob manually
             try {
               const base64Data = fileUri.split(',')[1];
-              const binaryString = atob(base64Data);
-              const bytes = new Uint8Array(binaryString.length);
-              for (let i = 0; i < binaryString.length; i++) {
-                bytes[i] = binaryString.charCodeAt(i);
-              }
+        const binaryString = atob(base64Data);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
               const blob = new Blob([bytes], { type: 'image/jpeg' });
-              formData.append("frames", blob, file.name || `frame_${index}.jpg`);
+        formData.append("frames", blob, file.name || `frame_${index}.jpg`);
               console.log(`[Upload] ✅ Frame ${index + 1} appended using manual conversion, size: ${blob.size} bytes`);
             } catch (manualErr) {
               console.error(`[Upload] ❌ Manual conversion failed for frame ${index + 1}:`, manualErr);
@@ -531,7 +531,7 @@ export async function uploadFiles(
         });
         
         formData.append("frames", fileObject as any);
-      }
+    }
     }
     
     console.log(`[Upload] FormData prepared with ${Object.keys(body).length} body fields + ${files.length} files`);

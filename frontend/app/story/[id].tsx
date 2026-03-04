@@ -246,7 +246,78 @@ export default function StoryReaderScreen() {
     }
   };
 
-  // Send hand analysis to backend
+  // Record video using MediaRecorder API (web) or expo-camera (native)
+  const recordVideoForHandAnalysis = async (duration: number = 2000): Promise<string | null> => {
+    if (Platform.OS === 'web') {
+      // Web: Use MediaRecorder API
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+          video: { 
+            facingMode: 'user',
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          },
+          audio: false 
+        });
+        
+        const chunks: Blob[] = [];
+        const mediaRecorder = new MediaRecorder(stream, {
+          mimeType: 'video/webm;codecs=vp8'
+        });
+        
+        mediaRecorder.ondataavailable = (event) => {
+          if (event.data.size > 0) {
+            chunks.push(event.data);
+          }
+        };
+        
+        return new Promise((resolve, reject) => {
+          mediaRecorder.onstop = () => {
+            stream.getTracks().forEach(track => track.stop());
+            const blob = new Blob(chunks, { type: 'video/webm' });
+            const url = URL.createObjectURL(blob);
+            console.log(`[Hand] Video recorded (web): ${blob.size} bytes`);
+            resolve(url);
+          };
+          
+          mediaRecorder.onerror = (error) => {
+            stream.getTracks().forEach(track => track.stop());
+            reject(error);
+          };
+          
+          mediaRecorder.start();
+          setTimeout(() => {
+            if (mediaRecorder.state === 'recording') {
+              mediaRecorder.stop();
+            }
+          }, duration);
+        });
+      } catch (err: any) {
+        console.warn(`[Hand] MediaRecorder failed: ${err.message}`);
+        return null;
+      }
+    } else {
+      // Native: Use expo-camera
+      if (cameraRef.current && permission?.granted && cameraOn) {
+        try {
+          const camera = cameraRef.current as any;
+          if (camera.recordAsync) {
+            const video = await camera.recordAsync({
+              maxDuration: duration / 1000,
+              quality: '720p',
+              mute: true,
+            });
+            return video?.uri || null;
+          }
+        } catch (err: any) {
+          console.warn(`[Hand] Native video recording failed: ${err.message}`);
+        }
+      }
+      return null;
+    }
+  };
+
+  // Send hand analysis to backend - using high-frequency frame capture for accurate speed detection
   const sendHandAnalysis = async () => {
     const currentSessionId = sessionIdRef.current;
     const isActive = sessionActiveRef.current;
@@ -257,15 +328,23 @@ export default function StoryReaderScreen() {
     }
 
     try {
-      console.log(`[Hand] Capturing frames for hand analysis for session ${currentSessionId}`);
+      console.log(`[Hand] Starting high-frequency frame capture for session ${currentSessionId}`);
       
-      // Capture multiple frames for hand speed analysis (need at least 2 frames)
+      // Use frame-based capture as PRIMARY method (more reliable than video)
+      // Capture at high frequency for accurate speed detection
       const frames: Array<{ uri: string; type: string; name: string }> = [];
-      const frameCount = 10; // Capture 10 frames for hand analysis
-      const fps = 10; // Frames per second
+      const frameCount = 30; // More frames for better speed detection
+      const targetFps = 20; // Higher FPS for more accurate speed calculation
+      const frameInterval = 1000 / targetFps; // ~50ms between frames
+      
+      const startTime = Date.now();
+      
+      console.log(`[Hand] Capturing ${frameCount} frames at target FPS: ${targetFps}`);
       
       for (let i = 0; i < frameCount; i++) {
+        const frameStartTime = Date.now();
         const frameUri = await captureFrame();
+        
         if (frameUri) {
           frames.push({
             uri: frameUri,
@@ -273,24 +352,31 @@ export default function StoryReaderScreen() {
             name: `hand_${Date.now()}_${i}.jpg`,
           });
         }
-        // Small delay between captures to simulate video frames
+        
+        // Precise timing: maintain consistent frame rate
         if (i < frameCount - 1) {
-          await new Promise((resolve) => setTimeout(resolve, 1000 / fps));
+          const elapsed = Date.now() - frameStartTime;
+          const waitTime = Math.max(0, frameInterval - elapsed);
+          await new Promise((resolve) => setTimeout(resolve, waitTime));
         }
       }
+      
+      const actualDuration = Date.now() - startTime;
+      const actualFps = frames.length > 0 ? (frames.length / actualDuration) * 1000 : 0;
+      
+      console.log(`[Hand] Captured ${frames.length} frames in ${actualDuration}ms (actual FPS: ${actualFps.toFixed(2)})`);
 
-      if (frames.length < 2) {
-        console.warn(`[Hand] Not enough frames captured (${frames.length}), need at least 2`);
+      if (frames.length < 5) {
+        console.warn(`[Hand] Not enough frames captured (${frames.length}), need at least 5`);
         return;
       }
 
-      console.log(`[Hand] Sending ${frames.length} frames to backend`);
+      console.log(`[Hand] Sending ${frames.length} frames to backend with FPS: ${actualFps.toFixed(2)}`);
       
-      // Send to backend API
       const result = await uploadFiles(
         API_ENDPOINTS.ANALYZE_HAND,
         frames,
-        { sessionId: currentSessionId, fps: fps }
+        { sessionId: currentSessionId, fps: actualFps.toFixed(2) }
       );
 
       console.log(`[Hand] ✅ Backend response:`, result);
