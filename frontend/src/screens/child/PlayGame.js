@@ -7,6 +7,7 @@ import {
   Alert,
   ActivityIndicator,
   ScrollView,
+  Modal,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { CameraView, useCameraPermissions } from "expo-camera";
@@ -17,6 +18,13 @@ import {
   updateLetterPerformance,
   saveGameSession,
 } from "../../services/firestore/gameService";
+import {
+  getChildProgress,
+  ensureChildProgress,
+  addXP,
+  incrementGamesPlayed,
+  XP_PER_LEVEL,
+} from "../../services/firestore/childProgressService";
 
 import {
   ALPHABET,
@@ -24,7 +32,9 @@ import {
   TOTAL_QUESTIONS,
 } from "../../constants/gameConstants";
 
-const PlayGame = ({ navigation }) => {
+const PlayGame = ({ navigation, route }) => {
+  const gameMode = route?.params?.gameMode || "basic";
+
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [score, setScore] = useState(0);
   const [targetLetter, setTargetLetter] = useState("");
@@ -38,6 +48,12 @@ const PlayGame = ({ navigation }) => {
   const [predictedLetter, setPredictedLetter] = useState(null);
   const [cameraReady, setCameraReady] = useState(false);
   const cameraRef = useRef(null);
+
+  // XP & level (child progress)
+  const [childProgress, setChildProgress] = useState(null);
+  const [xpGainedThisAnswer, setXpGainedThisAnswer] = useState(0);
+  const [streakBonusThisAnswer, setStreakBonusThisAnswer] = useState(false);
+  const [levelUpModal, setLevelUpModal] = useState(null); // { level } when level up
 
   // Firestore tracking states
   const [questionStartTime, setQuestionStartTime] = useState(null);
@@ -77,13 +93,25 @@ const PlayGame = ({ navigation }) => {
     [isCapturing, isProcessing],
   );
 
+  // Load child progress on mount (XP / level)
+  useEffect(() => {
+    const load = async () => {
+      if (childId) {
+        try {
+          const p = await ensureChildProgress(childId);
+          setChildProgress(p);
+        } catch (e) {
+          console.warn("Failed to load child progress:", e);
+        }
+      }
+    };
+    load();
+  }, [childId]);
+
   // Initialize first question
   useEffect(() => {
-    // Initialize game start time
     setGameStartTime(Date.now());
     generateNewQuestion();
-
-    // Test API connection on mount
     testAPIConnection();
   }, []);
 
@@ -485,6 +513,25 @@ const PlayGame = ({ navigation }) => {
         setFeedback("incorrect");
       }
 
+      // XP system: correct +20, partial (confidence >= 0.7) +10, wrong +0; 5 in a row +50 bonus
+      if (childId) {
+        try {
+          const confidence = result.confidence ?? 0;
+          const { progress, xpGained, leveledUp, newLevel } = await addXP(childId, {
+            correct: result.isCorrect,
+            confidence,
+          });
+          setXpGainedThisAnswer(xpGained);
+          setStreakBonusThisAnswer(xpGained >= 50);
+          setChildProgress(progress);
+          if (leveledUp && newLevel) {
+            setLevelUpModal({ level: newLevel });
+          }
+        } catch (err) {
+          console.warn("XP update failed:", err);
+        }
+      }
+
       setHasAnswered(true);
     } catch (error) {
       console.error("Error capturing/processing:", error);
@@ -534,60 +581,57 @@ const PlayGame = ({ navigation }) => {
   };
 
   const handleNextQuestion = async () => {
+    setXpGainedThisAnswer(0);
+    setStreakBonusThisAnswer(false);
+
     if (currentQuestion < TOTAL_QUESTIONS - 1) {
       setCurrentQuestion(currentQuestion + 1);
       generateNewQuestion();
     } else {
-      // Game complete - save session to Firestore
       const totalTime = gameStartTime
         ? Math.floor((Date.now() - gameStartTime) / 1000)
         : 0;
 
+      if (childId) {
+        try {
+          await incrementGamesPlayed(childId);
+        } catch (e) {
+          console.warn("incrementGamesPlayed failed:", e);
+        }
+      }
+
       if (childId && parentId) {
         try {
           await saveGameSession({
-            childId: childId,
-            parentId: parentId,
-            gameMode: "practice", // You can make this dynamic later
+            childId,
+            parentId,
+            gameMode: gameMode,
             totalQuestions: TOTAL_QUESTIONS,
             correctAnswers: score,
             timeTaken: totalTime,
-            difficultyLevel: "medium", // You can make this dynamic later
-          });
-          console.log("✅ Game session saved to Firestore", {
-            childId,
-            parentId,
+            difficultyLevel: "medium",
           });
         } catch (error) {
           console.warn("⚠️ Failed to save game session:", error);
-          console.warn("Session data:", {
-            childId,
-            parentId,
-            score,
-            totalTime,
-          });
         }
-      } else {
-        console.warn("⚠️ Cannot save game session - missing IDs:", {
-          childId: childId || "MISSING",
-          parentId: parentId || "MISSING",
-          userData: userData
-            ? {
-                uid: userData.uid,
-                role: userData.role,
-                parentId: userData.parentId,
-              }
-            : "MISSING",
-        });
       }
 
-      alert(`Game Complete! Your score: ${score} / ${TOTAL_QUESTIONS}`);
+      Alert.alert(
+        "Game Complete!",
+        `Great job! You got ${score} correct. Keep playing to earn more XP and level up!`,
+        [{ text: "OK", onPress: () => {} }]
+      );
 
-      // Reset game
       setCurrentQuestion(0);
       setScore(0);
       setGameStartTime(Date.now());
       generateNewQuestion();
+      if (childId) {
+        try {
+          const p = await getChildProgress(childId);
+          setChildProgress(p);
+        } catch (e) {}
+      }
     }
   };
 
@@ -598,8 +642,6 @@ const PlayGame = ({ navigation }) => {
       console.log("Navigate back to Child Dashboard");
     }
   };
-
-  const progressPercentage = ((currentQuestion + 1) / TOTAL_QUESTIONS) * 100;
 
   return (
     <SafeAreaView className="flex-1 bg-purple-50">
@@ -626,31 +668,27 @@ const PlayGame = ({ navigation }) => {
           </View>
         </View>
 
-        {/* Score & Progress Indicator */}
+        {/* Level & XP Progress */}
         <View className="bg-white rounded-2xl p-4 mb-4 shadow-md">
           <View className="flex-row justify-between items-center mb-2">
             <View className="flex-row items-center">
-              <MaterialIcons
-                name="star"
-                size={28}
-                color="#fbbf24"
-                style={{ marginRight: 8 }}
-              />
+              <MaterialIcons name="military-tech" size={26} color="#7c3aed" style={{ marginRight: 8 }} />
               <Text className="text-xl font-bold text-gray-800">
-                Score: {score} / {TOTAL_QUESTIONS}
+                Level {childProgress?.level ?? 1}
+              </Text>
+              <Text className="text-sm text-gray-500 ml-2">
+                {(childProgress?.currentLevelXP ?? 0)} / {XP_PER_LEVEL} XP
               </Text>
             </View>
             <Text className="text-lg font-semibold text-gray-600">
-              Question {currentQuestion + 1} / {TOTAL_QUESTIONS}
+              Q{currentQuestion + 1}/{TOTAL_QUESTIONS}
             </Text>
           </View>
-
-          {/* Progress Bar */}
-          <View className="h-3 bg-gray-200 rounded-full overflow-hidden">
+          <View className="h-2.5 bg-gray-200 rounded-full overflow-hidden">
             <View
-              className="h-full bg-purple-500 rounded-full"
+              className="h-full bg-violet-500 rounded-full"
               style={{
-                width: `${progressPercentage}%`,
+                width: `${((childProgress?.currentLevelXP ?? 0) / XP_PER_LEVEL) * 100}%`,
               }}
             />
           </View>
@@ -774,6 +812,12 @@ const PlayGame = ({ navigation }) => {
                     You signed: {predictedLetter}
                   </Text>
                 )}
+                {xpGainedThisAnswer > 0 && (
+                  <Text className="text-lg font-bold text-violet-700 mt-2">
+                    +{xpGainedThisAnswer} XP
+                    {streakBonusThisAnswer ? " (5 in a row bonus!)" : ""}
+                  </Text>
+                )}
               </>
             ) : (
               <>
@@ -791,10 +835,38 @@ const PlayGame = ({ navigation }) => {
                     You signed: {predictedLetter} (Expected: {targetLetter})
                   </Text>
                 )}
+                {xpGainedThisAnswer > 0 && (
+                  <Text className="text-lg font-bold text-violet-700 mt-2">
+                    +{xpGainedThisAnswer} XP
+                  </Text>
+                )}
               </>
             )}
           </View>
         )}
+
+        {/* Level-up modal */}
+        <Modal
+          visible={!!levelUpModal}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setLevelUpModal(null)}
+        >
+          <View className="flex-1 bg-black/50 justify-center items-center px-6">
+            <View className="bg-white rounded-3xl p-8 items-center shadow-xl max-w-sm">
+              <MaterialIcons name="celebration" size={64} color="#7c3aed" style={{ marginBottom: 16 }} />
+              <Text className="text-2xl font-bold text-gray-800 text-center">Level Up!</Text>
+              <Text className="text-4xl font-bold text-violet-600 mt-2">Level {levelUpModal?.level}</Text>
+              <Text className="text-gray-500 text-center mt-2">New games unlocked!</Text>
+              <TouchableOpacity
+                onPress={() => setLevelUpModal(null)}
+                className="bg-violet-500 rounded-xl px-8 py-3 mt-6"
+              >
+                <Text className="text-white font-bold text-lg">Awesome!</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
 
         {/* Action Buttons */}
         <View className="mb-4">
