@@ -8,6 +8,7 @@ import { logoutUser } from '../../services/auth/authService';
 import { getParentChildren } from '../../services/firestore/userService';
 import { getChildAnalytics, getParentGameSessions } from '../../services/firestore/gameService';
 import hazardDatabaseService from '../../../services/hazardDatabase.service';
+import notificationService from '../../../services/notification.service';
 
 const ParentDashboard = ({ navigation }) => {
   const { userData } = useAuth();
@@ -19,6 +20,9 @@ const ParentDashboard = ({ navigation }) => {
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
   const [recentHazards, setRecentHazards] = useState([]);
   const [hazardsLoading, setHazardsLoading] = useState(false);
+  const [notifications, setNotifications] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
   
   // Load children on mount
   useEffect(() => {
@@ -56,6 +60,13 @@ const ParentDashboard = ({ navigation }) => {
     }
   }, [children]);
 
+  // Load notifications for parent
+  useEffect(() => {
+    if (userData && userData.role === 'parent' && userData.uid) {
+      loadNotifications();
+    }
+  }, [userData]);
+
   const loadChildAnalytics = async (childId) => {
     if (!childId || !userData) return;
     
@@ -92,6 +103,24 @@ const ParentDashboard = ({ navigation }) => {
       console.error('Error loading recent hazards:', error);
     } finally {
       setHazardsLoading(false);
+    }
+  };
+
+  const loadNotifications = async () => {
+    if (!userData?.uid) return;
+    
+    setNotificationsLoading(true);
+    try {
+      const [notificationsList, unread] = await Promise.all([
+        notificationService.getNotifications(userData.uid, { limit: 10 }),
+        notificationService.getUnreadCount(userData.uid),
+      ]);
+      setNotifications(notificationsList);
+      setUnreadCount(unread);
+    } catch (error) {
+      console.error('Error loading notifications:', error);
+    } finally {
+      setNotificationsLoading(false);
     }
   };
 
@@ -186,9 +215,16 @@ const ParentDashboard = ({ navigation }) => {
         <View className="flex-1 px-6 pt-4 pb-8">
           {/* Header Section */}
           <View className="flex-row items-center justify-between mb-6">
-            <Text className="text-3xl font-bold text-gray-800">
-              Parent Dashboard
-            </Text>
+            <View className="flex-row items-center">
+              <Text className="text-3xl font-bold text-gray-800">
+                Parent Dashboard
+              </Text>
+              {unreadCount > 0 && (
+                <View className="ml-3 bg-red-500 rounded-full px-3 py-1">
+                  <Text className="text-white font-bold text-sm">{unreadCount}</Text>
+                </View>
+              )}
+            </View>
             <TouchableOpacity
               onPress={handleLogout}
               className="bg-white rounded-full p-3 shadow-md"
@@ -196,6 +232,61 @@ const ParentDashboard = ({ navigation }) => {
               <MaterialIcons name="logout" size={24} color="#374151" />
             </TouchableOpacity>
           </View>
+
+          {/* Critical Alert Notifications */}
+          {notifications.length > 0 && (
+            <View className="bg-red-50 border-l-4 border-red-500 rounded-lg p-4 mb-6">
+              <View className="flex-row items-center justify-between mb-2">
+                <Text className="text-lg font-bold text-red-800">
+                  🚨 Critical Alerts
+                </Text>
+                <TouchableOpacity onPress={() => navigation.navigate('HazardHistory')}>
+                  <Text className="text-sm text-red-600 font-semibold">View All</Text>
+                </TouchableOpacity>
+              </View>
+              {notifications.slice(0, 3).map((notification) => (
+                <TouchableOpacity
+                  key={notification.id}
+                  onPress={async () => {
+                    if (!notification.read) {
+                      await notificationService.markAsRead(notification.id);
+                      loadNotifications();
+                    }
+                    navigation.navigate('HazardHistory');
+                  }}
+                  className={`bg-white rounded-lg p-3 mb-2 ${!notification.read ? 'border-l-4 border-red-500' : ''}`}
+                >
+                  <Text className="font-semibold text-gray-800">
+                    {notification.title}
+                  </Text>
+                  <Text className="text-sm text-gray-600 mt-1">
+                    {notification.message}
+                  </Text>
+                  {notification.childName && (
+                    <Text className="text-xs text-gray-500 mt-1">
+                      From: {notification.childName}
+                    </Text>
+                  )}
+                  {notification.location && (
+                    <View className="flex-row items-center mt-1">
+                      <MaterialIcons name="location-on" size={14} color="#ef4444" />
+                      <Text className="text-xs text-gray-500 ml-1">
+                        {notification.locationText || 
+                          (notification.location.coordinates 
+                            ? `${notification.location.coordinates[1]?.toFixed(6)}, ${notification.location.coordinates[0]?.toFixed(6)}`
+                            : notification.location.latitude 
+                              ? `${notification.location.latitude.toFixed(6)}, ${notification.location.longitude.toFixed(6)}`
+                              : 'Location available')}
+                      </Text>
+                    </View>
+                  )}
+                  <Text className="text-xs text-gray-400 mt-1">
+                    {new Date(notification.timestamp).toLocaleString()}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
           
           {/* Child Selection */}
           <View className="bg-white rounded-2xl p-4 mb-6 shadow-md">

@@ -7,6 +7,7 @@ import audioRoutes from "./routes/audio.routes.js";
 import hazardRoutes from "./routes/hazard.routes.js";
 import soundRoutes from "./routes/sound.routes.js";
 import placeRoutes from "./routes/location.routes.js";
+import notificationRoutes from "./routes/notification.routes.js";
 
 // Load environment variables
 dotenv.config();
@@ -32,6 +33,7 @@ app.use("/api/audio", audioRoutes);
 app.use("/api/hazard", hazardRoutes);
 app.use("/api/sounds", soundRoutes);
 app.use("/api/places", placeRoutes);
+app.use("/api/notifications", notificationRoutes);
 
 // Health check endpoint
 app.get("/health", (req, res) => {
@@ -67,7 +69,7 @@ app.use((req, res) => {
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📡 Health check: http://localhost:${PORT}/health`);
-  console.log(`🌐 Network access: http://192.168.13.67:${PORT}/health`);
+  console.log(`🌐 Network access: http://192.168.1.9:${PORT}/health`);
   console.log(`🌍 Environment: ${process.env.NODE_ENV || "development"}`);
 });
 

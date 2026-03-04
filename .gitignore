@@ -122,3 +122,4 @@ coverage.xml
 .dmypy.json
 dmypy.json
 
+backend/serviceAccountKey.json

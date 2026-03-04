@@ -16,6 +16,8 @@ const router = express.Router();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const SOUNDS_COLLECTION = 'sounds';
+const USERS_COLLECTION = 'users';
+const NOTIFICATIONS_COLLECTION = 'notifications';
 
 /**
  * Save detected sounds to database
@@ -128,7 +130,46 @@ async function saveSoundsToDatabase(detections, context = {}, audioFileUrl = nul
         const soundDoc = createSoundDocument(soundData);
         const docRef = await db.collection(SOUNDS_COLLECTION).add(soundDoc);
         savedSoundIds.push(docRef.id);
-        console.log(`💾 Saved critical alert: ${hazardType} (confidence: ${confidence.toFixed(2)}, priority: ${priority}, ID: ${docRef.id})`);
+        console.log(`💾 Saved ${isCriticalAlert ? 'CRITICAL' : 'identified'} alert: ${hazardType} (confidence: ${confidence.toFixed(2)}, priority: ${priority}, ID: ${docRef.id})`);
+        
+        // If this is a critical alert and has a userId, notify the parent
+        if (isCriticalAlert && context.userId) {
+          try {
+            // Get parent ID from child user ID
+            const parentId = await getParentIdFromChild(context.userId);
+            
+            if (parentId) {
+              // Get child name for notification
+              let childName = 'Your child';
+              try {
+                const childDoc = await db.collection(USERS_COLLECTION).doc(context.userId).get();
+                if (childDoc.exists) {
+                  childName = childDoc.data().name || childName;
+                }
+              } catch (nameError) {
+                console.warn('⚠️ Could not fetch child name:', nameError);
+              }
+              
+              // Create notification for parent
+              await notifyParent(parentId, {
+                hazardType: hazardType,
+                childUserId: context.userId,
+                childName: childName,
+                location: context.location,
+                soundId: docRef.id,
+                priority: priority,
+                confidence: confidence,
+              });
+              
+              console.log(`📬 Parent notification sent for critical alert: ${hazardType}`);
+            } else {
+              console.log(`ℹ️ No parent found for user ${context.userId} (may be a parent account)`);
+            }
+          } catch (notificationError) {
+            // Don't fail the save if notification fails
+            console.error('❌ Error sending parent notification:', notificationError);
+          }
+        }
       } else {
         console.warn(`⚠️ Skipped saving invalid sound data:`, validation.errors);
       }
@@ -139,6 +180,105 @@ async function saveSoundsToDatabase(detections, context = {}, audioFileUrl = nul
   }
 
   return savedSoundIds;
+}
+
+/**
+ * Get parent ID from child user ID
+ * @param {string} childUserId - Child user ID
+ * @returns {Promise<string|null>} Parent user ID or null
+ */
+async function getParentIdFromChild(childUserId) {
+  if (!childUserId) return null;
+  
+  try {
+    const userDoc = await db.collection(USERS_COLLECTION).doc(childUserId).get();
+    if (userDoc.exists) {
+      const userData = userDoc.data();
+      const parentId = userData.parentId || null;
+      console.log(`👨‍👩‍👧 Found parent ${parentId} for child ${childUserId}`);
+      return parentId;
+    }
+    console.warn(`⚠️ User ${childUserId} not found`);
+    return null;
+  } catch (error) {
+    console.error(`❌ Error getting parent ID for child ${childUserId}:`, error);
+    return null;
+  }
+}
+
+/**
+ * Format location for display
+ * @param {Object} location - Location object (GeoJSON Point or with lat/lng)
+ * @returns {string} Formatted location string
+ */
+function formatLocation(location) {
+  if (!location) return 'Location not available';
+  
+  // If location has coordinates array [longitude, latitude]
+  if (location.coordinates && Array.isArray(location.coordinates) && location.coordinates.length >= 2) {
+    const [lng, lat] = location.coordinates;
+    return `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+  }
+  
+  // If location has latitude and longitude properties
+  if (location.latitude !== undefined && location.longitude !== undefined) {
+    return `${location.latitude.toFixed(6)}, ${location.longitude.toFixed(6)}`;
+  }
+  
+  return 'Location not available';
+}
+
+/**
+ * Create a notification for parent when child triggers critical alert
+ * @param {string} parentId - Parent user ID
+ * @param {Object} alertData - Alert data (hazard type, child info, location, etc.)
+ * @returns {Promise<string|null>} Notification document ID or null
+ */
+async function notifyParent(parentId, alertData) {
+  if (!parentId) {
+    console.warn('⚠️ No parent ID provided for notification');
+    return null;
+  }
+
+  try {
+    // Format location for message
+    const locationText = formatLocation(alertData.location);
+    const hazardTypeFormatted = (alertData.hazardType || 'Critical hazard')
+      .split('_')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
+    
+    // Create message with location
+    let message = `${alertData.childName || 'Your child'} detected: ${hazardTypeFormatted}`;
+    if (alertData.location) {
+      message += `\n📍 Location: ${locationText}`;
+    }
+
+    const notificationData = {
+      parentId: parentId,
+      type: 'critical_hazard_alert',
+      title: '🚨 Critical Alert Detected',
+      message: message,
+      hazardType: alertData.hazardType,
+      childUserId: alertData.childUserId,
+      childName: alertData.childName || 'Your child',
+      location: alertData.location || null,
+      locationText: locationText, // Store formatted location text for easy display
+      soundId: alertData.soundId || null,
+      priority: alertData.priority || 9,
+      timestamp: new Date().toISOString(),
+      read: false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    const notificationRef = await db.collection(NOTIFICATIONS_COLLECTION).add(notificationData);
+    console.log(`📬 Created notification ${notificationRef.id} for parent ${parentId} with location: ${locationText}`);
+    return notificationRef.id;
+  } catch (error) {
+    console.error(`❌ Error creating notification for parent ${parentId}:`, error);
+    return null;
+  }
 }
 
 /**

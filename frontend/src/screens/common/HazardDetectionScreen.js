@@ -53,6 +53,8 @@ export default function HazardDetectionScreen() {
     const soundLevelAnimation = useRef(new Animated.Value(0)).current;
     const popupAnimation = useRef(new Animated.Value(0)).current;
     const backdropOpacity = useRef(new Animated.Value(0)).current;
+    const criticalPulseAnimation = useRef(new Animated.Value(1)).current;
+    const criticalScaleAnimation = useRef(new Animated.Value(1)).current;
     const navigation = useNavigation();
   const [soundLevel, setSoundLevel] = useState(0.3); // Mock sound level (0-1)
 
@@ -62,6 +64,10 @@ export default function HazardDetectionScreen() {
   const MAX_HISTORY_SIZE = 5; // Keep last 5 detections (20 seconds of history)
   const ALERT_COOLDOWN_MS = 8000; // Don't alert same hazard within 8 seconds
   const lastAlertTimeRef = useRef(new Map()); // Track last alert time per hazard type
+  // CRITICAL: Use refs to persistently track critical alert state (survives React state updates)
+  const criticalAlertRef = useRef(false); // Track if critical alert is active
+  const currentAlertPriorityRef = useRef(0); // Track current alert priority
+  const currentAlertMessageRef = useRef(null); // Track current alert message
 
     const getAlertColor = (urgency) => {
         switch (urgency) {
@@ -75,6 +81,22 @@ export default function HazardDetectionScreen() {
         return '#34C759'; // Green
       default:
         return GREEN_BUTTON;
+        }
+    };
+
+  // Helper function to safely clear alert message (never clears critical alerts)
+  const safeClearAlertMessage = () => {
+    // Use refs for reliable checking (survives React state updates)
+    const currentPriority = currentAlertPriorityRef.current || detections?.highestPriority?.priority || 0;
+    const isCurrentlyCritical = criticalAlertRef.current || isCriticalAlert || currentPriority >= 9;
+    
+    if (currentPriority < 9 && !isCurrentlyCritical) {
+      setAlertMessage(null);
+      currentAlertMessageRef.current = null;
+      return true; // Cleared successfully
+    } else {
+      console.log(`🛡️ Cannot clear alert - critical alert is active (priority: ${currentPriority})`);
+      return false; // Cannot clear - critical alert active
     }
   };
 
@@ -87,6 +109,44 @@ export default function HazardDetectionScreen() {
       setError(`Backend connection failed: ${error.message}`);
     }
   };
+
+  // Separate useEffect for critical alert pulsing animation
+  useEffect(() => {
+    if (isCriticalAlert && alertMessage) {
+      // Continuous pulsing animation for critical alerts
+      Animated.loop(
+        Animated.sequence([
+          Animated.parallel([
+            Animated.timing(criticalPulseAnimation, {
+              toValue: 1.1,
+              duration: 800,
+              useNativeDriver: true,
+            }),
+            Animated.timing(criticalScaleAnimation, {
+              toValue: 1.05,
+              duration: 800,
+              useNativeDriver: true,
+            }),
+          ]),
+          Animated.parallel([
+            Animated.timing(criticalPulseAnimation, {
+              toValue: 1,
+              duration: 800,
+              useNativeDriver: true,
+            }),
+            Animated.timing(criticalScaleAnimation, {
+              toValue: 1,
+              duration: 800,
+              useNativeDriver: true,
+            }),
+          ]),
+        ])
+      ).start();
+    } else {
+      criticalPulseAnimation.setValue(1);
+      criticalScaleAnimation.setValue(1);
+    }
+  }, [isCriticalAlert, alertMessage]);
 
   // Separate useEffect for animations (runs when isListening changes)
     useEffect(() => {
@@ -189,9 +249,9 @@ export default function HazardDetectionScreen() {
               console.error('Error stopping recording in cleanup:', error);
             }
           });
-      }
+            }
       recordingRef.current = null;
-    };
+        };
   }, []); // Empty dependency array - only run on mount/unmount
 
     const startListening = async () => {
@@ -224,12 +284,10 @@ export default function HazardDetectionScreen() {
             setIsListening(true);
             isListeningRef.current = true;
             setError(null);
-      // Clear any non-critical alerts when starting to listen
-      // Check detections directly to see if there's a critical alert
-      const currentPriority = detections?.highestPriority?.priority || 0;
-      if (currentPriority < 9) {
-        setAlertMessage(null);
-      }
+      // CRITICAL: Never clear critical alerts when starting to listen
+      // Only clear non-critical alerts
+      // Use refs for reliable checking (survives React state updates)
+      safeClearAlertMessage();
 
       // Verify ref is still set after state updates
       setTimeout(() => {
@@ -280,7 +338,37 @@ export default function HazardDetectionScreen() {
         }
 
         try {
-          const status = await currentRecording.getStatusAsync();
+          // Check if recording is valid before accessing it
+          if (!currentRecording) {
+            console.warn('⚠️ Recording ref is null in interval, skipping...');
+            return;
+          }
+
+          let status;
+          try {
+            status = await currentRecording.getStatusAsync();
+          } catch (statusError) {
+            // If recording doesn't exist or isn't prepared, try to restart
+            if (statusError.message?.includes('does not exist') || statusError.message?.includes('Prepare it first')) {
+              console.warn('⚠️ Recording not prepared in interval, restarting...');
+              if (isListeningRef.current) {
+                try {
+                  const restarted = await restartRecording();
+                  if (restarted) {
+                    setRecording(restarted);
+                    recordingRef.current = restarted;
+                    console.log('✅ Recording restarted from interval');
+                  }
+                } catch (restartError) {
+                  console.error('❌ Failed to restart from interval:', restartError);
+                }
+              }
+            } else {
+              console.error('❌ Error getting status in interval:', statusError);
+            }
+            return;
+          }
+
           const durationSeconds = (status.durationMillis || 0) / 1000;
           console.log('📊 Recording status:', {
             isRecording: status.isRecording,
@@ -307,7 +395,7 @@ export default function HazardDetectionScreen() {
                 console.log('✅ Recording restarted successfully');
               } else {
                 console.error('❌ Failed to restart recording');
-              }
+                    }
             } catch (restartError) {
               console.error('❌ Error restarting recording:', restartError);
             }
@@ -380,14 +468,58 @@ export default function HazardDetectionScreen() {
       console.error('Error starting recording:', error);
             setError(`Failed to start recording: ${error.message}`);
       Alert.alert('Recording Error', error.message);
-    }
-  };
+        }
+    };
 
   const processAudioChunk = async (recording) => {
     let newRecording = null;
     try {
+      // Validate recording object exists and is prepared
+      if (!recording) {
+        console.warn('⚠️ No recording object provided to processAudioChunk');
+        // Try to restart if we should be listening
+        if (isListeningRef.current) {
+          try {
+            newRecording = await restartRecording();
+            if (newRecording) {
+              setRecording(newRecording);
+              recordingRef.current = newRecording;
+              console.log('✅ Recording restarted (was null)');
+            }
+          } catch (restartError) {
+            console.error('❌ Failed to restart null recording:', restartError);
+          }
+        }
+        return;
+      }
+
       // Get status before stopping to log duration
-      const statusBeforeStop = await recording.getStatusAsync();
+      // Wrap in try-catch to handle "Recorder does not exist" error
+      let statusBeforeStop;
+      try {
+        statusBeforeStop = await recording.getStatusAsync();
+      } catch (statusError) {
+        // If recording doesn't exist or isn't prepared, restart it
+        if (statusError.message?.includes('does not exist') || statusError.message?.includes('Prepare it first')) {
+          console.warn('⚠️ Recording not prepared, restarting...', statusError.message);
+          if (isListeningRef.current) {
+            try {
+              newRecording = await restartRecording();
+              if (newRecording) {
+                setRecording(newRecording);
+                recordingRef.current = newRecording;
+                console.log('✅ Recording restarted (was not prepared)');
+              }
+            } catch (restartError) {
+              console.error('❌ Failed to restart unprepared recording:', restartError);
+            }
+          }
+        } else {
+          console.error('❌ Error getting recording status:', statusError);
+        }
+        return;
+      }
+
       const durationSeconds = (statusBeforeStop.durationMillis || 0) / 1000;
       console.log(`🎵 Processing audio chunk (duration: ${durationSeconds.toFixed(2)}s)...`);
 
@@ -395,7 +527,7 @@ export default function HazardDetectionScreen() {
       if (!statusBeforeStop.isRecording) {
         console.warn('⚠️ Recording is not active, trying to restart...');
         // CRITICAL: If recording stopped, restart it to keep listening
-        if (isListeningRef.current) {
+            if (isListeningRef.current) {
           try {
             newRecording = await restartRecording();
             if (newRecording) {
@@ -414,7 +546,17 @@ export default function HazardDetectionScreen() {
             isProcessingRef.current = true;
 
       // Stop and unload to finalize the recording file
-      await recording.stopAndUnloadAsync();
+      // Wrap in try-catch to handle cases where recording was already stopped/unloaded
+      try {
+        await recording.stopAndUnloadAsync();
+      } catch (stopError) {
+        // If recording was already stopped/unloaded, that's okay - just log and continue
+        if (stopError.message?.includes('already been unloaded') || stopError.message?.includes('does not exist')) {
+          console.warn('⚠️ Recording already stopped/unloaded, continuing...');
+        } else {
+          throw stopError; // Re-throw if it's a different error
+        }
+      }
 
       // Small delay to ensure file is fully written
       await new Promise(resolve => setTimeout(resolve, 100));
@@ -423,8 +565,8 @@ export default function HazardDetectionScreen() {
 
       if (!uri) {
         console.warn('⚠️ No audio URI available after stopping recording');
-        setIsProcessing(false);
-        isProcessingRef.current = false;
+            setIsProcessing(false);
+            isProcessingRef.current = false;
         // CRITICAL: Always restart recording even if URI is missing to keep listening
         if (isListeningRef.current) {
           newRecording = await restartRecording();
@@ -432,7 +574,7 @@ export default function HazardDetectionScreen() {
             setRecording(newRecording);
             recordingRef.current = newRecording;
             console.log('✅ Recording restarted after missing URI');
-          }
+        }
         }
         return;
       }
@@ -488,7 +630,25 @@ export default function HazardDetectionScreen() {
       }
 
                 if (response.success && response.data) {
-                    setDetections(response.data);
+          // CRITICAL: Check if there's already an active critical alert
+          // If so, only update detections if the new detection is also critical (priority >= 9)
+          // This prevents lower priority detections from overwriting critical alerts
+          // Use refs for reliable checking (survives React state updates)
+          const currentCriticalPriority = currentAlertPriorityRef.current || detections?.highestPriority?.priority || 0;
+          const hasActiveCriticalAlert = criticalAlertRef.current || isCriticalAlert || currentCriticalPriority >= 9;
+          const newPriority = response.data.highestPriority?.priority || 0;
+          const isNewDetectionCritical = newPriority >= 9;
+          
+          // Only update detections if:
+          // 1. There's no active critical alert, OR
+          // 2. The new detection is also critical (can replace one critical with another)
+          if (!hasActiveCriticalAlert || isNewDetectionCritical) {
+            setDetections(response.data);
+          } else {
+            // Keep existing detections (preserve critical alert data)
+            console.log(`🛡️ Preserving critical alert (priority ${currentCriticalPriority}) - ignoring lower priority detection (priority ${newPriority})`);
+            // Still add to detection history for tracking, but don't update the displayed detections
+          }
 
         // Smart confidence-based alerting system
         if (response.data.highestPriority) {
@@ -504,7 +664,30 @@ export default function HazardDetectionScreen() {
             priority = detectionInArray?.priority || 0;
           }
           priority = priority || 0;
-
+          
+          // CRITICAL: If there's already an active critical alert, don't process lower priority alerts
+          // Use a flag to skip alert processing but continue with recording restart
+          let shouldSkipAlertProcessing = false;
+          if (hasActiveCriticalAlert && priority < 9) {
+            console.log(`🛡️ Skipping alert processing - critical alert (priority ${currentCriticalPriority}) is active, new detection priority ${priority} is lower`);
+            shouldSkipAlertProcessing = true;
+            // Still add to detection history for tracking
+            const now = Date.now();
+            const detection = {
+              type: hazardType,
+              confidence,
+              priority,
+              timestamp: now
+            };
+            detectionHistoryRef.current.push(detection);
+            if (detectionHistoryRef.current.length > MAX_HISTORY_SIZE) {
+              detectionHistoryRef.current.shift();
+            }
+            // Skip alert processing but continue to restart recording
+          }
+          
+          // If we should skip alert processing, skip the entire alert processing block
+          if (!shouldSkipAlertProcessing) {
           let urgency = hazard.urgency;
           if (!urgency) {
             // Determine urgency from priority if not provided
@@ -514,7 +697,7 @@ export default function HazardDetectionScreen() {
             else urgency = 'low';
           }
 
-          const now = Date.now();
+        const now = Date.now();
 
           // Debug: Log the full hazard object
           console.log('📊 Full hazard object:', JSON.stringify(hazard, null, 2));
@@ -595,8 +778,22 @@ export default function HazardDetectionScreen() {
           }
 
           // Only alert if shouldAlert is true AND not on cooldown
+          // CRITICAL: Also check that we're not replacing a higher priority alert
+          // Use refs for reliable checking (survives React state updates)
+          const existingAlertPriority = currentAlertPriorityRef.current || detections?.highestPriority?.priority || 0;
+          const existingAlertIsCritical = criticalAlertRef.current || isCriticalAlert || existingAlertPriority >= 9;
+          // Can replace if: 
+          // 1. No existing alert (priority 0), OR
+          // 2. New priority is >= existing priority (higher or equal priority can replace)
+          // This ensures critical alerts (priority >= 9) are never replaced by lower priority alerts
+          const canReplaceExistingAlert = existingAlertPriority === 0 || priority >= existingAlertPriority;
+          
           if (shouldAlert && !isOnCooldown) {
-            console.log(`✅ Alerting: ${hazardType} - ${alertReason}`);
+            if (!canReplaceExistingAlert) {
+              console.log(`🛡️ Blocking alert: ${hazardType} (priority ${priority}) cannot replace existing alert (priority ${existingAlertPriority})`);
+              // Don't alert - preserve the existing higher priority alert
+            } else {
+              console.log(`✅ Alerting: ${hazardType} - ${alertReason}`);
 
             const message = hazard.type === 'fire_alarm' ? '🔥 Fire alarm detected! Evacuate immediately!' :
               hazard.type === 'smoke_alarm' ? '⚠️ Smoke alarm detected! Check for smoke or fire!' :
@@ -618,10 +815,13 @@ export default function HazardDetectionScreen() {
                                               `Alert: ${hazard.type} detected`;
 
             setAlertMessage(message);
+            currentAlertMessageRef.current = message; // Update ref
 
             // Check if this is a critical alert (priority >= 9)
             const isCritical = priority >= 9;
             setIsCriticalAlert(isCritical);
+            criticalAlertRef.current = isCritical; // Update ref
+            currentAlertPriorityRef.current = priority; // Update ref
 
             // Start continuous vibration for critical alerts
             if (isCritical) {
@@ -700,42 +900,38 @@ export default function HazardDetectionScreen() {
             lastAlertTimeRef.current.set(hazardType, now);
 
             // Animate popup in
-            showPopup();
+                showPopup();
 
             // Trigger haptic feedback
             if (hazardAlertService && typeof hazardAlertService.triggerAlert === 'function') {
               await hazardAlertService.triggerAlert(hazard);
-            }
+                }
 
             // Visual alert animation
             triggerFlashAnimation(urgency);
+            } // End of canReplaceExistingAlert else block
           } else if (shouldAlert && isOnCooldown) {
             console.log(`⏸️ Alert suppressed due to cooldown: ${hazardType}`);
             // Keep detection in history but don't alert
           } else {
             // Don't alert yet, but keep detection in history
             console.log(`⏳ Not alerting yet: ${hazardType} (confidence: ${(confidence * 100).toFixed(1)}%, priority: ${priority})`);
-            // Don't clear critical alerts - check priority directly from detection
-            const currentPriority = response.data.highestPriority?.priority || priority;
-            if (currentPriority < 9) {
-              setAlertMessage(null);
-            }
+            // CRITICAL: Never clear critical alerts - they must be explicitly dismissed by child
+            // Use refs for reliable checking
+            safeClearAlertMessage();
           }
+          } // End of if (!shouldSkipAlertProcessing) block
         } else {
           // No detection in this chunk - clear alert but keep history (unless critical)
-          // Check if we have a critical alert currently displayed
-          const currentPriority = detections?.highestPriority?.priority || 0;
-          if (currentPriority < 9) {
-            setAlertMessage(null);
-          }
+          // CRITICAL: Never clear critical alerts - they must be explicitly dismissed by child
+          // Use refs for reliable checking (survives React state updates)
+          safeClearAlertMessage();
         }
       } else {
         // No detection - clear alert but keep history (unless critical)
-        // Check if we have a critical alert currently displayed
-        const currentPriority = detections?.highestPriority?.priority || 0;
-        if (currentPriority < 9) {
-          setAlertMessage(null);
-        }
+        // CRITICAL: Never clear critical alerts - they must be explicitly dismissed by child
+        // Use refs for reliable checking (survives React state updates)
+        safeClearAlertMessage();
       }
 
       // ALWAYS restart recording for the next chunk - this is critical for continuous listening
@@ -801,7 +997,7 @@ export default function HazardDetectionScreen() {
         }
     };
 
-  const restartRecording = async () => {
+    const restartRecording = async () => {
     if (isRestartingRef.current && restartPromiseRef.current) {
       try {
         return await restartPromiseRef.current;
@@ -853,7 +1049,7 @@ export default function HazardDetectionScreen() {
       } finally {
         isRestartingRef.current = false;
         restartPromiseRef.current = null;
-      }
+        }
     })();
 
     restartPromiseRef.current = restartPromise;
@@ -861,18 +1057,37 @@ export default function HazardDetectionScreen() {
   };
 
   const triggerFlashAnimation = (urgency) => {
-    Animated.sequence([
-      Animated.timing(flashAnimation, {
-        toValue: 1,
-        duration: 200,
-        useNativeDriver: false,
-      }),
-      Animated.timing(flashAnimation, {
-        toValue: 0,
-        duration: 200,
-        useNativeDriver: false,
-      }),
-    ]).start();
+    // For critical alerts, use continuous flashing
+    if (urgency === 'critical' || isCriticalAlert) {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(flashAnimation, {
+            toValue: 1,
+            duration: 300,
+            useNativeDriver: false,
+          }),
+          Animated.timing(flashAnimation, {
+            toValue: 0,
+            duration: 300,
+            useNativeDriver: false,
+          }),
+        ])
+      ).start();
+    } else {
+      // For non-critical alerts, single flash
+      Animated.sequence([
+        Animated.timing(flashAnimation, {
+          toValue: 1,
+          duration: 200,
+          useNativeDriver: false,
+        }),
+        Animated.timing(flashAnimation, {
+          toValue: 0,
+          duration: 200,
+          useNativeDriver: false,
+        }),
+      ]).start();
+    }
   };
 
   const showPopup = () => {
@@ -884,7 +1099,7 @@ export default function HazardDetectionScreen() {
         useNativeDriver: true,
       }),
       Animated.timing(backdropOpacity, {
-        toValue: 0.6,
+        toValue: 1, // Full opacity for darker backdrop (better visibility)
         duration: 300,
         useNativeDriver: true,
       }),
@@ -893,9 +1108,9 @@ export default function HazardDetectionScreen() {
 
   const hidePopup = () => {
     // Don't auto-dismiss critical alerts - they must be explicitly dismissed by user
-    // Check both state and detections to be safe
-    const currentPriority = detections?.highestPriority?.priority || 0;
-    if (isCriticalAlert || currentPriority >= 9) {
+    // Use refs for reliable checking (survives React state updates)
+    const currentPriority = currentAlertPriorityRef.current || detections?.highestPriority?.priority || 0;
+    if (criticalAlertRef.current || isCriticalAlert || currentPriority >= 9) {
       console.log('⚠️ Critical alert cannot be auto-dismissed - user must explicitly dismiss');
       return;
     }
@@ -915,6 +1130,10 @@ export default function HazardDetectionScreen() {
       setAlertMessage(null);
       setDetections(null);
       setIsCriticalAlert(false);
+      // Clear refs as well
+      criticalAlertRef.current = false;
+      currentAlertPriorityRef.current = 0;
+      currentAlertMessageRef.current = null;
     });
     };
 
@@ -964,6 +1183,10 @@ export default function HazardDetectionScreen() {
       
       setAlertMessage(null);
       setIsCriticalAlert(false);
+      // Clear refs as well
+      criticalAlertRef.current = false;
+      currentAlertPriorityRef.current = 0;
+      currentAlertMessageRef.current = null;
 
       // Clear detection history when stopping
       detectionHistoryRef.current = [];
@@ -997,11 +1220,18 @@ export default function HazardDetectionScreen() {
       console.warn('⚠️ Error canceling vibration:', cancelError);
     }
     
-    // Reset critical alert state
+    // Stop flash animation
+    flashAnimation.stopAnimation();
+    flashAnimation.setValue(0);
+    
+    // Reset critical alert state (both state and refs)
     setIsCriticalAlert(false);
+    criticalAlertRef.current = false;
+    currentAlertPriorityRef.current = 0;
+    currentAlertMessageRef.current = null;
     
     // Hide popup (will work for critical alerts since user explicitly dismissed)
-    Animated.parallel([
+        Animated.parallel([
       Animated.timing(popupAnimation, {
         toValue: 0,
         duration: 250,
@@ -1019,7 +1249,7 @@ export default function HazardDetectionScreen() {
     
     // Note: We keep detection history even after dismissing alert
     // This allows the system to still track patterns
-  };
+    };
 
   const formatHazardType = (type) => {
     return type
@@ -1103,13 +1333,13 @@ export default function HazardDetectionScreen() {
               />
 
               {/* Dinosaur Image */}
-              <View style={styles.dinoCircle}>
+                            <View style={styles.dinoCircle}>
                 <Image
                   source={require('../../../assets/images/dino-listening.png')}
                   style={styles.dinoImage}
                   resizeMode="cover"
                 />
-              </View>
+                            </View>
 
               {/* Leaf Icons */}
               <View style={styles.leaf1}>
@@ -1272,42 +1502,76 @@ export default function HazardDetectionScreen() {
           </View>
         )}
 
-        {/* Critical Alert Full Screen Overlay */}
+        {/* Critical Alert Full Screen Overlay - Must stay until child responds */}
         {alertMessage && detections?.highestPriority && detections.highestPriority.priority >= 9 && (
-          <View style={styles.criticalOverlay}>
+          <View style={styles.criticalOverlay} pointerEvents="box-none">
+            {/* Pulsing red background */}
             <Animated.View
               style={[
                 styles.criticalOverlayBackground,
                 {
-                  opacity: flashAnimation.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0.8, 1],
+                  opacity: criticalPulseAnimation.interpolate({
+                    inputRange: [0.9, 1, 1.1],
+                    outputRange: [0.95, 1, 0.95],
                   }),
                 }
               ]}
             />
-            <View style={styles.criticalContent}>
-              <Text style={styles.criticalEmoji}>🚨</Text>
+            {/* Flashing overlay for extra visibility */}
+            <Animated.View
+              style={[
+                styles.criticalFlashOverlay,
+                {
+                  opacity: flashAnimation.interpolate({
+                    inputRange: [0, 0.5, 1],
+                    outputRange: [0, 0.3, 0],
+                  }),
+                }
+              ]}
+            />
+            {/* Content with pulsing animation */}
+            <Animated.View
+              style={[
+                styles.criticalContent,
+                {
+                  transform: [
+                    { scale: criticalScaleAnimation },
+                  ],
+                }
+              ]}
+            >
+              <Animated.View
+                style={{
+                  transform: [{ scale: criticalPulseAnimation }],
+                }}
+              >
+                <Text style={styles.criticalEmoji}>🚨</Text>
+              </Animated.View>
               <Text style={styles.criticalTitle}>DANGER!</Text>
               <Text style={styles.criticalMessage}>{alertMessage}</Text>
+              <Text style={styles.criticalSubtext}>Tap the button below when you are safe</Text>
               <TouchableOpacity
                 style={styles.criticalDismissButton}
                 onPress={dismissAlert}
+                activeOpacity={0.8}
               >
                 <Text style={styles.criticalDismissButtonText}>I AM SAFE</Text>
               </TouchableOpacity>
-            </View>
+            </Animated.View>
           </View>
         )}
 
         {/* Half-Screen Pop-up Alert for Hazards */}
         {alertMessage && detections?.highestPriority && detections.highestPriority.priority < 9 && (
           <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
-            {/* Backdrop */}
+            {/* Backdrop - darker for better visibility */}
             <Animated.View
               style={[
                 styles.popupBackdrop,
-                { opacity: backdropOpacity }
+                { opacity: backdropOpacity.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, 0.8], // Darker backdrop
+                  }) }
               ]}
             >
               <TouchableOpacity
@@ -1746,46 +2010,74 @@ const styles = StyleSheet.create({
   },
   criticalOverlayBackground: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#FF3B30',
+    backgroundColor: '#FF0000', // Brighter red for maximum visibility
+  },
+  criticalFlashOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#FFFFFF', // White flash overlay
   },
   criticalContent: {
     alignItems: 'center',
-    padding: 30,
-    width: '90%',
+    padding: 40,
+    width: '95%',
+    zIndex: 10000,
   },
   criticalEmoji: {
-    fontSize: 100,
-    marginBottom: 20,
+    fontSize: 120, // Larger emoji
+    marginBottom: 30,
   },
   criticalTitle: {
-    fontSize: 40,
+    fontSize: 56, // Much larger title
     fontWeight: '900',
     color: '#fff',
-    marginBottom: 10,
+    marginBottom: 20,
     textAlign: 'center',
+    textShadowColor: '#000',
+    textShadowOffset: { width: 2, height: 2 },
+    textShadowRadius: 4,
+    letterSpacing: 2,
   },
   criticalMessage: {
-    fontSize: 24,
+    fontSize: 32, // Larger message
     color: '#fff',
     textAlign: 'center',
     fontWeight: '700',
+    marginBottom: 20,
+    textShadowColor: '#000',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 3,
+    lineHeight: 42,
+  },
+  criticalSubtext: {
+    fontSize: 20,
+    color: '#fff',
+    textAlign: 'center',
+    fontWeight: '600',
     marginBottom: 40,
+    opacity: 0.95,
+    textShadowColor: '#000',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
   },
   criticalDismissButton: {
     backgroundColor: '#fff',
-    paddingVertical: 20,
-    paddingHorizontal: 40,
-    borderRadius: 40,
+    paddingVertical: 24,
+    paddingHorizontal: 60,
+    borderRadius: 50,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.3,
-    shadowRadius: 15,
-    elevation: 10,
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.4,
+    shadowRadius: 20,
+    elevation: 15,
+    minWidth: 280,
+    borderWidth: 4,
+    borderColor: '#FF0000',
   },
   criticalDismissButtonText: {
-    color: '#FF3B30',
-    fontSize: 20,
+    color: '#FF0000',
+    fontSize: 24, // Larger button text
     fontWeight: '900',
+    letterSpacing: 1.5,
   },
   popupBackdrop: {
     ...StyleSheet.absoluteFillObject,
@@ -1798,18 +2090,20 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     backgroundColor: '#fff',
-    borderTopLeftRadius: 32,
-    borderTopRightRadius: 32,
-    padding: 24,
-    paddingBottom: 40,
+    borderTopLeftRadius: 36,
+    borderTopRightRadius: 36,
+    padding: 32,
+    paddingBottom: 50,
     alignItems: 'center',
     zIndex: 1001,
-    minHeight: '45%',
+    minHeight: '50%',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: -10 },
-    shadowOpacity: 0.2,
-    shadowRadius: 15,
-    elevation: 20,
+    shadowOffset: { width: 0, height: -15 },
+    shadowOpacity: 0.4,
+    shadowRadius: 25,
+    elevation: 25,
+    borderTopWidth: 6,
+    borderTopColor: '#F59E0B',
   },
   popupHandle: {
     width: 60,
@@ -1823,66 +2117,73 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   popupIconContainer: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 100, // Larger icon container
+    height: 100,
+    borderRadius: 50,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 16,
+    marginBottom: 20,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 5,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 8,
+    borderWidth: 4,
+    borderColor: '#fff',
   },
   popupEmoji: {
-    fontSize: 48,
+    fontSize: 60, // Larger emoji
   },
   popupTitle: {
-    fontSize: 14,
+    fontSize: 16, // Larger title
     fontWeight: '900',
-    color: '#6B7280',
-    letterSpacing: 2,
+    color: '#111827',
+    letterSpacing: 3,
+    marginTop: 8,
   },
   popupContentCard: {
     width: '100%',
     alignItems: 'center',
     backgroundColor: '#F9FAFB',
-    padding: 24,
-    borderRadius: 20,
-    marginBottom: 32,
+    padding: 28,
+    borderRadius: 24,
+    marginBottom: 36,
+    borderWidth: 2,
+    borderColor: '#E5E7EB',
   },
   popupHazardName: {
-    fontSize: 28,
+    fontSize: 36, // Much larger hazard name
     fontWeight: '900',
     color: '#111827',
-    marginBottom: 8,
+    marginBottom: 12,
     textAlign: 'center',
   },
   popupMessage: {
-    fontSize: 18,
-    color: '#4B5563',
+    fontSize: 22, // Larger message
+    color: '#1F2937',
     textAlign: 'center',
-    fontWeight: '500',
-    lineHeight: 26,
+    fontWeight: '600',
+    lineHeight: 32,
   },
   popupActionButton: {
     width: '100%',
-    paddingVertical: 18,
-    borderRadius: 16,
+    paddingVertical: 22, // Larger button
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 5,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 8,
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
   },
   popupActionButtonText: {
     color: '#fff',
-    fontSize: 18,
-    fontWeight: 'bold',
-    letterSpacing: 0.5,
+    fontSize: 20, // Larger button text
+    fontWeight: '900',
+    letterSpacing: 1,
   },
   processingIndicator: {
     flexDirection: 'row',
