@@ -32,7 +32,7 @@ AI-powered system for hearing-impaired children that integrates ASL alphabet rec
 3. **Quick setup**:
    ```bash
    # Train the model (REQUIRED)
-   cd Model
+   cd model
    python train_asl_model.py
    
    # Install dependencies
@@ -41,7 +41,7 @@ AI-powered system for hearing-impaired children that integrates ASL alphabet rec
    npm install
    
    # Run backend (Terminal 1)
-   cd ../Model
+   cd ../model
    python api_server.py
    
    # Run frontend (Terminal 2)
@@ -52,14 +52,14 @@ AI-powered system for hearing-impaired children that integrates ASL alphabet rec
 ## 📖 Documentation
 
 - **[SETUP.md](SETUP.md)** - Complete setup and installation guide
-- **[Model/README_IMPROVEMENTS.md](Model/README_IMPROVEMENTS.md)** - Model architecture and improvements
-- **[Model/README_API.md](Model/README_API.md)** - API documentation
+- **[model/README_IMPROVEMENTS.md](model/README_IMPROVEMENTS.md)** - Model architecture and improvements
+- **[model/README_API.md](model/README_API.md)** - API documentation
 
 ## 🏗️ Project Structure
 
 ```
 ASL_learning/
-├── Model/              # Backend: ML models, training scripts, API server
+├── model/              # Backend: ML models, training scripts, API server
 ├── frontend/           # Frontend: React Native mobile app
 ├── requirements.txt    # Python dependencies
 └── SETUP.md           # Setup instructions

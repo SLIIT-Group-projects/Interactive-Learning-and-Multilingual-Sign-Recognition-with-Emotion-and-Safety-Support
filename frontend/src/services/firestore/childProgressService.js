@@ -5,6 +5,7 @@ import {
   updateDoc,
   increment,
   serverTimestamp,
+  runTransaction,
 } from 'firebase/firestore';
 import { db } from '../firebase/firebaseConfig';
 
@@ -119,7 +120,8 @@ export async function ensureChildProgress(childId) {
 }
 
 /**
- * Add XP after an answer and update Firestore
+ * Add XP after an answer and update Firestore atomically.
+ * Uses runTransaction + updateDoc() + increment() to avoid race conditions.
  * Rules: correct +20, partial (confidence >= 0.7) +10, wrong +0. 5 correct in a row +50 bonus.
  * @param {string} childId
  * @param {Object} options - { correct: boolean, confidence?: number }
@@ -132,85 +134,107 @@ export async function addXP(childId, options = {}) {
   }
 
   const ref = doc(db, 'children', childId);
-  const snap = await getDoc(ref);
-  const current = snap.exists() ? snap.data() : { ...DEFAULT_PROGRESS };
+  let result = { progress: { ...DEFAULT_PROGRESS }, xpGained: 0, leveledUp: false, newLevel: null };
 
-  let totalXP = current.totalXP ?? 0;
-  let streakCount = current.streakCount ?? 0;
-  let correctAnswers = current.correctAnswers ?? 0;
-  let xpGained = 0;
-  let leveledUp = false;
-  let newLevel = null;
+  await runTransaction(db, async (transaction) => {
+    const snap = await transaction.get(ref);
+    const current = snap.exists() ? snap.data() : { ...DEFAULT_PROGRESS };
 
-  if (correct) {
-    xpGained += XP_CORRECT;
-    streakCount += 1;
-    correctAnswers += 1;
-    if (streakCount >= STREAK_REQUIRED) {
-      xpGained += XP_STREAK_BONUS;
+    let totalXP = current.totalXP ?? 0;
+    let streakCount = current.streakCount ?? 0;
+    let xpGained = 0;
+
+    if (correct) {
+      xpGained += XP_CORRECT;
+      const newStreak = streakCount + 1;
+      if (newStreak >= STREAK_REQUIRED) {
+        xpGained += XP_STREAK_BONUS;
+        streakCount = 0;
+      } else {
+        streakCount = newStreak;
+      }
+    } else if (confidence >= PARTIAL_CONFIDENCE_THRESHOLD) {
+      xpGained += XP_PARTIAL;
+      streakCount = 0;
+    } else {
       streakCount = 0;
     }
-  } else if (confidence >= PARTIAL_CONFIDENCE_THRESHOLD) {
-    xpGained += XP_PARTIAL;
-    streakCount = 0;
-  } else {
-    streakCount = 0;
-  }
 
-  const previousLevel = getLevelFromTotalXP(totalXP).level;
-  totalXP += xpGained;
-  const { level, currentLevelXP } = getLevelFromTotalXP(totalXP);
-  const unlockedGames = getUnlockedGamesForLevel(level);
-  if (level > previousLevel) {
-    leveledUp = true;
-    newLevel = level;
-  }
+    const previousLevel = getLevelFromTotalXP(totalXP).level;
+    const newTotalXP = totalXP + xpGained;
+    const { level, currentLevelXP } = getLevelFromTotalXP(newTotalXP);
+    const unlockedGames = getUnlockedGamesForLevel(level);
+    const leveledUp = level > previousLevel;
 
-  const payload = {
-    totalXP,
-    level,
-    currentLevelXP,
-    correctAnswers,
-    streakCount,
-    unlockedGames,
-    updatedAt: serverTimestamp(),
-  };
+    const updatePayload = {
+      totalXP: increment(xpGained),
+      correctAnswers: increment(correct ? 1 : 0),
+      level,
+      currentLevelXP,
+      streakCount,
+      unlockedGames,
+      updatedAt: serverTimestamp(),
+    };
 
-  if (snap.exists()) {
-    await updateDoc(ref, payload);
-  } else {
-    await setDoc(ref, {
-      ...DEFAULT_PROGRESS,
-      ...payload,
-      gamesPlayed: current.gamesPlayed ?? 0,
-    });
-  }
+    if (snap.exists()) {
+      transaction.update(ref, updatePayload);
+    } else {
+      transaction.set(ref, {
+        totalXP: xpGained,
+        level,
+        currentLevelXP,
+        gamesPlayed: 0,
+        correctAnswers: correct ? 1 : 0,
+        streakCount,
+        unlockedGames,
+        updatedAt: serverTimestamp(),
+      });
+    }
 
-  const progress = await getChildProgress(childId);
-  return { progress, xpGained, leveledUp, newLevel };
+    result = {
+      progress: {
+        ...current,
+        totalXP: newTotalXP,
+        level,
+        currentLevelXP,
+        correctAnswers: (current.correctAnswers ?? 0) + (correct ? 1 : 0),
+        streakCount,
+        unlockedGames,
+      },
+      xpGained,
+      leveledUp,
+      newLevel: leveledUp ? level : null,
+    };
+  });
+
+  result.progress = await getChildProgress(childId);
+  return result;
 }
 
 /**
- * Increment gamesPlayed when a game session is completed
+ * Increment gamesPlayed when a game session is completed.
+ * Uses runTransaction + updateDoc() + increment(1) for atomic update.
  * @param {string} childId
  */
 export async function incrementGamesPlayed(childId) {
   try {
     if (!db || !childId) return;
     const ref = doc(db, 'children', childId);
-    const snap = await getDoc(ref);
-    if (snap.exists()) {
-      await updateDoc(ref, {
-        gamesPlayed: increment(1),
-        updatedAt: serverTimestamp(),
-      });
-    } else {
-      await setDoc(ref, {
-        ...DEFAULT_PROGRESS,
-        gamesPlayed: 1,
-        updatedAt: serverTimestamp(),
-      });
-    }
+    await runTransaction(db, async (transaction) => {
+      const snap = await transaction.get(ref);
+      if (snap.exists()) {
+        transaction.update(ref, {
+          gamesPlayed: increment(1),
+          updatedAt: serverTimestamp(),
+        });
+      } else {
+        transaction.set(ref, {
+          ...DEFAULT_PROGRESS,
+          gamesPlayed: 1,
+          updatedAt: serverTimestamp(),
+        });
+      }
+    });
   } catch (error) {
     console.error('❌ incrementGamesPlayed:', error);
   }

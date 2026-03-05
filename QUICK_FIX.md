@@ -8,9 +8,9 @@ Phone browser can't open `http://192.168.1.2:5000/health`
 ### Option A: Use the PowerShell Script (Easiest)
 1. **Right-click** on PowerShell
 2. Select **"Run as Administrator"**
-3. Navigate to Model folder:
+3. Navigate to model folder:
    ```powershell
-   cd C:\Users\HP\Documents\projects\ASL_learning\Model
+   cd C:\Users\HP\Documents\projects\ASL_learning\model
    ```
 4. Run the script:
    ```powershell
@@ -59,7 +59,7 @@ If firewall is too complicated:
 1. **Download ngrok:** https://ngrok.com/download
 2. **Start API server:**
    ```powershell
-   cd Model
+   cd model
    python api_server.py
    ```
 3. **In new terminal, start ngrok:**
@@ -77,7 +77,7 @@ If firewall is too complicated:
 Make sure the server is actually running:
 
 ```powershell
-cd Model
+cd model
 python api_server.py
 ```
 

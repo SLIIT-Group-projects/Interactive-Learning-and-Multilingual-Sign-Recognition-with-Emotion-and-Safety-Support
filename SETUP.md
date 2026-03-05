@@ -16,13 +16,13 @@ Before starting, ensure you have:
 The model requires an ASL alphabet dataset. You have two options:
 
 ### Option 1: Use Pre-extracted Landmarks (Recommended)
-- Place your dataset in `Model/dataset_landmarks/`
-- Structure: `Model/dataset_landmarks/asl_alphabet_train/asl_alphabet_train/[A-Z]/`
+- Place your dataset in `model/dataset_landmarks/`
+- Structure: `model/dataset_landmarks/asl_alphabet_train/asl_alphabet_train/[A-Z]/`
 - Each letter folder should contain JSON files with extracted landmarks
 
 ### Option 2: Use Raw Images
-- Place your dataset in `Model/dataset_raw/`
-- Structure: `Model/dataset_raw/asl_alphabet_train/asl_alphabet_train/[A-Z]/`
+- Place your dataset in `model/dataset_raw/`
+- Structure: `model/dataset_raw/asl_alphabet_train/asl_alphabet_train/[A-Z]/`
 - Each letter folder should contain image files (JPG/PNG)
 - You'll need to extract landmarks first using `extract_landmarks.py`
 
@@ -41,14 +41,14 @@ cd ASL_learning
 
 1. **If using raw images**, extract landmarks first:
    ```bash
-   cd Model
+   cd model
    python extract_landmarks.py
    ```
    This will create the `dataset_landmarks` directory with extracted features.
 
 2. **If using pre-extracted landmarks**, ensure your dataset is in the correct location:
    ```
-   Model/dataset_landmarks/asl_alphabet_train/asl_alphabet_train/
+   model/dataset_landmarks/asl_alphabet_train/asl_alphabet_train/
    ├── A/
    │   ├── *.json
    ├── B/
@@ -61,20 +61,20 @@ cd ASL_learning
 **⚠️ IMPORTANT**: The trained model (`asl_model.h5`) is not included in this repository. You must train it first.
 
 ```bash
-cd Model
+cd model
 python train_asl_model.py
 ```
 
 This will:
 - Load landmark data from your dataset
 - Train a neural network model
-- Save the model as `asl_model.h5` in the `Model/` directory
+- Save the model as `asl_model.h5` in the `model/` directory
 - Generate training history plots and confusion matrices
 
 **Training Time**: Depending on your dataset size and hardware, this may take 30 minutes to several hours.
 
 **Alternative**: For training with raw images using EfficientNetB0, use the Google Colab notebook:
-- Open `Model/train_efficientnet_colab.ipynb` in Google Colab
+- Open `model/train_efficientnet_colab.ipynb` in Google Colab
 - Follow the instructions in the notebook
 
 ### Step 4: Install Backend Dependencies
@@ -127,13 +127,13 @@ If you're on Windows, allow port 5000 through the firewall:
 
 **Option A: Using PowerShell (Run as Administrator)**
 ```powershell
-cd Model
+cd model
 .\fix_firewall.ps1
 ```
 
 **Option B: Using Batch File (Run as Administrator)**
 ```cmd
-cd Model
+cd model
 .\add_firewall_rule.bat
 ```
 
@@ -152,7 +152,7 @@ You need **two terminals** running simultaneously:
 #### Terminal 1: Backend API Server
 
 ```bash
-cd Model
+cd model
 python api_server.py
 ```
 
@@ -204,7 +204,7 @@ This will:
 
 ```
 ASL_learning/
-├── Model/                    # Backend and ML models
+├── model/                    # Backend and ML models
 │   ├── asl_model.h5         # Trained model (generated after training)
 │   ├── api_server.py        # Flask API server
 │   ├── train_asl_model.py  # Training script
@@ -225,13 +225,13 @@ ASL_learning/
 
 **Solution**: 
 - Make sure you've trained the model (Step 3)
-- Check that `asl_model.h5` exists in the `Model/` directory
+- Check that `asl_model.h5` exists in the `model/` directory
 - Verify the model path in `api_server.py` is correct
 
 ### Issue: "Could not connect to API server"
 
 **Solutions**:
-1. Check that the backend is running (`python Model/api_server.py`)
+1. Check that the backend is running (`python model/api_server.py`)
 2. Verify the IP address in `PlayGame.js` matches your computer's IP
 3. Ensure both devices are on the same Wi-Fi network
 4. Check firewall settings (Windows may block port 5000)
@@ -277,8 +277,8 @@ ASL_learning/
 
 ## 📚 Additional Resources
 
-- **Model Training**: See `Model/README_IMPROVEMENTS.md` for model architecture details
-- **API Documentation**: See `Model/README_API.md` for API endpoint details
+- **Model Training**: See `model/README_IMPROVEMENTS.md` for model architecture details
+- **API Documentation**: See `model/README_API.md` for API endpoint details
 - **Camera Setup**: See `SETUP_CAMERA.md` for detailed camera configuration
 
 ## 🆘 Getting Help

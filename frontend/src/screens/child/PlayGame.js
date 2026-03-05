@@ -23,8 +23,8 @@ import {
   ensureChildProgress,
   addXP,
   incrementGamesPlayed,
-  XP_PER_LEVEL,
 } from "../../services/firestore/childProgressService";
+import XPProgressBar from "../../components/XPProgressBar";
 
 import {
   ALPHABET,
@@ -58,7 +58,7 @@ const PlayGame = ({ navigation, route }) => {
   // Firestore tracking states
   const [questionStartTime, setQuestionStartTime] = useState(null);
   const [gameStartTime, setGameStartTime] = useState(null);
-  const { userData } = useAuth();
+  const { userData, childProgress: contextProgress, refreshChildProgress } = useAuth();
 
   // Get child and parent IDs from authenticated user
   const childId = userData?.uid || null;
@@ -93,8 +93,12 @@ const PlayGame = ({ navigation, route }) => {
     [isCapturing, isProcessing],
   );
 
-  // Load child progress on mount (XP / level)
+  // Use child progress from context (fetched on login), or load once
   useEffect(() => {
+    if (contextProgress && contextProgress.id === childId) {
+      setChildProgress(contextProgress);
+      return;
+    }
     const load = async () => {
       if (childId) {
         try {
@@ -106,7 +110,7 @@ const PlayGame = ({ navigation, route }) => {
       }
     };
     load();
-  }, [childId]);
+  }, [childId, contextProgress]);
 
   // Initialize first question
   useEffect(() => {
@@ -524,6 +528,7 @@ const PlayGame = ({ navigation, route }) => {
           setXpGainedThisAnswer(xpGained);
           setStreakBonusThisAnswer(xpGained >= 50);
           setChildProgress(progress);
+          refreshChildProgress?.(); // keep context in sync
           if (leveledUp && newLevel) {
             setLevelUpModal({ level: newLevel });
           }
@@ -561,7 +566,7 @@ const PlayGame = ({ navigation, route }) => {
         // API/Network error
         Alert.alert(
           "API Connection Error",
-          `Could not connect to API server.\n\nServer URL: ${API_URL}\n\nMake sure:\n1. API server is running: python Model/api_server.py\n2. Test in browser: ${API_URL}/health\n3. Phone and laptop on same WiFi\n\nError: ${errorMessage}`,
+          `Could not connect to API server.\n\nServer URL: ${API_URL}\n\nMake sure:\n1. API server is running: python model/api_server.py\n2. Test in browser: ${API_URL}/health\n3. Phone and laptop on same WiFi\n\nError: ${errorMessage}`,
           [{ text: "OK" }],
         );
       } else {
@@ -628,8 +633,8 @@ const PlayGame = ({ navigation, route }) => {
       generateNewQuestion();
       if (childId) {
         try {
-          const p = await getChildProgress(childId);
-          setChildProgress(p);
+          const p = await refreshChildProgress?.() ?? getChildProgress(childId);
+          if (p) setChildProgress(p);
         } catch (e) {}
       }
     }
@@ -669,28 +674,17 @@ const PlayGame = ({ navigation, route }) => {
         </View>
 
         {/* Level & XP Progress */}
-        <View className="bg-white rounded-2xl p-4 mb-4 shadow-md">
-          <View className="flex-row justify-between items-center mb-2">
-            <View className="flex-row items-center">
-              <MaterialIcons name="military-tech" size={26} color="#7c3aed" style={{ marginRight: 8 }} />
-              <Text className="text-xl font-bold text-gray-800">
-                Level {childProgress?.level ?? 1}
-              </Text>
-              <Text className="text-sm text-gray-500 ml-2">
-                {(childProgress?.currentLevelXP ?? 0)} / {XP_PER_LEVEL} XP
-              </Text>
-            </View>
-            <Text className="text-lg font-semibold text-gray-600">
-              Q{currentQuestion + 1}/{TOTAL_QUESTIONS}
+        <View className="mb-4">
+          <XPProgressBar
+            totalXP={childProgress?.totalXP ?? 0}
+            level={childProgress?.level}
+            size="compact"
+            showLevelUp={!!levelUpModal}
+          />
+          <View className="flex-row justify-end mt-1">
+            <Text className="text-base font-semibold text-gray-600">
+              Question {currentQuestion + 1} / {TOTAL_QUESTIONS}
             </Text>
-          </View>
-          <View className="h-2.5 bg-gray-200 rounded-full overflow-hidden">
-            <View
-              className="h-full bg-violet-500 rounded-full"
-              style={{
-                width: `${((childProgress?.currentLevelXP ?? 0) / XP_PER_LEVEL) * 100}%`,
-              }}
-            />
           </View>
         </View>
 
