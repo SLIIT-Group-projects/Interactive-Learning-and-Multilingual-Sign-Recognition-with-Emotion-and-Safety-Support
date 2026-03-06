@@ -18,6 +18,10 @@ const __dirname = dirname(__filename);
 const SOUNDS_COLLECTION = 'sounds';
 const USERS_COLLECTION = 'users';
 const NOTIFICATIONS_COLLECTION = 'notifications';
+// Minimum confidence threshold for saving detections (increased to reduce false positives)
+const MIN_CONFIDENCE_THRESHOLD = parseFloat(process.env.MIN_CONFIDENCE_THRESHOLD || '0.65');
+// False positive types to filter out
+const FALSE_POSITIVE_TYPES = ['silence', 'background_noise', 'noise', 'static', 'white_noise', 'ambient', 'room_tone'];
 
 /**
  * Save detected sounds to database
@@ -31,8 +35,8 @@ const NOTIFICATIONS_COLLECTION = 'notifications';
 async function saveSoundsToDatabase(detections, context = {}, audioFileUrl = null, metadata = {}) {
   const savedSoundIds = [];
 
-  // Minimum confidence threshold for saving (higher than model threshold to only save confident detections)
-  const MIN_CONFIDENCE_THRESHOLD = parseFloat(process.env.SAVE_CONFIDENCE_THRESHOLD || '0.4');
+  // Minimum confidence threshold for saving (increased to reduce false positives)
+  const MIN_CONFIDENCE_THRESHOLD = parseFloat(process.env.SAVE_CONFIDENCE_THRESHOLD || '0.65');
 
   try {
     console.log(`💾 Attempting to save ${detections.length} detections to database...`);
@@ -544,6 +548,24 @@ router.post('/detect', upload.single('audio'), async (req, res, next) => {
     const timestamp = new Date().toISOString();
     const location = context.location || null;
     
+    // CRITICAL: Check audio file size - reject if too small (likely silence/noise)
+    const MIN_AUDIO_SIZE_BYTES = 10000; // ~10KB minimum for valid audio chunk
+    if (req.file.size < MIN_AUDIO_SIZE_BYTES) {
+      console.warn(`⚠️ Audio file too small (${req.file.size} bytes) - likely silence or noise, skipping detection`);
+      return res.json({
+        success: true,
+        data: {
+          detections: [],
+          highestPriority: null,
+          metadata: {
+            message: 'Audio too quiet or silent - no detection performed',
+            audioSize: req.file.size,
+            skipped: true
+          }
+        }
+      });
+    }
+    
     // Log context for debugging
     console.log('📋 Context received:', {
       userId: context.userId,
@@ -609,14 +631,59 @@ router.post('/detect', upload.single('audio'), async (req, res, next) => {
     // Cleanup converted WAV file
     await fs.unlink(wavPath).catch(console.error);
 
+    // Filter out false positives and low-quality detections
+    const MIN_LOUDNESS_THRESHOLD = 0.02; // Minimum RMS loudness (normalized 0-1)
+    const filteredDetections = detections.filter(detection => {
+      const hazardType = (detection.type || '').toLowerCase();
+      const loudness = detection.loudness || 0;
+      const confidence = detection.confidence || 0;
+      
+      // Filter out false positive types
+      if (FALSE_POSITIVE_TYPES.some(fp => hazardType.includes(fp))) {
+        console.log(`🚫 Filtering out false positive type: ${detection.type}`);
+        return false;
+      }
+      
+      // Filter out detections with very low loudness (likely silence or noise)
+      if (loudness < MIN_LOUDNESS_THRESHOLD) {
+        console.log(`🔇 Filtering out ${detection.type} - too quiet (loudness: ${loudness.toFixed(3)} < ${MIN_LOUDNESS_THRESHOLD})`);
+        return false;
+      }
+      
+      // Filter out very low confidence detections
+      if (confidence < 0.60) {
+        console.log(`📉 Filtering out ${detection.type} - low confidence (${(confidence * 100).toFixed(1)}% < 60%)`);
+        return false;
+      }
+      
+      return true;
+    });
+
+    if (filteredDetections.length === 0 && detections.length > 0) {
+      console.log(`🔇 All ${detections.length} detections filtered out due to low loudness (silence/noise)`);
+      return res.json({
+        success: true,
+        data: {
+          detections: [],
+          highestPriority: null,
+          metadata: {
+            message: 'Audio too quiet - all detections filtered',
+            originalDetections: detections.length,
+            filtered: true
+          }
+        }
+      });
+    }
+
     // Prioritize detected hazards
-    const prioritized = prioritizeHazards(detections, context);
+    const prioritized = prioritizeHazards(filteredDetections, context);
     
-    console.log(`📊 Prioritized ${prioritized.length} detections:`, prioritized.map(d => ({
+    console.log(`📊 Prioritized ${prioritized.length} detections (from ${filteredDetections.length} after filtering):`, prioritized.map(d => ({
       type: d.type,
       confidence: d.confidence?.toFixed(2),
       priority: d.priority,
-      urgencyScore: d.urgencyScore?.toFixed(2)
+      urgencyScore: d.urgencyScore?.toFixed(2),
+      loudness: d.loudness?.toFixed(3)
     })));
 
     // Clean up uploaded file - mark as deleted to avoid double-unlink

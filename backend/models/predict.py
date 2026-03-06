@@ -72,6 +72,22 @@ class_labels = None
 device = None
 
 
+def get_class_labels():
+    """
+    Return loaded class labels, with a safe fallback to default labels.
+    """
+    global class_labels
+
+    if class_labels is None:
+        try:
+            load_models()
+        except Exception:
+            # Fallback to built-in labels if loading fails for any reason.
+            return np.array(CLASS_LABELS)
+
+    return class_labels if class_labels is not None else np.array(CLASS_LABELS)
+
+
 def create_pytorch_classifier(input_dim=2048, num_classes=13):
     """Create PyTorch classifier matching the training script architecture"""
     if MODEL_TYPE != 'cnn14':
@@ -321,6 +337,35 @@ def predict(audio_path, threshold=0.3, min_confidence=0.5, return_raw_probabilit
     return detections
 
 
+def calculate_prediction_entropy(predictions):
+    """
+    Calculate entropy of predictions
+    Higher entropy = more uncertain (likely false positive)
+    Lower entropy = more confident (likely true positive)
+    """
+    predictions = np.array(predictions)
+    predictions = predictions[predictions > 1e-10]  # Filter near-zero
+    if len(predictions) == 0:
+        return float('inf')  # Maximum uncertainty
+    
+    entropy = -np.sum(predictions * np.log(predictions))
+    return float(entropy)
+
+def is_prediction_reliable(predictions, min_confidence=0.5, max_entropy=2.5):
+    """
+    Check if prediction is reliable based on confidence and entropy
+    Returns True if prediction should be trusted (reduces false positives)
+    """
+    top_confidence = float(np.max(predictions))
+    entropy = calculate_prediction_entropy(predictions)
+    
+    # High confidence AND low entropy = reliable
+    # Low confidence OR high entropy = unreliable (likely false positive)
+    is_confident = top_confidence >= min_confidence
+    is_certain = entropy <= max_entropy
+    
+    return is_confident and is_certain
+
 def _apply_threshold(predictions, threshold, min_confidence=0.5):
     """
     Apply threshold to predictions and return detections
@@ -336,11 +381,32 @@ def _apply_threshold(predictions, threshold, min_confidence=0.5):
     detections = []
     top_indices = np.argsort(predictions)[::-1]  # Sort descending
     
+    # False positive types to filter out
+    FALSE_POSITIVE_TYPES = ['silence', 'background_noise', 'noise', 'static', 'white_noise', 'ambient', 'room_tone']
+    
     # Check if top prediction meets minimum confidence requirement
     top_confidence = float(predictions[top_indices[0]])
     if top_confidence < min_confidence:
         # Top prediction is not confident enough, return empty list
         return detections
+    
+    # Entropy-based filtering: reject uncertain predictions
+    entropy = calculate_prediction_entropy(predictions)
+    MAX_ENTROPY = 2.5  # Maximum allowed entropy (higher = more uncertain)
+    if entropy > MAX_ENTROPY:
+        # Prediction is too uncertain - likely false positive
+        return detections
+    
+    # Get top class name
+    class_labels = get_class_labels()
+    top_class = class_labels[top_indices[0]] if class_labels is not None else CLASS_LABELS[top_indices[0]]
+    top_class_lower = top_class.lower()
+    
+    # Filter out silence/noise types (common false positives)
+    if any(fp in top_class_lower for fp in FALSE_POSITIVE_TYPES):
+        # Only allow if confidence is VERY high (>= 0.85) - unlikely to be false positive
+        if top_confidence < 0.85:
+            return detections  # Filter out silence/noise types
     
     # Additional filtering: Check if top prediction is significantly higher than second
     # This helps reduce false positives when model is uncertain
@@ -360,6 +426,12 @@ def _apply_threshold(predictions, threshold, min_confidence=0.5):
     for idx in top_indices:
         confidence = float(predictions[idx])
         class_name = class_labels[idx] if class_labels is not None else CLASS_LABELS[idx]
+        class_name_lower = class_name.lower()
+        
+        # Filter out false positive types from all predictions
+        if any(fp in class_name_lower for fp in FALSE_POSITIVE_TYPES):
+            if confidence < 0.85:  # Only allow very high confidence for noise types
+                continue
         
         # Only include if above threshold
         if confidence >= threshold:
@@ -376,10 +448,39 @@ def _apply_threshold(predictions, threshold, min_confidence=0.5):
     return detections
 
 
+def calculate_prediction_entropy(predictions):
+    """
+    Calculate entropy of predictions
+    Higher entropy = more uncertain (likely false positive)
+    Lower entropy = more confident (likely true positive)
+    """
+    predictions = np.array(predictions)
+    predictions = predictions[predictions > 1e-10]  # Filter near-zero
+    if len(predictions) == 0:
+        return float('inf')  # Maximum uncertainty
+    
+    entropy = -np.sum(predictions * np.log(predictions))
+    return float(entropy)
+
+def is_prediction_reliable(predictions, min_confidence=0.5, max_entropy=2.5):
+    """
+    Check if prediction is reliable based on confidence and entropy
+    Returns True if prediction should be trusted (reduces false positives)
+    """
+    top_confidence = float(np.max(predictions))
+    entropy = calculate_prediction_entropy(predictions)
+    
+    # High confidence AND low entropy = reliable
+    # Low confidence OR high entropy = unreliable (likely false positive)
+    is_confident = top_confidence >= min_confidence
+    is_certain = entropy <= max_entropy
+    
+    return is_confident and is_certain
+
 def predict_averaged(audio_paths, threshold=0.3, min_confidence=0.5):
     """
     Predict classes by averaging predictions from multiple audio chunks
-    This implements step 9: Average predictions if multiple chunks are processed
+    Enhanced with entropy-based filtering to reduce false positives
     
     Args:
         audio_paths: List of paths to audio files (chunks)
@@ -403,6 +504,13 @@ def predict_averaged(audio_paths, threshold=0.3, min_confidence=0.5):
     
     # Average predictions across all chunks (step 9)
     averaged_predictions = np.mean(all_predictions, axis=0)
+    
+    # Entropy-based filtering: reject uncertain predictions (likely false positives)
+    if not is_prediction_reliable(averaged_predictions, min_confidence=min_confidence, max_entropy=2.5):
+        entropy = calculate_prediction_entropy(averaged_predictions)
+        top_conf = float(np.max(averaged_predictions))
+        print(f"⚠️ Rejecting uncertain prediction (entropy: {entropy:.2f}, top confidence: {top_conf:.2f})")
+        return []  # Return empty - likely false positive
     
     # Apply threshold to averaged predictions
     return _apply_threshold(averaged_predictions, threshold, min_confidence)

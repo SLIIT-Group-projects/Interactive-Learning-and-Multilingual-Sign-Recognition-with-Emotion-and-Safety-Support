@@ -1,17 +1,18 @@
 import React, { useEffect, useState, useRef } from 'react';
 import {
-    View,
-    Text,
-    StyleSheet,
-    TouchableOpacity,
-    ScrollView,
-    Alert,
-    ActivityIndicator,
-    Animated,
-    Image,
-    Platform,
-    Vibration
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  ScrollView,
+  Alert,
+  ActivityIndicator,
+  Animated,
+  Image,
+  Platform,
+  Vibration
 } from 'react-native';
+import { Image as ExpoImage } from 'expo-image';
 import { Audio } from 'expo-av';
 import * as Haptics from 'expo-haptics';
 import * as Location from 'expo-location';
@@ -25,39 +26,39 @@ const GREEN_BUTTON = '#10B981'; // Bright green
 const ORANGE_ACCENT = '#F59E0B'; // Orange for accents
 
 export default function HazardDetectionScreen() {
-    const { userData } = useAuth();
-    const [permissionResponse, requestPermission] = Audio.usePermissions();
-    const [recording, setRecording] = useState(null);
-    const [isListening, setIsListening] = useState(false);
-    const [isProcessing, setIsProcessing] = useState(false);
-    const [detections, setDetections] = useState(null);
-    const [alertMessage, setAlertMessage] = useState(null);
-    const [error, setError] = useState(null);
-    const [currentLocation, setCurrentLocation] = useState(null);
-    const [isCriticalAlert, setIsCriticalAlert] = useState(false);
-    const processingIntervalRef = useRef(null);
-    const recordingRef = useRef(null);
-    const isListeningRef = useRef(false);
-    const isRestartingRef = useRef(false);
-    const restartPromiseRef = useRef(null);
-    const isProcessingRef = useRef(false);
-    const vibrationIntervalRef = useRef(null);
-    const flashAnimation = useRef(new Animated.Value(0)).current;
-    const pulseAnimation = useRef(new Animated.Value(1)).current;
-    const circleAnimation1 = useRef(new Animated.Value(0)).current;
-    const circleAnimation2 = useRef(new Animated.Value(0)).current;
-    const circleAnimation3 = useRef(new Animated.Value(0)).current;
-    const soundLevelAnimation = useRef(new Animated.Value(0)).current;
-    const popupAnimation = useRef(new Animated.Value(0)).current;
-    const backdropOpacity = useRef(new Animated.Value(0)).current;
-    const criticalPulseAnimation = useRef(new Animated.Value(1)).current;
-    const criticalScaleAnimation = useRef(new Animated.Value(1)).current;
-    const navigation = useNavigation();
+  const { userData } = useAuth();
+  const [permissionResponse, requestPermission] = Audio.usePermissions();
+  const [recording, setRecording] = useState(null);
+  const [isListening, setIsListening] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [detections, setDetections] = useState(null);
+  const [alertMessage, setAlertMessage] = useState(null);
+  const [error, setError] = useState(null);
+  const [currentLocation, setCurrentLocation] = useState(null);
+  const [isCriticalAlert, setIsCriticalAlert] = useState(false);
+  const processingIntervalRef = useRef(null);
+  const recordingRef = useRef(null);
+  const isListeningRef = useRef(false);
+  const isRestartingRef = useRef(false);
+  const restartPromiseRef = useRef(null);
+  const isProcessingRef = useRef(false);
+  const vibrationIntervalRef = useRef(null);
+  const flashAnimation = useRef(new Animated.Value(0)).current;
+  const pulseAnimation = useRef(new Animated.Value(1)).current;
+  const circleAnimation1 = useRef(new Animated.Value(0)).current;
+  const circleAnimation2 = useRef(new Animated.Value(0)).current;
+  const circleAnimation3 = useRef(new Animated.Value(0)).current;
+  const soundLevelAnimation = useRef(new Animated.Value(0)).current;
+  const popupAnimation = useRef(new Animated.Value(0)).current;
+  const backdropOpacity = useRef(new Animated.Value(0)).current;
+  const criticalPulseAnimation = useRef(new Animated.Value(1)).current;
+  const criticalScaleAnimation = useRef(new Animated.Value(1)).current;
+  const navigation = useNavigation();
   const [soundLevel, setSoundLevel] = useState(0.3); // Mock sound level (0-1)
 
   // Smart detection tracking with temporal smoothing
   // Track recent detections in a sliding window for better accuracy
-    const detectionHistoryRef = useRef([]);
+  const detectionHistoryRef = useRef([]);
   const MAX_HISTORY_SIZE = 5; // Keep last 5 detections (20 seconds of history)
   const ALERT_COOLDOWN_MS = 8000; // Don't alert same hazard within 8 seconds
   const lastAlertTimeRef = useRef(new Map()); // Track last alert time per hazard type
@@ -66,8 +67,8 @@ export default function HazardDetectionScreen() {
   const currentAlertPriorityRef = useRef(0); // Track current alert priority
   const currentAlertMessageRef = useRef(null); // Track current alert message
 
-    const getAlertColor = (urgency) => {
-        switch (urgency) {
+  const getAlertColor = (urgency) => {
+    switch (urgency) {
       case 'critical':
         return '#FF3B30'; // Red
       case 'high':
@@ -78,15 +79,29 @@ export default function HazardDetectionScreen() {
         return '#34C759'; // Green
       default:
         return GREEN_BUTTON;
-        }
-    };
+    }
+  };
+
+  const getAnimatedIcon = (type) => {
+    switch (type) {
+      case 'fire_alarm': return 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f525/512.gif'; // Fire
+      case 'smoke_alarm': return 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f4a8/512.gif'; // Dash/Smoke
+      case 'siren': return 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f6a8/512.gif'; // Police car light
+      case 'glass_breaking': return 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f4a5/512.gif'; // Collision/Bang
+      case 'dog_barking': return 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f415/512.gif'; // Dog
+      case 'baby_crying': return 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f476/512.gif'; // Baby
+      case 'car_horn': return 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f697/512.gif'; // Automobile
+      case 'gun_shot': return 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f50a/512.gif'; // Loud noise
+      default: return 'https://fonts.gstatic.com/s/e/notoemoji/latest/26a0_fe0f/512.gif'; // Warning
+    }
+  };
 
   // Helper function to safely clear alert message (never clears critical alerts)
   const safeClearAlertMessage = () => {
     // Use refs for reliable checking (survives React state updates)
     const currentPriority = currentAlertPriorityRef.current || detections?.highestPriority?.priority || 0;
     const isCurrentlyCritical = criticalAlertRef.current || isCriticalAlert || currentPriority >= 9;
-    
+
     if (currentPriority < 9 && !isCurrentlyCritical) {
       setAlertMessage(null);
       currentAlertMessageRef.current = null;
@@ -106,6 +121,13 @@ export default function HazardDetectionScreen() {
       setError(`Backend connection failed: ${error.message}`);
     }
   };
+
+  // Make screen full size by hiding the navigation header
+  useEffect(() => {
+    if (navigation) {
+      navigation.setOptions({ headerShown: false });
+    }
+  }, [navigation]);
 
   // Separate useEffect for critical alert pulsing animation
   useEffect(() => {
@@ -146,12 +168,12 @@ export default function HazardDetectionScreen() {
   }, [isCriticalAlert, alertMessage]);
 
   // Separate useEffect for animations (runs when isListening changes)
-    useEffect(() => {
-        if (isListening) {
+  useEffect(() => {
+    if (isListening) {
       // Pulse animation for circles
-            Animated.loop(
-                Animated.parallel([
-                    Animated.sequence([
+      Animated.loop(
+        Animated.parallel([
+          Animated.sequence([
             Animated.timing(circleAnimation1, {
               toValue: 1,
               duration: 1500,
@@ -162,9 +184,9 @@ export default function HazardDetectionScreen() {
               duration: 0,
               useNativeDriver: true,
             }),
-                    ]),
-                    Animated.sequence([
-                        Animated.delay(300),
+          ]),
+          Animated.sequence([
+            Animated.delay(300),
             Animated.timing(circleAnimation2, {
               toValue: 1,
               duration: 1500,
@@ -175,9 +197,9 @@ export default function HazardDetectionScreen() {
               duration: 0,
               useNativeDriver: true,
             }),
-                    ]),
-                    Animated.sequence([
-                        Animated.delay(600),
+          ]),
+          Animated.sequence([
+            Animated.delay(600),
             Animated.timing(circleAnimation3, {
               toValue: 1,
               duration: 1500,
@@ -188,13 +210,13 @@ export default function HazardDetectionScreen() {
               duration: 0,
               useNativeDriver: true,
             }),
-                    ]),
-                ])
-            ).start();
+          ]),
+        ])
+      ).start();
 
       // Sound level animation
-            Animated.loop(
-                Animated.sequence([
+      Animated.loop(
+        Animated.sequence([
           Animated.timing(soundLevelAnimation, {
             toValue: 1,
             duration: 2000,
@@ -205,34 +227,34 @@ export default function HazardDetectionScreen() {
             duration: 2000,
             useNativeDriver: false,
           }),
-                ])
-            ).start();
-        } else {
-            pulseAnimation.setValue(1);
-            circleAnimation1.setValue(0);
-            circleAnimation2.setValue(0);
-            circleAnimation3.setValue(0);
-            soundLevelAnimation.setValue(0);
-        }
-    }, [isListening]);
+        ])
+      ).start();
+    } else {
+      pulseAnimation.setValue(1);
+      circleAnimation1.setValue(0);
+      circleAnimation2.setValue(0);
+      circleAnimation3.setValue(0);
+      soundLevelAnimation.setValue(0);
+    }
+  }, [isListening]);
 
   // Separate useEffect for initialization and cleanup (only runs on mount/unmount)
-    useEffect(() => {
-        if (!permissionResponse?.granted) {
-            requestPermission();
-        }
+  useEffect(() => {
+    if (!permissionResponse?.granted) {
+      requestPermission();
+    }
     checkBackendHealth();
 
     // Cleanup on unmount only (not when recording changes)
-        return () => {
-            if (processingIntervalRef.current) {
-                clearInterval(processingIntervalRef.current);
+    return () => {
+      if (processingIntervalRef.current) {
+        clearInterval(processingIntervalRef.current);
         processingIntervalRef.current = null;
-            }
+      }
       // Stop any ongoing alerts
       if (hazardAlertService && typeof hazardAlertService.stopAlert === 'function') {
-                hazardAlertService.stopAlert();
-            }
+        hazardAlertService.stopAlert();
+      }
       const currentRecording = recordingRef.current;
       if (currentRecording) {
         currentRecording.getStatusAsync()
@@ -246,41 +268,41 @@ export default function HazardDetectionScreen() {
               console.error('Error stopping recording in cleanup:', error);
             }
           });
-            }
+      }
       recordingRef.current = null;
-        };
+    };
   }, []); // Empty dependency array - only run on mount/unmount
 
-    const startListening = async () => {
-        try {
-            if (!permissionResponse?.granted) {
-                const { granted } = await requestPermission();
-                if (!granted) {
-                    Alert.alert('Permission Required', 'Microphone permission is required for hazard detection.');
-                    return;
-                }
-            }
+  const startListening = async () => {
+    try {
+      if (!permissionResponse?.granted) {
+        const { granted } = await requestPermission();
+        if (!granted) {
+          Alert.alert('Permission Required', 'Microphone permission is required for hazard detection.');
+          return;
+        }
+      }
 
       console.log('🎤 Starting microphone...');
 
-            await Audio.setAudioModeAsync({
-                allowsRecordingIOS: true,
-                playsInSilentModeIOS: true,
-                staysActiveInBackground: true,
-                shouldDuckAndroid: false,
-            });
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: true,
+        playsInSilentModeIOS: true,
+        staysActiveInBackground: true,
+        shouldDuckAndroid: false,
+      });
 
-            const { recording: newRecording } = await Audio.Recording.createAsync(
-                Audio.RecordingOptionsPresets.HIGH_QUALITY
-            );
+      const { recording: newRecording } = await Audio.Recording.createAsync(
+        Audio.RecordingOptionsPresets.HIGH_QUALITY
+      );
 
-            setRecording(newRecording);
-            recordingRef.current = newRecording;
+      setRecording(newRecording);
+      recordingRef.current = newRecording;
       console.log('✅ Recording ref set:', recordingRef.current ? 'success' : 'failed');
       console.log('✅ Recording object:', newRecording ? 'exists' : 'null');
-            setIsListening(true);
-            isListeningRef.current = true;
-            setError(null);
+      setIsListening(true);
+      isListeningRef.current = true;
+      setError(null);
       // CRITICAL: Never clear critical alerts when starting to listen
       // Only clear non-critical alerts
       // Use refs for reliable checking (survives React state updates)
@@ -296,7 +318,7 @@ export default function HazardDetectionScreen() {
       const CHUNK_DURATION_MS = 4000; // 4 seconds
       const MIN_CHUNK_DURATION_MS = 3500; // Minimum 3.5 seconds to account for processing delays
 
-            processingIntervalRef.current = setInterval(async () => {
+      processingIntervalRef.current = setInterval(async () => {
         console.log('⏰ Interval triggered - checking recording...');
         // Check if recording is still active using ref
         const currentRecording = recordingRef.current;
@@ -392,7 +414,7 @@ export default function HazardDetectionScreen() {
                 console.log('✅ Recording restarted successfully');
               } else {
                 console.error('❌ Failed to restart recording');
-                    }
+              }
             } catch (restartError) {
               console.error('❌ Error restarting recording:', restartError);
             }
@@ -463,10 +485,10 @@ export default function HazardDetectionScreen() {
 
     } catch (error) {
       console.error('Error starting recording:', error);
-            setError(`Failed to start recording: ${error.message}`);
+      setError(`Failed to start recording: ${error.message}`);
       Alert.alert('Recording Error', error.message);
-        }
-    };
+    }
+  };
 
   const processAudioChunk = async (recording) => {
     let newRecording = null;
@@ -524,7 +546,7 @@ export default function HazardDetectionScreen() {
       if (!statusBeforeStop.isRecording) {
         console.warn('⚠️ Recording is not active, trying to restart...');
         // CRITICAL: If recording stopped, restart it to keep listening
-            if (isListeningRef.current) {
+        if (isListeningRef.current) {
           try {
             newRecording = await restartRecording();
             if (newRecording) {
@@ -539,8 +561,8 @@ export default function HazardDetectionScreen() {
         return;
       }
 
-            setIsProcessing(true);
-            isProcessingRef.current = true;
+      setIsProcessing(true);
+      isProcessingRef.current = true;
 
       // Stop and unload to finalize the recording file
       // Wrap in try-catch to handle cases where recording was already stopped/unloaded
@@ -562,8 +584,8 @@ export default function HazardDetectionScreen() {
 
       if (!uri) {
         console.warn('⚠️ No audio URI available after stopping recording');
-            setIsProcessing(false);
-            isProcessingRef.current = false;
+        setIsProcessing(false);
+        isProcessingRef.current = false;
         // CRITICAL: Always restart recording even if URI is missing to keep listening
         if (isListeningRef.current) {
           newRecording = await restartRecording();
@@ -571,7 +593,7 @@ export default function HazardDetectionScreen() {
             setRecording(newRecording);
             recordingRef.current = newRecording;
             console.log('✅ Recording restarted after missing URI');
-        }
+          }
         }
         return;
       }
@@ -626,26 +648,26 @@ export default function HazardDetectionScreen() {
         console.log(`💾 Saved ${response.data.metadata.savedSoundIds.length} sound(s) to database`);
       }
 
-                if (response.success && response.data) {
-          // CRITICAL: Check if there's already an active critical alert
-          // If so, only update detections if the new detection is also critical (priority >= 9)
-          // This prevents lower priority detections from overwriting critical alerts
-          // Use refs for reliable checking (survives React state updates)
-          const currentCriticalPriority = currentAlertPriorityRef.current || detections?.highestPriority?.priority || 0;
-          const hasActiveCriticalAlert = criticalAlertRef.current || isCriticalAlert || currentCriticalPriority >= 9;
-          const newPriority = response.data.highestPriority?.priority || 0;
-          const isNewDetectionCritical = newPriority >= 9;
-          
-          // Only update detections if:
-          // 1. There's no active critical alert, OR
-          // 2. The new detection is also critical (can replace one critical with another)
-          if (!hasActiveCriticalAlert || isNewDetectionCritical) {
-            setDetections(response.data);
-          } else {
-            // Keep existing detections (preserve critical alert data)
-            console.log(`🛡️ Preserving critical alert (priority ${currentCriticalPriority}) - ignoring lower priority detection (priority ${newPriority})`);
-            // Still add to detection history for tracking, but don't update the displayed detections
-          }
+      if (response.success && response.data) {
+        // CRITICAL: Check if there's already an active critical alert
+        // If so, only update detections if the new detection is also critical (priority >= 9)
+        // This prevents lower priority detections from overwriting critical alerts
+        // Use refs for reliable checking (survives React state updates)
+        const currentCriticalPriority = currentAlertPriorityRef.current || detections?.highestPriority?.priority || 0;
+        const hasActiveCriticalAlert = criticalAlertRef.current || isCriticalAlert || currentCriticalPriority >= 9;
+        const newPriority = response.data.highestPriority?.priority || 0;
+        const isNewDetectionCritical = newPriority >= 9;
+
+        // Only update detections if:
+        // 1. There's no active critical alert, OR
+        // 2. The new detection is also critical (can replace one critical with another)
+        if (!hasActiveCriticalAlert || isNewDetectionCritical) {
+          setDetections(response.data);
+        } else {
+          // Keep existing detections (preserve critical alert data)
+          console.log(`🛡️ Preserving critical alert (priority ${currentCriticalPriority}) - ignoring lower priority detection (priority ${newPriority})`);
+          // Still add to detection history for tracking, but don't update the displayed detections
+        }
 
         // Smart confidence-based alerting system
         if (response.data.highestPriority) {
@@ -661,7 +683,7 @@ export default function HazardDetectionScreen() {
             priority = detectionInArray?.priority || 0;
           }
           priority = priority || 0;
-          
+
           // CRITICAL: If there's already an active critical alert, don't process lower priority alerts
           // Use a flag to skip alert processing but continue with recording restart
           let shouldSkipAlertProcessing = false;
@@ -682,241 +704,253 @@ export default function HazardDetectionScreen() {
             }
             // Skip alert processing but continue to restart recording
           }
-          
+
           // If we should skip alert processing, skip the entire alert processing block
           if (!shouldSkipAlertProcessing) {
-          let urgency = hazard.urgency;
-          if (!urgency) {
-            // Determine urgency from priority if not provided
-            if (priority >= 9) urgency = 'critical';
-            else if (priority >= 7) urgency = 'high';
-            else if (priority >= 5) urgency = 'medium';
-            else urgency = 'low';
-          }
-
-        const now = Date.now();
-
-          // Debug: Log the full hazard object
-          console.log('📊 Full hazard object:', JSON.stringify(hazard, null, 2));
-          console.log(`📊 Extracted values: type=${hazardType}, confidence=${confidence}, priority=${priority}, urgency=${urgency}`);
-
-          // Add to detection history
-          const detection = {
-            type: hazardType,
-            confidence,
-            priority,
-            timestamp: now
-          };
-
-          detectionHistoryRef.current.push(detection);
-          // Keep only recent detections (last MAX_HISTORY_SIZE)
-          if (detectionHistoryRef.current.length > MAX_HISTORY_SIZE) {
-            detectionHistoryRef.current.shift();
-          }
-
-          // Debug logging
-          console.log(`🔍 Detection: ${hazardType}, confidence: ${(confidence * 100).toFixed(1)}%, priority: ${priority}, urgency: ${urgency}`);
-
-          // Check cooldown - don't alert same hazard too frequently
-          const lastAlertTime = lastAlertTimeRef.current.get(hazardType) || 0;
-          const timeSinceLastAlert = now - lastAlertTime;
-          const isOnCooldown = timeSinceLastAlert < ALERT_COOLDOWN_MS;
-
-          if (isOnCooldown) {
-            console.log(`⏳ ${hazardType} alert on cooldown (${Math.round(timeSinceLastAlert / 1000)}s ago)`);
-            // Don't return - continue to check rules but skip alerting if on cooldown
-          }
-
-          // Smart alerting rules based on confidence and priority
-          let shouldAlert = false;
-          let alertReason = '';
-
-          // Rule 1: Critical hazards (fire, gunshot) with high confidence - alert immediately
-          if (priority >= 9 && confidence >= 0.75) {
-            shouldAlert = true;
-            alertReason = `Critical hazard with high confidence (${(confidence * 100).toFixed(0)}%)`;
-            console.log(`✅ Rule 1 matched: priority ${priority} >= 9, confidence ${(confidence * 100).toFixed(1)}% >= 75%`);
-          }
-          // Rule 2: High priority hazards (siren, glass breaking) with medium-high confidence - alert immediately
-          else if (priority >= 7 && confidence >= 0.70) {
-            shouldAlert = true;
-            alertReason = `High priority hazard with good confidence (${(confidence * 100).toFixed(0)}%)`;
-            console.log(`✅ Rule 2 matched: priority ${priority} >= 7, confidence ${(confidence * 100).toFixed(1)}% >= 70%`);
-          }
-          // Rule 3: Medium confidence (0.6-0.7) - require 2 out of last 3 detections to be same type
-          else if (confidence >= 0.60 && confidence < 0.70) {
-            const recentSameType = detectionHistoryRef.current
-              .filter(d => d.type === hazardType)
-              .slice(-3); // Last 3 detections
-
-            if (recentSameType.length >= 2) {
-              shouldAlert = true;
-              alertReason = `Confirmed by ${recentSameType.length} recent detections (confidence: ${(confidence * 100).toFixed(0)}%)`;
-            } else {
-              console.log(`⏳ ${hazardType} needs confirmation (${recentSameType.length}/2 detections, confidence: ${(confidence * 100).toFixed(0)}%)`);
+            let urgency = hazard.urgency;
+            if (!urgency) {
+              // Determine urgency from priority if not provided
+              if (priority >= 9) urgency = 'critical';
+              else if (priority >= 7) urgency = 'high';
+              else if (priority >= 5) urgency = 'medium';
+              else urgency = 'low';
             }
-          }
-          // Rule 4: Lower confidence (<0.6) - require 3 out of last 5 detections
-          else if (confidence >= 0.50) {
-            const recentSameType = detectionHistoryRef.current
-              .filter(d => d.type === hazardType)
-              .slice(-5); // Last 5 detections
 
-            if (recentSameType.length >= 3) {
-              shouldAlert = true;
-              alertReason = `Confirmed by ${recentSameType.length} recent detections (confidence: ${(confidence * 100).toFixed(0)}%)`;
-            } else {
-              console.log(`⏳ ${hazardType} needs more confirmation (${recentSameType.length}/3 detections, confidence: ${(confidence * 100).toFixed(0)}%)`);
+            const now = Date.now();
+
+            // Debug: Log the full hazard object
+            console.log('📊 Full hazard object:', JSON.stringify(hazard, null, 2));
+            console.log(`📊 Extracted values: type=${hazardType}, confidence=${confidence}, priority=${priority}, urgency=${urgency}`);
+
+            // Add to detection history
+            const detection = {
+              type: hazardType,
+              confidence,
+              priority,
+              timestamp: now
+            };
+
+            detectionHistoryRef.current.push(detection);
+            // Keep only recent detections (last MAX_HISTORY_SIZE)
+            if (detectionHistoryRef.current.length > MAX_HISTORY_SIZE) {
+              detectionHistoryRef.current.shift();
             }
-          }
-          // Rule 5: Very low confidence - don't alert
-          else {
-            console.log(`⏭️ Skipping ${hazardType} - confidence too low (${(confidence * 100).toFixed(0)}%)`);
-          }
 
-          // Only alert if shouldAlert is true AND not on cooldown
-          // CRITICAL: Also check that we're not replacing a higher priority alert
-          // Use refs for reliable checking (survives React state updates)
-          const existingAlertPriority = currentAlertPriorityRef.current || detections?.highestPriority?.priority || 0;
-          const existingAlertIsCritical = criticalAlertRef.current || isCriticalAlert || existingAlertPriority >= 9;
-          // Can replace if: 
-          // 1. No existing alert (priority 0), OR
-          // 2. New priority is >= existing priority (higher or equal priority can replace)
-          // This ensures critical alerts (priority >= 9) are never replaced by lower priority alerts
-          const canReplaceExistingAlert = existingAlertPriority === 0 || priority >= existingAlertPriority;
-          
-          if (shouldAlert && !isOnCooldown) {
-            if (!canReplaceExistingAlert) {
-              console.log(`🛡️ Blocking alert: ${hazardType} (priority ${priority}) cannot replace existing alert (priority ${existingAlertPriority})`);
-              // Don't alert - preserve the existing higher priority alert
-            } else {
-              console.log(`✅ Alerting: ${hazardType} - ${alertReason}`);
+            // Debug logging
+            console.log(`🔍 Detection: ${hazardType}, confidence: ${(confidence * 100).toFixed(1)}%, priority: ${priority}, urgency: ${urgency}`);
 
-            const message = hazard.type === 'fire_alarm' ? '🔥 Fire alarm detected! Evacuate immediately!' :
-              hazard.type === 'smoke_alarm' ? '⚠️ Smoke alarm detected! Check for smoke or fire!' :
-                hazard.type === 'siren' ? '🚨 Emergency siren detected nearby!' :
-                  hazard.type === 'gun_shot' ? '🔫 Gunshot detected! Stay safe!' :
-                    hazard.type === 'glass_breaking' ? '💥 Glass breaking sound detected!' :
-                      hazard.type === 'car_horn' ? '🚗 Car horn detected - be careful!' :
-                        hazard.type === 'dog' ? '🐕 Dog barking detected!' :
-                          hazard.type === 'dog_barking' ? '🐕 Dog barking detected!' :
-                            hazard.type === 'crying_baby' ? '👶 Baby crying detected!' :
-                              hazard.type === 'baby_crying' ? '👶 Baby crying detected!' :
-                                hazard.type === 'coughing' ? '😷 Coughing detected!' :
-                                  hazard.type === 'sneezing' ? '🤧 Sneezing detected!' :
-                                    hazard.type === 'train' ? '🚂 Train sound detected!' :
-                                      hazard.type === 'clock_alarm' ? '⏰ Clock alarm detected!' :
-                                        hazard.type === 'crackling_fire' ? '🔥 Fire crackling detected!' :
-                                          hazard.type === 'door_wood_knock' ? '🚪 Door knock detected!' :
-                                            hazard.type === 'footsteps' ? '👣 Footsteps detected!' :
-                                              `Alert: ${hazard.type} detected`;
+            // Check cooldown - don't alert same hazard too frequently
+            const lastAlertTime = lastAlertTimeRef.current.get(hazardType) || 0;
+            const timeSinceLastAlert = now - lastAlertTime;
+            const isOnCooldown = timeSinceLastAlert < ALERT_COOLDOWN_MS;
 
-            setAlertMessage(message);
-            currentAlertMessageRef.current = message; // Update ref
+            if (isOnCooldown) {
+              console.log(`⏳ ${hazardType} alert on cooldown (${Math.round(timeSinceLastAlert / 1000)}s ago)`);
+              // Don't return - continue to check rules but skip alerting if on cooldown
+            }
 
-            // Check if this is a critical alert (priority >= 9)
-            const isCritical = priority >= 9;
-            setIsCriticalAlert(isCritical);
-            criticalAlertRef.current = isCritical; // Update ref
-            currentAlertPriorityRef.current = priority; // Update ref
+            // CRITICAL: Filter out common false positive types
+            const FALSE_POSITIVE_TYPES = ['silence', 'background_noise', 'noise', 'static', 'white_noise'];
+            if (FALSE_POSITIVE_TYPES.includes(hazardType.toLowerCase())) {
+              console.log(`🚫 Filtering out false positive type: ${hazardType}`);
+              return; // Skip this detection entirely
+            }
 
-            // Start continuous vibration for critical alerts
-            if (isCritical) {
-              // Clear any existing vibration interval
-              if (vibrationIntervalRef.current) {
-                clearInterval(vibrationIntervalRef.current);
-                vibrationIntervalRef.current = null;
+            // Smart alerting rules based on confidence and priority
+            // INCREASED THRESHOLDS to prevent false positives
+            let shouldAlert = false;
+            let alertReason = '';
+
+            // Rule 1: Critical hazards (fire, gunshot) with VERY high confidence - alert immediately
+            // Increased from 0.75 to 0.80 to reduce false positives
+            if (priority >= 9 && confidence >= 0.80) {
+              shouldAlert = true;
+              alertReason = `Critical hazard with very high confidence (${(confidence * 100).toFixed(0)}%)`;
+              console.log(`✅ Rule 1 matched: priority ${priority} >= 9, confidence ${(confidence * 100).toFixed(1)}% >= 80%`);
+            }
+            // Rule 2: High priority hazards (siren, glass breaking) with high confidence - alert immediately
+            // Increased from 0.70 to 0.75 to reduce false positives
+            else if (priority >= 7 && confidence >= 0.75) {
+              shouldAlert = true;
+              alertReason = `High priority hazard with high confidence (${(confidence * 100).toFixed(0)}%)`;
+              console.log(`✅ Rule 2 matched: priority ${priority} >= 7, confidence ${(confidence * 100).toFixed(1)}% >= 75%`);
+            }
+            // Rule 3: Medium-high confidence (0.70-0.75) - require 2 out of last 3 detections to be same type
+            // Increased threshold from 0.60-0.70 to 0.70-0.75
+            else if (confidence >= 0.70 && confidence < 0.75) {
+              const recentSameType = detectionHistoryRef.current
+                .filter(d => d.type === hazardType)
+                .slice(-3); // Last 3 detections
+
+              if (recentSameType.length >= 2) {
+                shouldAlert = true;
+                alertReason = `Confirmed by ${recentSameType.length} recent detections (confidence: ${(confidence * 100).toFixed(0)}%)`;
+              } else {
+                console.log(`⏳ ${hazardType} needs confirmation (${recentSameType.length}/2 detections, confidence: ${(confidence * 100).toFixed(0)}%)`);
               }
-              
-              // CRITICAL: Strong vibration for deaf users - use BOTH haptics AND vibration API
-              console.log('🚨 CRITICAL ALERT - Starting aggressive vibration pattern');
-              
-              try {
-                // Use React Native Vibration API for maximum reliability (works on both iOS and Android)
-                // Strong initial pattern: vibrate 800ms, pause 100ms, vibrate 800ms, pause 100ms, vibrate 800ms
-                Vibration.vibrate([0, 800, 100, 800, 100, 800], true); // true = repeat pattern
-                console.log('📳 Vibration API triggered with aggressive pattern');
-                
-                // ALSO use haptics on iOS for additional tactile feedback
-                if (Platform.OS === 'ios') {
+            }
+            // Rule 4: Medium confidence (0.65-0.70) - require 3 out of last 5 detections
+            // Increased threshold from 0.50-0.60 to 0.65-0.70
+            else if (confidence >= 0.65 && confidence < 0.70) {
+              const recentSameType = detectionHistoryRef.current
+                .filter(d => d.type === hazardType)
+                .slice(-5); // Last 5 detections
+
+              if (recentSameType.length >= 3) {
+                shouldAlert = true;
+                alertReason = `Confirmed by ${recentSameType.length} recent detections (confidence: ${(confidence * 100).toFixed(0)}%)`;
+              } else {
+                console.log(`⏳ ${hazardType} needs more confirmation (${recentSameType.length}/3 detections, confidence: ${(confidence * 100).toFixed(0)}%)`);
+              }
+            }
+            // Rule 5: Very low confidence - don't alert (increased minimum from 0.50 to 0.65)
+            else {
+              console.log(`⏭️ Skipping ${hazardType} - confidence too low (${(confidence * 100).toFixed(0)}% < 65%)`);
+            }
+
+            // Only alert if shouldAlert is true AND not on cooldown
+            // CRITICAL: Also check that we're not replacing a higher priority alert
+            // Use refs for reliable checking (survives React state updates)
+            const existingAlertPriority = currentAlertPriorityRef.current || detections?.highestPriority?.priority || 0;
+            const existingAlertIsCritical = criticalAlertRef.current || isCriticalAlert || existingAlertPriority >= 9;
+            // Can replace if: 
+            // 1. No existing alert (priority 0), OR
+            // 2. New priority is >= existing priority (higher or equal priority can replace)
+            // This ensures critical alerts (priority >= 9) are never replaced by lower priority alerts
+            const canReplaceExistingAlert = existingAlertPriority === 0 || priority >= existingAlertPriority;
+
+            if (shouldAlert && !isOnCooldown) {
+              if (!canReplaceExistingAlert) {
+                console.log(`🛡️ Blocking alert: ${hazardType} (priority ${priority}) cannot replace existing alert (priority ${existingAlertPriority})`);
+                // Don't alert - preserve the existing higher priority alert
+              } else {
+                console.log(`✅ Alerting: ${hazardType} - ${alertReason}`);
+
+                const message = hazard.type === 'fire_alarm' ? '🔥 Fire alarm detected! Evacuate immediately!' :
+                  hazard.type === 'smoke_alarm' ? '⚠️ Smoke alarm detected! Check for smoke or fire!' :
+                    hazard.type === 'siren' ? '🚨 Emergency siren detected nearby!' :
+                      hazard.type === 'gun_shot' ? '🔫 Gunshot detected! Stay safe!' :
+                        hazard.type === 'glass_breaking' ? '💥 Glass breaking sound detected!' :
+                          hazard.type === 'car_horn' ? '🚗 Car horn detected - be careful!' :
+                            hazard.type === 'dog' ? '🐕 Dog barking detected!' :
+                              hazard.type === 'dog_barking' ? '🐕 Dog barking detected!' :
+                                hazard.type === 'crying_baby' ? '👶 Baby crying detected!' :
+                                  hazard.type === 'baby_crying' ? '👶 Baby crying detected!' :
+                                    hazard.type === 'coughing' ? '😷 Coughing detected!' :
+                                      hazard.type === 'sneezing' ? '🤧 Sneezing detected!' :
+                                        hazard.type === 'train' ? '🚂 Train sound detected!' :
+                                          hazard.type === 'clock_alarm' ? '⏰ Clock alarm detected!' :
+                                            hazard.type === 'crackling_fire' ? '🔥 Fire crackling detected!' :
+                                              hazard.type === 'door_wood_knock' ? '🚪 Door knock detected!' :
+                                                hazard.type === 'footsteps' ? '👣 Footsteps detected!' :
+                                                  `Alert: ${hazard.type} detected`;
+
+                setAlertMessage(message);
+                currentAlertMessageRef.current = message; // Update ref
+
+                // Check if this is a critical alert (priority >= 9)
+                const isCritical = priority >= 9;
+                setIsCriticalAlert(isCritical);
+                criticalAlertRef.current = isCritical; // Update ref
+                currentAlertPriorityRef.current = priority; // Update ref
+
+                // Start continuous vibration for critical alerts
+                if (isCritical) {
+                  // Clear any existing vibration interval
+                  if (vibrationIntervalRef.current) {
+                    clearInterval(vibrationIntervalRef.current);
+                    vibrationIntervalRef.current = null;
+                  }
+
+                  // CRITICAL: Strong vibration for deaf users - use BOTH haptics AND vibration API
+                  console.log('🚨 CRITICAL ALERT - Starting aggressive vibration pattern');
+
                   try {
-                    const hapticsAvailable = await Haptics.isAvailableAsync();
-                    if (hapticsAvailable) {
-                      // Multiple strong haptic bursts
-                      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-                      await new Promise(resolve => setTimeout(resolve, 50));
-                      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-                      await new Promise(resolve => setTimeout(resolve, 50));
-                      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-                      await new Promise(resolve => setTimeout(resolve, 50));
-                      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-                      console.log('📳 iOS haptics triggered');
-                    } else {
-                      console.warn('⚠️ Haptics not available, using Vibration API only');
-                    }
-                  } catch (hapticError) {
-                    console.warn('⚠️ Haptic error (falling back to Vibration API):', hapticError);
-                  }
-                }
-              } catch (vibError) {
-                console.error('❌ Vibration error:', vibError);
-                // Fallback: try simple vibration
-                try {
-                  Vibration.vibrate(1000);
-                } catch (fallbackError) {
-                  console.error('❌ Fallback vibration also failed:', fallbackError);
-                }
-              }
-              
-              // Start continuous aggressive vibration pattern (every 400ms for maximum frequency)
-              vibrationIntervalRef.current = setInterval(async () => {
-                try {
-                  // Use Vibration API for reliable continuous feedback
-                  // Pattern: vibrate 300ms, pause 100ms (repeats every interval)
-                  Vibration.vibrate([0, 300, 100], false); // false = don't repeat (we handle repetition with interval)
-                  
-                  // ALSO trigger haptics on iOS every other interval for variety
-                  if (Platform.OS === 'ios') {
-                    try {
-                      const hapticsAvailable = await Haptics.isAvailableAsync();
-                      if (hapticsAvailable) {
-                        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+                    // Use React Native Vibration API for maximum reliability (works on both iOS and Android)
+                    // Strong initial pattern: vibrate 800ms, pause 100ms, vibrate 800ms, pause 100ms, vibrate 800ms
+                    Vibration.vibrate([0, 800, 100, 800, 100, 800], true); // true = repeat pattern
+                    console.log('📳 Vibration API triggered with aggressive pattern');
+
+                    // ALSO use haptics on iOS for additional tactile feedback
+                    if (Platform.OS === 'ios') {
+                      try {
+                        const hapticsAvailable = await Haptics.isAvailableAsync();
+                        if (hapticsAvailable) {
+                          // Multiple strong haptic bursts
+                          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+                          await new Promise(resolve => setTimeout(resolve, 50));
+                          await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+                          await new Promise(resolve => setTimeout(resolve, 50));
+                          await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+                          await new Promise(resolve => setTimeout(resolve, 50));
+                          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+                          console.log('📳 iOS haptics triggered');
+                        } else {
+                          console.warn('⚠️ Haptics not available, using Vibration API only');
+                        }
+                      } catch (hapticError) {
+                        console.warn('⚠️ Haptic error (falling back to Vibration API):', hapticError);
                       }
-                    } catch (hapticError) {
-                      // Silently fail - Vibration API is primary
+                    }
+                  } catch (vibError) {
+                    console.error('❌ Vibration error:', vibError);
+                    // Fallback: try simple vibration
+                    try {
+                      Vibration.vibrate(1000);
+                    } catch (fallbackError) {
+                      console.error('❌ Fallback vibration also failed:', fallbackError);
                     }
                   }
-                } catch (vibError) {
-                  console.error('❌ Continuous vibration error:', vibError);
+
+                  // Start continuous aggressive vibration pattern (every 400ms for maximum frequency)
+                  vibrationIntervalRef.current = setInterval(async () => {
+                    try {
+                      // Use Vibration API for reliable continuous feedback
+                      // Pattern: vibrate 300ms, pause 100ms (repeats every interval)
+                      Vibration.vibrate([0, 300, 100], false); // false = don't repeat (we handle repetition with interval)
+
+                      // ALSO trigger haptics on iOS every other interval for variety
+                      if (Platform.OS === 'ios') {
+                        try {
+                          const hapticsAvailable = await Haptics.isAvailableAsync();
+                          if (hapticsAvailable) {
+                            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+                          }
+                        } catch (hapticError) {
+                          // Silently fail - Vibration API is primary
+                        }
+                      }
+                    } catch (vibError) {
+                      console.error('❌ Continuous vibration error:', vibError);
+                    }
+                  }, 400); // Very frequent: every 400ms for maximum tactile feedback
+                  console.log('🔔 Started AGGRESSIVE continuous vibration (every 400ms) for critical alert');
                 }
-              }, 400); // Very frequent: every 400ms for maximum tactile feedback
-              console.log('🔔 Started AGGRESSIVE continuous vibration (every 400ms) for critical alert');
-            }
 
-            // Update last alert time
-            lastAlertTimeRef.current.set(hazardType, now);
+                // Update last alert time
+                lastAlertTimeRef.current.set(hazardType, now);
 
-            // Animate popup in
+                // Animate popup in
                 showPopup();
 
-            // Trigger haptic feedback
-            if (hazardAlertService && typeof hazardAlertService.triggerAlert === 'function') {
-              await hazardAlertService.triggerAlert(hazard);
+                // Trigger haptic feedback
+                if (hazardAlertService && typeof hazardAlertService.triggerAlert === 'function') {
+                  await hazardAlertService.triggerAlert(hazard);
                 }
 
-            // Visual alert animation
-            triggerFlashAnimation(urgency);
-            } // End of canReplaceExistingAlert else block
-          } else if (shouldAlert && isOnCooldown) {
-            console.log(`⏸️ Alert suppressed due to cooldown: ${hazardType}`);
-            // Keep detection in history but don't alert
-          } else {
-            // Don't alert yet, but keep detection in history
-            console.log(`⏳ Not alerting yet: ${hazardType} (confidence: ${(confidence * 100).toFixed(1)}%, priority: ${priority})`);
-            // CRITICAL: Never clear critical alerts - they must be explicitly dismissed by child
-            // Use refs for reliable checking
-            safeClearAlertMessage();
-          }
+                // Visual alert animation
+                triggerFlashAnimation(urgency);
+              } // End of canReplaceExistingAlert else block
+            } else if (shouldAlert && isOnCooldown) {
+              console.log(`⏸️ Alert suppressed due to cooldown: ${hazardType}`);
+              // Keep detection in history but don't alert
+            } else {
+              // Don't alert yet, but keep detection in history
+              console.log(`⏳ Not alerting yet: ${hazardType} (confidence: ${(confidence * 100).toFixed(1)}%, priority: ${priority})`);
+              // CRITICAL: Never clear critical alerts - they must be explicitly dismissed by child
+              // Use refs for reliable checking
+              safeClearAlertMessage();
+            }
           } // End of if (!shouldSkipAlertProcessing) block
         } else {
           // No detection in this chunk - clear alert but keep history (unless critical)
@@ -959,8 +993,8 @@ export default function HazardDetectionScreen() {
       if (!newRecording && isListeningRef.current) {
         console.error('❌ Failed to restart recording after all retries');
         setError('Failed to keep listening. Please try stopping and starting again.');
-            }
-        } catch (error) {
+      }
+    } catch (error) {
       console.error('❌ Error processing audio:', error);
       setError(`Processing failed: ${error.message}`);
       // CRITICAL: Always try to restart recording even on error to keep listening
@@ -988,13 +1022,13 @@ export default function HazardDetectionScreen() {
           }
         }
       }
-        } finally {
-            setIsProcessing(false);
-            isProcessingRef.current = false;
-        }
-    };
+    } finally {
+      setIsProcessing(false);
+      isProcessingRef.current = false;
+    }
+  };
 
-    const restartRecording = async () => {
+  const restartRecording = async () => {
     if (isRestartingRef.current && restartPromiseRef.current) {
       try {
         return await restartPromiseRef.current;
@@ -1035,18 +1069,18 @@ export default function HazardDetectionScreen() {
           shouldDuckAndroid: false,
         });
 
-            const { recording: newRec } = await Audio.Recording.createAsync(
-                Audio.RecordingOptionsPresets.HIGH_QUALITY
-            );
+        const { recording: newRec } = await Audio.Recording.createAsync(
+          Audio.RecordingOptionsPresets.HIGH_QUALITY
+        );
 
-            return newRec;
+        return newRec;
       } catch (error) {
         console.error('❌ Error restarting recording:', error);
         throw error;
       } finally {
         isRestartingRef.current = false;
         restartPromiseRef.current = null;
-        }
+      }
     })();
 
     restartPromiseRef.current = restartPromise;
@@ -1132,19 +1166,19 @@ export default function HazardDetectionScreen() {
       currentAlertPriorityRef.current = 0;
       currentAlertMessageRef.current = null;
     });
-    };
+  };
 
-    const stopListening = async () => {
+  const stopListening = async () => {
     try {
-        setIsListening(false);
-        isListeningRef.current = false;
+      setIsListening(false);
+      isListeningRef.current = false;
 
-        if (processingIntervalRef.current) {
-            clearInterval(processingIntervalRef.current);
+      if (processingIntervalRef.current) {
+        clearInterval(processingIntervalRef.current);
         processingIntervalRef.current = null;
-        }
+      }
 
-        if (recording) {
+      if (recording) {
         try {
           const status = await recording.getStatusAsync();
           if (status.isRecording || status.canRecord) {
@@ -1155,29 +1189,29 @@ export default function HazardDetectionScreen() {
             throw error;
           }
         }
-            setRecording(null);
-            recordingRef.current = null;
-        }
+        setRecording(null);
+        recordingRef.current = null;
+      }
 
       // Stop any ongoing alerts
       if (hazardAlertService && typeof hazardAlertService.stopAlert === 'function') {
         hazardAlertService.stopAlert();
       }
-      
+
       // Clear continuous vibration if active
       if (vibrationIntervalRef.current) {
         clearInterval(vibrationIntervalRef.current);
         vibrationIntervalRef.current = null;
         console.log('🔕 Stopped continuous vibration');
       }
-      
+
       // Cancel any ongoing vibration (works on both iOS and Android)
       try {
         Vibration.cancel();
       } catch (cancelError) {
         console.warn('⚠️ Error canceling vibration:', cancelError);
       }
-      
+
       setAlertMessage(null);
       setIsCriticalAlert(false);
       // Clear refs as well
@@ -1194,21 +1228,21 @@ export default function HazardDetectionScreen() {
       console.error('Error stopping recording:', error);
       setError(`Failed to stop recording: ${error.message}`);
     }
-    };
+  };
 
-    const dismissAlert = () => {
+  const dismissAlert = () => {
     // Stop any ongoing alerts
     if (hazardAlertService && typeof hazardAlertService.stopAlert === 'function') {
       hazardAlertService.stopAlert();
     }
-    
+
     // Clear continuous vibration if active
     if (vibrationIntervalRef.current) {
       clearInterval(vibrationIntervalRef.current);
       vibrationIntervalRef.current = null;
       console.log('🔕 Stopped continuous vibration');
     }
-    
+
     // Cancel any ongoing vibration (works on both iOS and Android)
     try {
       Vibration.cancel();
@@ -1216,19 +1250,19 @@ export default function HazardDetectionScreen() {
     } catch (cancelError) {
       console.warn('⚠️ Error canceling vibration:', cancelError);
     }
-    
+
     // Stop flash animation
     flashAnimation.stopAnimation();
     flashAnimation.setValue(0);
-    
+
     // Reset critical alert state (both state and refs)
     setIsCriticalAlert(false);
     criticalAlertRef.current = false;
     currentAlertPriorityRef.current = 0;
     currentAlertMessageRef.current = null;
-    
+
     // Hide popup (will work for critical alerts since user explicitly dismissed)
-        Animated.parallel([
+    Animated.parallel([
       Animated.timing(popupAnimation, {
         toValue: 0,
         duration: 250,
@@ -1243,10 +1277,10 @@ export default function HazardDetectionScreen() {
       setAlertMessage(null);
       setDetections(null);
     });
-    
+
     // Note: We keep detection history even after dismissing alert
     // This allows the system to still track patterns
-    };
+  };
 
   const formatHazardType = (type) => {
     return type
@@ -1255,22 +1289,22 @@ export default function HazardDetectionScreen() {
       .join(' ');
   };
 
-    return (
-        <View style={styles.container}>
+  return (
+    <View style={styles.container}>
       {/* Main Content */}
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-                {isListening ? (
+        {isListening ? (
           /* Listening Screen */
-                    <View style={styles.listeningContainer}>
-                        <Text style={styles.shhhTitle}>Shhh...</Text>
-                        <Text style={styles.listeningSubtitle}>Dino is listening!</Text>
+          <View style={styles.listeningContainer}>
+            <Text style={styles.shhhTitle}>Shhh...</Text>
+            <Text style={styles.listeningSubtitle}>Dino is listening!</Text>
 
             {/* Dinosaur with Concentric Circles */}
-                        <View style={styles.dinoContainer}>
+            <View style={styles.dinoContainer}>
               {/* Outer Circle 3 */}
               <Animated.View
                 style={[
@@ -1330,19 +1364,19 @@ export default function HazardDetectionScreen() {
               />
 
               {/* Dinosaur Image */}
-                            <View style={styles.dinoCircle}>
+              <View style={styles.dinoCircle}>
                 <Image
                   source={require('../../../assets/images/dino-listening.png')}
                   style={styles.dinoImage}
                   resizeMode="cover"
                 />
-                            </View>
+              </View>
 
               {/* Leaf Icons */}
               <View style={styles.leaf1}>
                 <View style={styles.leafIcon}>
                   <Text style={styles.leafEmoji}>🍃</Text>
-                        </View>
+                </View>
               </View>
               <View style={styles.leaf2}>
                 <View style={styles.leafIcon}>
@@ -1378,18 +1412,21 @@ export default function HazardDetectionScreen() {
             {/* Stop Listening Button */}
             <TouchableOpacity
               style={styles.stopListeningButton}
-              onPress={stopListening}>
+              onPress={stopListening}
+              activeOpacity={0.8}
+            >
               <View style={styles.stopButtonIcon}>
                 <View style={styles.stopButtonInner} />
               </View>
-                            <Text style={styles.stopListeningText}>Stop Listening</Text>
-                        </TouchableOpacity>
-                    </View>
-                ) : (
+              <Text style={styles.stopListeningText}>All Done!</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
           /* Initial Screen */
-                    <View style={[styles.mainSection, { backgroundColor: PURPLE_GRADIENT[0] }]}>
-                        <Text style={styles.mainPrompt}>What's that sound?</Text>
-            <Text style={[styles.instruction, { color: ORANGE_ACCENT }]}>Tap the green button!</Text>
+          <View style={[styles.mainSection, { backgroundColor: PURPLE_GRADIENT[0] }]}>
+            <Text style={styles.mainPrompt}>Let's listen!</Text>
+            <Text style={styles.subPrompt}>What's that sound?</Text>
+            <Text style={[styles.instruction, { color: ORANGE_ACCENT }]}>Tap the huge green button!</Text>
 
             {/* Button Container with Sound Waves and Music Note */}
             <Animated.View
@@ -1425,16 +1462,16 @@ export default function HazardDetectionScreen() {
                 disabled={isProcessing}
               >
                 <Text style={styles.micIcon}>🎤</Text>
-                            <Text style={styles.buttonText}>START</Text>
-                        </TouchableOpacity>
+                <Text style={styles.buttonText}>START</Text>
+              </TouchableOpacity>
 
               {/* Musical Note Icon - Right Side */}
               <View style={styles.musicNoteRight}>
                 <Text style={styles.musicNoteEmoji}>🎵</Text>
               </View>
             </Animated.View>
-                    </View>
-                )}
+          </View>
+        )}
 
         {/* My Sounds Section - Only show when not listening */}
         {!isListening && (
@@ -1446,23 +1483,13 @@ export default function HazardDetectionScreen() {
               </View>
               <TouchableOpacity style={styles.seeAllButton}>
                 <Text style={styles.seeAllText}>See All</Text>
-                        </TouchableOpacity>
+              </TouchableOpacity>
             </View>
 
             {/* Detected Sounds Cards */}
             {detections && detections.detections && detections.detections.length > 0 ? (
               <View style={styles.soundsCardsContainer}>
                 {detections.detections.slice(0, 2).map((detection, index) => {
-                  const hazardEmoji =
-                    detection.type === 'fire_alarm' ? '🔥' :
-                      detection.type === 'smoke_alarm' ? '💨' :
-                        detection.type === 'gun_shot' ? '🔫' :
-                          detection.type === 'siren' ? '🚨' :
-                            detection.type === 'glass_breaking' ? '💥' :
-                              detection.type === 'car_horn' ? '🚗' :
-                                detection.type === 'dog_barking' ? '🐕' :
-                                  detection.type === 'baby_crying' ? '👶' : '🔊';
-
                   const cardColors = [
                     { bg: '#FFF5E6', border: '#FFA500' }, // Light orange
                     { bg: '#E6F3FF', border: '#4A90E2' }, // Light blue
@@ -1479,7 +1506,11 @@ export default function HazardDetectionScreen() {
                         }
                       ]}>
                       <View style={styles.soundCardImage}>
-                        <Text style={styles.soundCardEmoji}>{hazardEmoji}</Text>
+                        <ExpoImage
+                          source={{ uri: getAnimatedIcon(detection.type) }}
+                          style={{ width: 60, height: 60 }}
+                          contentFit="contain"
+                        />
                       </View>
                       <Text style={styles.soundCardLabel}>
                         {formatHazardType(detection.type)}
@@ -1542,17 +1573,21 @@ export default function HazardDetectionScreen() {
                   transform: [{ scale: criticalPulseAnimation }],
                 }}
               >
-                <Text style={styles.criticalEmoji}>🚨</Text>
+                <ExpoImage
+                  source={{ uri: getAnimatedIcon(detections?.highestPriority?.type) }}
+                  style={{ width: 150, height: 150, marginBottom: 30 }}
+                  contentFit="contain"
+                />
               </Animated.View>
-              <Text style={styles.criticalTitle}>DANGER!</Text>
+              <Text style={styles.criticalTitle}>WATCH OUT!</Text>
               <Text style={styles.criticalMessage}>{alertMessage}</Text>
-              <Text style={styles.criticalSubtext}>Tap the button below when you are safe</Text>
+              <Text style={styles.criticalSubtext}>Are you safe? Tap the button below!</Text>
               <TouchableOpacity
                 style={styles.criticalDismissButton}
                 onPress={dismissAlert}
                 activeOpacity={0.8}
               >
-                <Text style={styles.criticalDismissButtonText}>I AM SAFE</Text>
+                <Text style={styles.criticalDismissButtonText}>I'M SAFE NOW!</Text>
               </TouchableOpacity>
             </Animated.View>
           </View>
@@ -1565,10 +1600,12 @@ export default function HazardDetectionScreen() {
             <Animated.View
               style={[
                 styles.popupBackdrop,
-                { opacity: backdropOpacity.interpolate({
+                {
+                  opacity: backdropOpacity.interpolate({
                     inputRange: [0, 1],
                     outputRange: [0, 0.8], // Darker backdrop
-                  }) }
+                  })
+                }
               ]}
             >
               <TouchableOpacity
@@ -1599,13 +1636,13 @@ export default function HazardDetectionScreen() {
                   styles.popupIconContainer,
                   { backgroundColor: getAlertColor(detections.highestPriority.urgency || 'medium') }
                 ]}>
-                  <Text style={styles.popupEmoji}>
-                    {detections.highestPriority.type === 'fire_alarm' ? '🔥' :
-                      detections.highestPriority.type === 'smoke_alarm' ? '💨' :
-                        detections.highestPriority.type === 'siren' ? '🚨' : '⚠️'}
-                  </Text>
+                  <ExpoImage
+                    source={{ uri: getAnimatedIcon(detections.highestPriority.type) }}
+                    style={{ width: 75, height: 75 }}
+                    contentFit="contain"
+                  />
                 </View>
-                <Text style={styles.popupTitle}>HAZARD DETECTED</Text>
+                <Text style={styles.popupTitle}>NEW SOUND DETECTED!</Text>
               </View>
 
               <View style={styles.popupContentCard}>
@@ -1622,7 +1659,7 @@ export default function HazardDetectionScreen() {
                 ]}
                 onPress={dismissAlert}
               >
-                <Text style={styles.popupActionButtonText}>OK, I HEARD IT</Text>
+                <Text style={styles.popupActionButtonText}>GOT IT!</Text>
               </TouchableOpacity>
             </Animated.View>
           </View>
@@ -1640,11 +1677,11 @@ export default function HazardDetectionScreen() {
         {error && (
           <View style={styles.errorBanner}>
             <Text style={styles.errorText}>⚠️ {error}</Text>
-                    </View>
-                )}
-            </ScrollView>
-        </View>
-    );
+          </View>
+        )}
+      </ScrollView>
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
@@ -1660,13 +1697,16 @@ const styles = StyleSheet.create({
     flexGrow: 1,
   },
   mainSection: {
+    flex: 1,
     alignItems: 'center',
+    justifyContent: 'center',
     paddingVertical: 40,
     paddingHorizontal: 20,
     minHeight: 400,
   },
   listeningContainer: {
     flex: 1,
+    justifyContent: 'center',
     backgroundColor: '#E8F4F8', // Light blue-gray background
     paddingHorizontal: 20,
     paddingTop: 20,
@@ -1792,53 +1832,70 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
   stopListeningButton: {
-    backgroundColor: ORANGE_ACCENT,
+    backgroundColor: '#FF6B6B', // Playful coral red
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 18,
-    paddingHorizontal: 24,
-    borderRadius: 12,
+    paddingVertical: 20,
+    paddingHorizontal: 32,
+    borderRadius: 30, // rounder
     marginHorizontal: 20,
     marginTop: 20,
     gap: 12,
+    borderWidth: 5,
+    borderColor: '#E03131', // darker red border
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 5,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    elevation: 8,
   },
   stopButtonIcon: {
-    width: 24,
-    height: 24,
-    borderRadius: 4,
+    width: 28,
+    height: 28,
+    borderRadius: 6,
     backgroundColor: '#fff',
     alignItems: 'center',
     justifyContent: 'center',
   },
   stopButtonInner: {
-    width: 12,
-    height: 12,
-    borderRadius: 2,
-    backgroundColor: ORANGE_ACCENT,
+    width: 14,
+    height: 14,
+    borderRadius: 3,
+    backgroundColor: '#E03131',
   },
   stopListeningText: {
     color: '#fff',
-    fontSize: 18,
-    fontWeight: 'bold',
+    fontSize: 22,
+    fontWeight: '900',
+    letterSpacing: 1,
   },
   mainPrompt: {
-    fontSize: 32,
-    fontWeight: 'bold',
+    fontSize: 42,
+    fontWeight: '900',
     color: '#fff',
-    marginBottom: 8,
+    marginBottom: 4,
+    textAlign: 'center',
+    textShadowColor: 'rgba(0,0,0,0.2)',
+    textShadowOffset: { width: 2, height: 2 },
+    textShadowRadius: 4,
+  },
+  subPrompt: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: 'rgba(255, 255, 255, 0.9)',
+    marginBottom: 16,
     textAlign: 'center',
   },
   instruction: {
-    fontSize: 18,
-    color: '#F59E0B', // Orange accent color
-    marginBottom: 30,
-    fontWeight: '600',
+    fontSize: 22,
+    color: '#FFD700', // Bright yellow
+    marginBottom: 35,
+    fontWeight: '800',
+    textAlign: 'center',
+    textShadowColor: 'rgba(0,0,0,0.2)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
   },
   buttonContainer: {
     alignItems: 'center',
@@ -1857,34 +1914,37 @@ const styles = StyleSheet.create({
     height: 40,
   },
   soundWaveBar: {
-    width: 5,
-    borderRadius: 2.5,
+    width: 6,
+    borderRadius: 3,
   },
   mainButton: {
-    width: 180,
-    height: 180,
-    borderRadius: 90,
+    width: 200,
+    height: 200,
+    borderRadius: 100,
     backgroundColor: '#10B981', // Green button color
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 8,
+    borderColor: '#059669', // Darker green border
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 8,
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.35,
+    shadowRadius: 16,
+    elevation: 12,
   },
   mainButtonProcessing: {
     opacity: 0.8,
+    transform: [{ scale: 0.95 }],
   },
   micIcon: {
-    fontSize: 36,
+    fontSize: 48,
     marginBottom: 8,
   },
   buttonText: {
     color: '#fff',
-    fontSize: 24,
-    fontWeight: 'bold',
-    letterSpacing: 1,
+    fontSize: 26,
+    fontWeight: '900',
+    letterSpacing: 2,
   },
   musicNoteRight: {
     position: 'absolute',
@@ -1945,50 +2005,60 @@ const styles = StyleSheet.create({
   },
   soundCard: {
     flex: 1,
-    borderRadius: 16,
+    borderRadius: 24,
     padding: 16,
-    borderWidth: 2,
+    borderWidth: 4,
     alignItems: 'center',
-    minHeight: 140,
+    minHeight: 160,
     position: 'relative',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 5,
   },
   soundCardImage: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 90,
+    height: 90,
+    borderRadius: 45,
     backgroundColor: '#fff',
+    borderWidth: 2,
+    borderColor: '#f0f0f0',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 12,
+    marginBottom: 16,
   },
   soundCardEmoji: {
-    fontSize: 48,
+    fontSize: 54,
   },
   soundCardLabel: {
-    fontSize: 18,
-    fontWeight: '600',
+    fontSize: 20,
+    fontWeight: '800',
     color: '#111827',
+    textAlign: 'center',
   },
   checkmarkBadge: {
     position: 'absolute',
-    bottom: 8,
-    right: 8,
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+    bottom: -8,
+    right: -8,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 3,
+    borderColor: '#fff',
     backgroundColor: '#10B981', // Green
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
   },
   checkmark: {
     color: '#fff',
-    fontSize: 14,
-    fontWeight: 'bold',
+    fontSize: 18,
+    fontWeight: '900',
   },
   noSoundsContainer: {
     padding: 40,
