@@ -7,6 +7,7 @@ import { ParentDashboard, AddChildScreen } from '../screens/parent';
 import LearningProgressScreen from '../screens/parent/LearningProgressScreen';
 import { ChildDashboard, LearnSigns, PlayGame } from '../screens/child';
 import GameSelectScreen from '../screens/child/GameSelectScreen';
+import PlayGameTimed from '../screens/child/PlayGameTimed';
 import { HazardDetectionScreen } from '../screens/common';
 import PlacesScreen from '../screens/parent/PlacesScreen';
 import HazardHistoryScreen from '../screens/parent/HazardHistoryScreen';
@@ -68,6 +69,7 @@ export default function AppNavigator() {
           <Stack.Screen name="GameSelect" component={GameSelectScreen} />
           <Stack.Screen name="LearnSigns" component={LearnSigns} />
           <Stack.Screen name="PlayGame" component={PlayGame} />
+          <Stack.Screen name="PlayGameTimed" component={PlayGameTimed} />
           <Stack.Screen name="HazardDetection" component={HazardDetectionScreen} />
         </>
 

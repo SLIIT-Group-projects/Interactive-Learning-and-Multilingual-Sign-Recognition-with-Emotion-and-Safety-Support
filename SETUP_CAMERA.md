@@ -4,21 +4,18 @@ This guide will help you set up the real camera functionality for the PlayGame s
 
 ## Prerequisites
 
-1. ✅ Trained ASL model (`asl_model.h5` in `model/` directory)
+1. ✅ Trained ASL model (`asl_model.h5` in `backend/models/games/` directory)
 2. ✅ Python virtual environment with dependencies
 3. ✅ React Native/Expo app setup
 
 ## Step 1: Install Backend Dependencies
 
 ```bash
-# Activate virtual environment
-cd model
-.\venv\Scripts\Activate.ps1  # Windows
-# or
-source venv/bin/activate  # Mac/Linux
+# Navigate to games directory
+cd backend/models/games
 
 # Install Flask and dependencies
-pip install flask flask-cors pillow
+pip install flask flask-cors pillow opencv-python mediapipe tensorflow numpy
 ```
 
 ## Step 2: Install Frontend Dependencies
@@ -31,7 +28,7 @@ npm install expo-camera expo-file-system
 ## Step 3: Start the API Server
 
 ```bash
-cd model
+cd backend/models/games
 python api_server.py
 ```
 
@@ -83,7 +80,7 @@ Then:
 ## Troubleshooting
 
 ### "Could not connect to API server"
-- ✅ Make sure API server is running (`python model/api_server.py`)
+- ✅ Make sure API server is running (`python backend/models/games/api_server.py`)
 - ✅ Check that port 5000 is not blocked
 - ✅ For physical devices: Use your computer's IP, not `localhost`
 - ✅ Ensure phone and computer are on same WiFi
@@ -99,7 +96,7 @@ Then:
 - ✅ Restart the app after granting permission
 
 ### Model not found
-- ✅ Make sure `asl_model.h5` exists in `model/` directory
+- ✅ Make sure `asl_model.h5` exists in `backend/models/games/` directory
 - ✅ Check that you've trained the model first
 
 ## Development Tips
@@ -128,18 +125,15 @@ Check the terminal where `api_server.py` is running to see:
 
 ## Files Modified
 
-- ✅ `model/api_server.py` - New Flask API server
-- ✅ `frontend/screens/PlayGame.js` - Updated with real camera
+- ✅ `backend/models/games/api_server.py` - Flask API server for ASL recognition
+- ✅ `frontend/src/screens/child/PlayGame.js` - Updated with real camera
 - ✅ `frontend/package.json` - Added expo-camera, expo-file-system
-- ✅ `requirements.txt` - Added flask, flask-cors, pillow
 
 ## API Endpoints
 
 - `GET /health` - Health check
 - `POST /predict` - Predict letter from image
 - `POST /check` - Check if prediction matches target
-
-See `model/README_API.md` for detailed API documentation.
 
 
 

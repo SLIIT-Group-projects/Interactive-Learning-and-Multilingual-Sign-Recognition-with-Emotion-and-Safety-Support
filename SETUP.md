@@ -152,7 +152,7 @@ You need **two terminals** running simultaneously:
 #### Terminal 1: Backend API Server
 
 ```bash
-cd model
+cd backend/models/games
 python api_server.py
 ```
 
@@ -203,20 +203,22 @@ This will:
 ## 📁 Project Structure
 
 ```
-ASL_learning/
-├── model/                    # Backend and ML models
-│   ├── asl_model.h5         # Trained model (generated after training)
-│   ├── api_server.py        # Flask API server
-│   ├── train_asl_model.py  # Training script
-│   ├── extract_landmarks.py # Landmark extraction
-│   ├── dataset_landmarks/   # Extracted landmarks dataset
-│   └── dataset_raw/         # Raw images dataset
-├── frontend/                 # React Native app
-│   ├── screens/
-│   │   └── PlayGame.js      # Main game screen
+Interactive-Learning-and-Multilingual-Sign-Recognition-with-Emotion-and-Safety-Support/
+├── backend/
+│   └── models/
+│       ├── games/                    # ASL recognition models
+│       │   ├── asl_model.h5         # Trained model (generated after training)
+│       │   ├── api_server.py        # Flask API server for games
+│       │   └── asl_cnn_model.h5     # Alternative CNN model
+│       ├── model_server.py          # Model server for hazard detection
+│       └── predict.py                # Prediction script for hazards
+├── frontend/                         # React Native app
+│   ├── src/
+│   │   └── screens/
+│   │       └── child/
+│   │           └── PlayGame.js       # Main game screen
 │   └── package.json
-├── requirements.txt         # Python dependencies
-└── SETUP.md                 # This file
+└── SETUP.md                          # This file
 ```
 
 ## 🔧 Troubleshooting
@@ -225,13 +227,13 @@ ASL_learning/
 
 **Solution**: 
 - Make sure you've trained the model (Step 3)
-- Check that `asl_model.h5` exists in the `model/` directory
+- Check that `asl_model.h5` exists in the `backend/models/games/` directory
 - Verify the model path in `api_server.py` is correct
 
 ### Issue: "Could not connect to API server"
 
 **Solutions**:
-1. Check that the backend is running (`python model/api_server.py`)
+1. Check that the backend is running (`python backend/models/games/api_server.py`)
 2. Verify the IP address in `PlayGame.js` matches your computer's IP
 3. Ensure both devices are on the same Wi-Fi network
 4. Check firewall settings (Windows may block port 5000)

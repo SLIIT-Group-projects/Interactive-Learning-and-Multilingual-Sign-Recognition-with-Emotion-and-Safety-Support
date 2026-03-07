@@ -16,7 +16,7 @@ curl http://192.168.1.2:5000/health
 ```
 Or use the test script:
 ```powershell
-cd model
+cd backend/models/games
 python test_api.py
 ```
 
@@ -62,7 +62,7 @@ If you can access `http://192.168.1.2:5000/health` from your phone's browser, th
 
 ### Issue: "Connection refused"
 **Solution:** 
-- Make sure API server is running: `python model/api_server.py`
+- Make sure API server is running: `python backend/models/games/api_server.py`
 - Check firewall settings
 - Verify server is listening on `0.0.0.0` (not just `localhost`)
 
@@ -88,7 +88,7 @@ If you can access `http://192.168.1.2:5000/health` from your phone's browser, th
 
 1. **Start API Server:**
    ```powershell
-   cd model
+   cd backend/models/games
    python api_server.py
    ```
 
@@ -112,7 +112,7 @@ If you can access `http://192.168.1.2:5000/health` from your phone's browser, th
 If firewall is too complicated, use ngrok to create a tunnel:
 
 1. Install ngrok: https://ngrok.com/
-2. Start API server: `python model/api_server.py`
+2. Start API server: `python backend/models/games/api_server.py`
 3. In another terminal: `ngrok http 5000`
 4. Copy the ngrok URL (e.g., `https://abc123.ngrok.io`)
 5. Update `API_URL` in `PlayGame.js` to use the ngrok URL

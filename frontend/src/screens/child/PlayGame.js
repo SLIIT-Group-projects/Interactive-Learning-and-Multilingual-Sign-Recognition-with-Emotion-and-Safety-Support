@@ -48,6 +48,7 @@ const PlayGame = ({ navigation, route }) => {
   const [predictedLetter, setPredictedLetter] = useState(null);
   const [cameraReady, setCameraReady] = useState(false);
   const cameraRef = useRef(null);
+  const autoAdvanceTimeoutRef = useRef(null);
 
   // XP & level (child progress)
   const [childProgress, setChildProgress] = useState(null);
@@ -66,8 +67,8 @@ const PlayGame = ({ navigation, route }) => {
 
   // API endpoint - update this to your server IP/URL
   const API_URL = __DEV__
-    ? "http://192.168.13.67:5000" // Your laptop's IP address with port
-    : "http://192.168.13.67:5000"; // For production (same IP)
+    ? "http://192.168.1.2:5000" // Your laptop's IP address with port
+    : "http://192.168.1.2:5000"; // For production (same IP)
 
   // Stable camera ref callback - must be at top level (Rules of Hooks)
   const handleCameraRef = useCallback(
@@ -136,26 +137,18 @@ const PlayGame = ({ navigation, route }) => {
   };
 
   const generateNewQuestion = () => {
-    // Randomly choose question type
-    const type = Math.random() > 0.5 ? "letter" : "object";
-    setQuestionType(type);
+    // Only letter questions - no object questions
+    setQuestionType("letter");
     setHasAnswered(false);
     setFeedback(null);
     setIsCapturing(false);
     setQuestionStartTime(Date.now()); // Track when question starts for response time
 
-    if (type === "letter") {
-      // Random letter question
-      const randomLetter =
-        ALPHABET[Math.floor(Math.random() * ALPHABET.length)];
-      setTargetLetter(randomLetter);
-      setCurrentObject(null);
-    } else {
-      // Object question
-      const randomObject = OBJECTS[Math.floor(Math.random() * OBJECTS.length)];
-      setCurrentObject(randomObject);
-      setTargetLetter(randomObject.letter);
-    }
+    // Random letter question
+    const randomLetter =
+      ALPHABET[Math.floor(Math.random() * ALPHABET.length)];
+    setTargetLetter(randomLetter);
+    setCurrentObject(null);
   };
 
   const handleCapture = async () => {
@@ -194,7 +187,10 @@ const PlayGame = ({ navigation, route }) => {
 
     console.log("Camera ready! Proceeding with capture...");
 
-    // Don't set state immediately - it causes re-render that detaches camera
+    // Hide capture button immediately
+    setIsCapturing(true);
+    
+    // Don't set other state immediately - it causes re-render that detaches camera
     // Set these after capture starts
     setPredictedLetter(null);
 
@@ -264,8 +260,8 @@ const PlayGame = ({ navigation, route }) => {
               quality: 0.8,
             });
 
-            // Now safe to update state - photo is captured
-            setIsCapturing(true);
+            // Now safe to update processing state - photo is captured
+            // isCapturing was already set earlier to hide the button
             setIsProcessing(true);
 
             if (!photo) {
@@ -475,7 +471,7 @@ const PlayGame = ({ navigation, route }) => {
 
       const result = await response.json();
 
-      setIsCapturing(false);
+      // Don't reset isCapturing here - keep button hidden until next question
       setIsProcessing(false);
 
       if (!result.success) {
@@ -517,7 +513,7 @@ const PlayGame = ({ navigation, route }) => {
         setFeedback("incorrect");
       }
 
-      // XP system: correct +20, partial (confidence >= 0.7) +10, wrong +0; 5 in a row +50 bonus
+      // XP system: correct +20, wrong +0; 5 in a row +50 bonus
       if (childId) {
         try {
           const confidence = result.confidence ?? 0;
@@ -538,6 +534,18 @@ const PlayGame = ({ navigation, route }) => {
       }
 
       setHasAnswered(true);
+
+      // Auto-advance to next question if correct (after showing feedback for 1.5 seconds)
+      if (result.isCorrect) {
+        // Clear any existing timeout
+        if (autoAdvanceTimeoutRef.current) {
+          clearTimeout(autoAdvanceTimeoutRef.current);
+        }
+        autoAdvanceTimeoutRef.current = setTimeout(() => {
+          handleNextQuestion();
+          autoAdvanceTimeoutRef.current = null;
+        }, 1500);
+      }
     } catch (error) {
       console.error("Error capturing/processing:", error);
       console.error("Error stack:", error.stack);
@@ -566,7 +574,7 @@ const PlayGame = ({ navigation, route }) => {
         // API/Network error
         Alert.alert(
           "API Connection Error",
-          `Could not connect to API server.\n\nServer URL: ${API_URL}\n\nMake sure:\n1. API server is running: python model/api_server.py\n2. Test in browser: ${API_URL}/health\n3. Phone and laptop on same WiFi\n\nError: ${errorMessage}`,
+          `Could not connect to API server.\n\nServer URL: ${API_URL}\n\nMake sure:\n1. API server is running: python backend/models/games/api_server.py\n2. Test in browser: ${API_URL}/health\n3. Phone and laptop on same WiFi\n\nError: ${errorMessage}`,
           [{ text: "OK" }],
         );
       } else {
@@ -580,12 +588,24 @@ const PlayGame = ({ navigation, route }) => {
   };
 
   const handleTryAgain = () => {
+    // Clear any pending auto-advance timeout
+    if (autoAdvanceTimeoutRef.current) {
+      clearTimeout(autoAdvanceTimeoutRef.current);
+      autoAdvanceTimeoutRef.current = null;
+    }
+    
     setFeedback(null);
     setHasAnswered(false);
     setIsCapturing(false);
   };
 
   const handleNextQuestion = async () => {
+    // Clear any pending auto-advance timeout
+    if (autoAdvanceTimeoutRef.current) {
+      clearTimeout(autoAdvanceTimeoutRef.current);
+      autoAdvanceTimeoutRef.current = null;
+    }
+    
     setXpGainedThisAnswer(0);
     setStreakBonusThisAnswer(false);
 
@@ -649,93 +669,12 @@ const PlayGame = ({ navigation, route }) => {
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-purple-50">
-      <ScrollView
-        className="flex-1"
-        contentContainerStyle={{
-          paddingHorizontal: 24,
-          paddingTop: 16,
-          paddingBottom: 24,
-        }}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Header Section */}
-        <View className="flex-row items-center justify-between mb-4">
-          <View className="flex-row items-center">
-            <TouchableOpacity
-              onPress={handleBack}
-              className="mr-4 p-2"
-              activeOpacity={0.7}
-            >
-              <MaterialIcons name="arrow-back" size={32} color="#374151" />
-            </TouchableOpacity>
-            <Text className="text-3xl font-bold text-gray-800">Play Game</Text>
-          </View>
-        </View>
-
-        {/* Level & XP Progress */}
-        <View className="mb-4">
-          <XPProgressBar
-            totalXP={childProgress?.totalXP ?? 0}
-            level={childProgress?.level}
-            size="compact"
-            showLevelUp={!!levelUpModal}
-          />
-          <View className="flex-row justify-end mt-1">
-            <Text className="text-base font-semibold text-gray-600">
-              Question {currentQuestion + 1} / {TOTAL_QUESTIONS}
-            </Text>
-          </View>
-        </View>
-
-        {/* Game Prompt Area */}
-        <View className="bg-white rounded-3xl p-8 mb-6 shadow-lg items-center">
-          {questionType === "letter" ? (
-            <>
-              <Text className="text-2xl font-semibold text-gray-700 mb-4 text-center">
-                Show the sign for:
-              </Text>
-              <Text className="text-8xl font-bold text-purple-600">
-                {targetLetter}
-              </Text>
-            </>
-          ) : (
-            <>
-              <View className="mb-4">
-                {currentObject?.iconFamily === "MaterialIcons" ? (
-                  <MaterialIcons
-                    name={currentObject?.icon}
-                    size={80}
-                    color="#8b5cf6"
-                  />
-                ) : (
-                  <MaterialIcons
-                    name={currentObject?.icon}
-                    size={80}
-                    color="#8b5cf6"
-                  />
-                )}
-              </View>
-              <Text className="text-2xl font-semibold text-gray-700 mb-2 text-center">
-                What letter does this start with?
-              </Text>
-              <Text className="text-xl text-gray-500">
-                {currentObject?.name}
-              </Text>
-            </>
-          )}
-        </View>
-
-        {/* Camera Preview Area */}
-        <View
-          className="bg-gray-800 rounded-3xl mb-6 shadow-lg overflow-hidden"
-          style={{ minHeight: 300 }}
-        >
+    <SafeAreaView className="flex-1 bg-black">
+      <View className="flex-1">
+        {/* Full-Screen Camera */}
+        <View className="flex-1 bg-black">
           {!permission?.granted ? (
-            <View
-              className="items-center justify-center p-8"
-              style={{ minHeight: 300 }}
-            >
+            <View className="flex-1 items-center justify-center p-8 bg-gray-900">
               <Text className="text-6xl mb-4">📷</Text>
               <Text className="text-xl font-semibold text-white mb-2 text-center">
                 Camera Permission Required
@@ -751,10 +690,7 @@ const PlayGame = ({ navigation, route }) => {
               </TouchableOpacity>
             </View>
           ) : isProcessing ? (
-            <View
-              className="items-center justify-center p-8"
-              style={{ minHeight: 300 }}
-            >
+            <View className="flex-1 items-center justify-center bg-black">
               <ActivityIndicator size="large" color="#ffffff" />
               <Text className="text-xl font-semibold text-white mt-4">
                 Processing gesture...
@@ -763,79 +699,181 @@ const PlayGame = ({ navigation, route }) => {
           ) : (
             <CameraView
               ref={handleCameraRef}
-              style={{ flex: 1, minHeight: 300 }}
+              style={{ flex: 1 }}
               facing="front"
+              enableTorch={false}
               onCameraReady={() => {
                 console.log("Camera is ready");
                 setCameraReady(true);
               }}
             >
-              <View className="absolute inset-0 items-center justify-center">
-                <View
-                  className="border-4 border-white rounded-3xl"
-                  style={{ width: 250, height: 250 }}
-                />
-                <Text className="text-white font-semibold mt-4 bg-black/50 px-4 py-2 rounded">
-                  Position your hand in the frame
+              {/* Overlay: Target Letter with Question Counter (Top-Left, below back button) */}
+              <View className="absolute top-20 left-4 bg-black/70 rounded-2xl px-4 py-3 items-center">
+                <Text className="text-xs text-white/80 mb-1">Show the sign for</Text>
+                <Text className="text-5xl font-bold text-white">
+                  {targetLetter}
                 </Text>
+                {/* Question Counter inside sign badge */}
+                <View className="mt-2 bg-white/20 rounded-full px-3 py-1">
+                  <Text className="text-white font-semibold text-xs">
+                    {currentQuestion + 1} / {TOTAL_QUESTIONS}
+                  </Text>
+                </View>
               </View>
+
+              {/* Overlay: Back Button (Top-Left) */}
+              <TouchableOpacity
+                onPress={handleBack}
+                className="absolute top-4 left-4 bg-black/70 rounded-full p-2"
+                activeOpacity={0.7}
+              >
+                <MaterialIcons name="arrow-back" size={24} color="#ffffff" />
+              </TouchableOpacity>
+
+              {/* Overlay: XP Progress (Top-Right, same level as back button) */}
+              {childProgress && (
+                <View className="absolute top-4 right-4">
+                  <View className="bg-black/70 rounded-full px-3 py-1.5">
+                    <Text className="text-white text-xs font-semibold">
+                      Level {childProgress.level} • {childProgress.totalXP} XP
+                    </Text>
+                  </View>
+                </View>
+              )}
             </CameraView>
           )}
         </View>
 
-        {/* Feedback Section */}
+        {/* Overlay: Floating Capture Button (Bottom Center) */}
+        {!hasAnswered && permission?.granted && !isProcessing && !isCapturing && (
+          <View className="absolute bottom-8 left-0 right-0 items-center px-6">
+            <TouchableOpacity
+              onPress={handleCapture}
+              disabled={
+                isCapturing ||
+                isProcessing ||
+                !permission?.granted ||
+                !cameraReady
+              }
+              className="bg-blue-500 rounded-full p-5 shadow-2xl"
+              activeOpacity={0.8}
+              style={[
+                {
+                  width: 80,
+                  height: 80,
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                },
+                (isCapturing ||
+                  isProcessing ||
+                  !permission?.granted ||
+                  !cameraReady) &&
+                  styles.disabledButton,
+              ]}
+            >
+              {isCapturing ? (
+                <ActivityIndicator size="small" color="#ffffff" />
+              ) : (
+                <MaterialIcons
+                  name="camera-alt"
+                  size={36}
+                  color="#ffffff"
+                />
+              )}
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Overlay: Feedback Toast (Bottom, above capture button) */}
         {feedback && (
-          <View
-            className={`rounded-2xl p-5 mb-4 items-center shadow-md ${
-              feedback === "correct" ? "bg-green-100" : "bg-red-100"
-            }`}
-          >
-            {feedback === "correct" ? (
-              <>
-                <MaterialIcons
-                  name="check-circle"
-                  size={64}
-                  color="#10b981"
-                  style={{ marginBottom: 8 }}
-                />
-                <Text className="text-2xl font-bold text-green-800 text-center">
-                  Correct! Well done!
-                </Text>
-                {predictedLetter && (
-                  <Text className="text-lg text-green-700 mt-2">
-                    You signed: {predictedLetter}
+          <View className="absolute bottom-28 left-4 right-4">
+            <View
+              className={`rounded-2xl p-4 items-center shadow-2xl ${
+                feedback === "correct" ? "bg-green-500" : "bg-red-500"
+              }`}
+            >
+              {feedback === "correct" ? (
+                <>
+                  <MaterialIcons
+                    name="check-circle"
+                    size={40}
+                    color="#ffffff"
+                  />
+                  <Text className="text-lg font-bold text-white mt-2 text-center">
+                    Correct! Well done!
                   </Text>
-                )}
-                {xpGainedThisAnswer > 0 && (
-                  <Text className="text-lg font-bold text-violet-700 mt-2">
-                    +{xpGainedThisAnswer} XP
-                    {streakBonusThisAnswer ? " (5 in a row bonus!)" : ""}
+                  {predictedLetter && (
+                    <Text className="text-sm text-white/90 mt-1">
+                      You signed: {predictedLetter}
+                    </Text>
+                  )}
+                  {xpGainedThisAnswer > 0 && (
+                    <Text className="text-sm font-bold text-white mt-1">
+                      +{xpGainedThisAnswer} XP
+                      {streakBonusThisAnswer ? " (5 in a row!)" : ""}
+                    </Text>
+                  )}
+                </>
+              ) : (
+                <>
+                  <MaterialIcons
+                    name="cancel"
+                    size={40}
+                    color="#ffffff"
+                  />
+                  <Text className="text-lg font-bold text-white mt-2 text-center">
+                    Try again!
                   </Text>
-                )}
-              </>
-            ) : (
-              <>
-                <MaterialIcons
-                  name="cancel"
-                  size={64}
-                  color="#ef4444"
-                  style={{ marginBottom: 8 }}
-                />
-                <Text className="text-2xl font-bold text-red-800 text-center">
-                  Try again! You can do it!
-                </Text>
-                {predictedLetter && (
-                  <Text className="text-lg text-red-700 mt-2">
-                    You signed: {predictedLetter} (Expected: {targetLetter})
+                  {predictedLetter && (
+                    <Text className="text-sm text-white/90 mt-1 text-center">
+                      You: {predictedLetter} • Expected: {targetLetter}
+                    </Text>
+                  )}
+                </>
+              )}
+            </View>
+          </View>
+        )}
+
+        {/* Overlay: Action Buttons (Bottom, only for incorrect answers) */}
+        {hasAnswered && feedback === "incorrect" && (
+          <View className="absolute bottom-8 left-0 right-0 px-6">
+            <View className="flex-row justify-between">
+              <TouchableOpacity
+                onPress={handleTryAgain}
+                className="bg-orange-500 rounded-full px-6 py-3 flex-1 mr-2 shadow-lg"
+                activeOpacity={0.8}
+              >
+                <View className="flex-row items-center justify-center">
+                  <MaterialIcons
+                    name="refresh"
+                    size={24}
+                    color="#ffffff"
+                    style={{ marginRight: 6 }}
+                  />
+                  <Text className="text-base font-bold text-white">
+                    Try Again
                   </Text>
-                )}
-                {xpGainedThisAnswer > 0 && (
-                  <Text className="text-lg font-bold text-violet-700 mt-2">
-                    +{xpGainedThisAnswer} XP
+                </View>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={handleNextQuestion}
+                className="bg-green-500 rounded-full px-6 py-3 flex-1 ml-2 shadow-lg"
+                activeOpacity={0.8}
+              >
+                <View className="flex-row items-center justify-center">
+                  <Text className="text-base font-bold text-white mr-2">
+                    Next
                   </Text>
-                )}
-              </>
-            )}
+                  <MaterialIcons
+                    name="arrow-forward"
+                    size={24}
+                    color="#ffffff"
+                  />
+                </View>
+              </TouchableOpacity>
+            </View>
           </View>
         )}
 
@@ -861,115 +899,7 @@ const PlayGame = ({ navigation, route }) => {
             </View>
           </View>
         </Modal>
-
-        {/* Action Buttons */}
-        <View className="mb-4">
-          {!hasAnswered ? (
-            <TouchableOpacity
-              onPress={handleCapture}
-              disabled={
-                isCapturing ||
-                isProcessing ||
-                !permission?.granted ||
-                !cameraReady
-              }
-              className="bg-blue-500 rounded-3xl p-6 mb-4 shadow-lg"
-              activeOpacity={0.8}
-              style={[
-                styles.captureButton,
-                (isCapturing ||
-                  isProcessing ||
-                  !permission?.granted ||
-                  !cameraReady) &&
-                  styles.disabledButton,
-              ]}
-            >
-              <View className="flex-row items-center justify-center">
-                {isProcessing ? (
-                  <>
-                    <ActivityIndicator
-                      size="small"
-                      color="#ffffff"
-                      style={{ marginRight: 12 }}
-                    />
-                    <Text className="text-2xl font-bold text-white">
-                      Processing...
-                    </Text>
-                  </>
-                ) : (
-                  <>
-                    <MaterialIcons
-                      name="camera-alt"
-                      size={32}
-                      color="#ffffff"
-                      style={{ marginRight: 12 }}
-                    />
-                    <Text className="text-2xl font-bold text-white">
-                      {isCapturing ? "Capturing..." : "Capture Gesture"}
-                    </Text>
-                  </>
-                )}
-              </View>
-            </TouchableOpacity>
-          ) : (
-            <View className="flex-row justify-between">
-              <TouchableOpacity
-                onPress={handleTryAgain}
-                className="bg-orange-500 rounded-3xl p-5 flex-1 mr-2 shadow-lg"
-                activeOpacity={0.8}
-                style={styles.actionButton}
-              >
-                <View className="flex-row items-center justify-center">
-                  <MaterialIcons
-                    name="refresh"
-                    size={28}
-                    color="#ffffff"
-                    style={{ marginRight: 8 }}
-                  />
-                  <Text className="text-xl font-bold text-white">
-                    Try Again
-                  </Text>
-                </View>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                onPress={handleNextQuestion}
-                className="bg-green-500 rounded-3xl p-5 flex-1 ml-2 shadow-lg"
-                activeOpacity={0.8}
-                style={styles.actionButton}
-              >
-                <View className="flex-row items-center justify-center">
-                  <Text className="text-xl font-bold text-white mr-2">
-                    Next
-                  </Text>
-                  <MaterialIcons
-                    name="arrow-forward"
-                    size={28}
-                    color="#ffffff"
-                  />
-                </View>
-              </TouchableOpacity>
-            </View>
-          )}
-        </View>
-
-        {/* Encouragement Message */}
-        <View className="bg-yellow-100 rounded-2xl p-5 items-center shadow-md">
-          <View className="flex-row items-center justify-center">
-            <Text className="text-xl font-semibold text-gray-800 text-center">
-              {score > currentQuestion / 2
-                ? "Awesome job! You're learning fast"
-                : "Keep going! You're doing great"}
-            </Text>
-            <MaterialIcons
-              name="star"
-              size={24}
-              color="#fbbf24"
-              style={{ marginLeft: 8 }}
-            />
-          </View>
-        </View>
-      </ScrollView>
+      </View>
     </SafeAreaView>
   );
 };

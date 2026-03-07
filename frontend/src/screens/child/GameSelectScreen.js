@@ -51,6 +51,8 @@ const GameSelectScreen = ({ navigation }) => {
     if (!isUnlocked) return;
     if (game.id === 'basic') {
       navigation.navigate('PlayGame', { gameMode: game.id });
+    } else if (game.id === 'timed') {
+      navigation.navigate('PlayGameTimed', { gameMode: game.id });
     } else {
       // Placeholder: other modes not implemented yet
       navigation.navigate('PlayGame', { gameMode: game.id });

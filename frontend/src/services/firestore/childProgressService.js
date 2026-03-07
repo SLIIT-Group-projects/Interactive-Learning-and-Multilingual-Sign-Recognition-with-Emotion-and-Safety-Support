@@ -20,6 +20,11 @@ export const XP_STREAK_BONUS = 50;
 export const STREAK_REQUIRED = 5;
 export const PARTIAL_CONFIDENCE_THRESHOLD = 0.7;
 
+/** Timed mode XP rewards (speed-based) */
+export const XP_TIMED_FAST = 20; // < 3 seconds
+export const XP_TIMED_MEDIUM = 15; // < 5 seconds
+export const XP_TIMED_BASE = 10; // >= 5 seconds
+
 /** Game IDs unlocked by level (level 1 = basic, 2 = timed, etc.) */
 export const GAME_IDS_BY_LEVEL = ['basic', 'timed', 'similar', 'speed', 'mixed'];
 
@@ -122,13 +127,15 @@ export async function ensureChildProgress(childId) {
 /**
  * Add XP after an answer and update Firestore atomically.
  * Uses runTransaction + updateDoc() + increment() to avoid race conditions.
- * Rules: correct +20, partial (confidence >= 0.7) +10, wrong +0. 5 correct in a row +50 bonus.
+ * Rules: 
+ *   - Basic mode: correct +20, wrong +0. 5 correct in a row +50 bonus.
+ *   - Timed mode: correct +10-20 (speed-based), wrong +0. No streak bonus in timed mode.
  * @param {string} childId
- * @param {Object} options - { correct: boolean, confidence?: number }
+ * @param {Object} options - { correct: boolean, confidence?: number, timedModeXP?: number }
  * @returns {Promise<{ progress: Object, xpGained: number, leveledUp: boolean, newLevel?: number }>}
  */
 export async function addXP(childId, options = {}) {
-  const { correct = false, confidence = 0 } = options;
+  const { correct = false, confidence = 0, timedModeXP = null } = options;
   if (!db || !childId) {
     return { progress: { ...DEFAULT_PROGRESS }, xpGained: 0, leveledUp: false };
   }
@@ -145,18 +152,24 @@ export async function addXP(childId, options = {}) {
     let xpGained = 0;
 
     if (correct) {
-      xpGained += XP_CORRECT;
-      const newStreak = streakCount + 1;
-      if (newStreak >= STREAK_REQUIRED) {
-        xpGained += XP_STREAK_BONUS;
+      // Timed mode: use speed-based XP (no streak bonus)
+      if (timedModeXP !== null) {
+        xpGained += timedModeXP;
+        // Reset streak in timed mode
         streakCount = 0;
       } else {
-        streakCount = newStreak;
+        // Basic mode: standard XP with streak bonus
+        xpGained += XP_CORRECT;
+        const newStreak = streakCount + 1;
+        if (newStreak >= STREAK_REQUIRED) {
+          xpGained += XP_STREAK_BONUS;
+          streakCount = 0;
+        } else {
+          streakCount = newStreak;
+        }
       }
-    } else if (confidence >= PARTIAL_CONFIDENCE_THRESHOLD) {
-      xpGained += XP_PARTIAL;
-      streakCount = 0;
     } else {
+      // No XP for incorrect answers
       streakCount = 0;
     }
 

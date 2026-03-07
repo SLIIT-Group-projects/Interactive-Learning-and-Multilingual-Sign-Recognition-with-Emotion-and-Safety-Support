@@ -8,9 +8,9 @@ Phone browser can't open `http://192.168.1.2:5000/health`
 ### Option A: Use the PowerShell Script (Easiest)
 1. **Right-click** on PowerShell
 2. Select **"Run as Administrator"**
-3. Navigate to model folder:
+3. Navigate to games folder:
    ```powershell
-   cd C:\Users\HP\Documents\projects\ASL_learning\model
+   cd C:\Users\HP\Documents\projects\research\Interactive-Learning-and-Multilingual-Sign-Recognition-with-Emotion-and-Safety-Support\backend\models\games
    ```
 4. Run the script:
    ```powershell
@@ -59,7 +59,7 @@ If firewall is too complicated:
 1. **Download ngrok:** https://ngrok.com/download
 2. **Start API server:**
    ```powershell
-   cd model
+   cd backend/models/games
    python api_server.py
    ```
 3. **In new terminal, start ngrok:**
@@ -77,7 +77,7 @@ If firewall is too complicated:
 Make sure the server is actually running:
 
 ```powershell
-cd model
+cd backend/models/games
 python api_server.py
 ```
 
@@ -101,8 +101,8 @@ After fixing firewall:
    - Make sure it's not blocking everything
 
 2. **Try different port:**
-   - Change port in `api_server.py` to `8000`
-   - Update `PlayGame.js` to use port `8000`
+   - Change port in `backend/models/games/api_server.py` to `8000`
+   - Update `frontend/src/screens/child/PlayGame.js` to use port `8000`
    - Add firewall rule for port `8000`
 
 3. **Check router settings:**
