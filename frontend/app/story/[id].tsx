@@ -75,6 +75,12 @@ export default function StoryReaderScreen() {
   const [summaryVisible, setSummaryVisible] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
+  // Hand speed results
+  const [handSpeed, setHandSpeed] = useState<number | null>(null);
+  const [handIntensity, setHandIntensity] = useState<string | null>(null);
+  const [handsDetected, setHandsDetected] = useState<boolean | null>(null);
+  const [handMessage, setHandMessage] = useState<string | null>(null);
 
   // Keep refs in sync with state
   useEffect(() => {
@@ -261,19 +267,21 @@ export default function StoryReaderScreen() {
       
       // Capture multiple frames for hand speed analysis (need at least 2 frames)
       const frames: Array<{ uri: string; type: string; name: string }> = [];
-      const frameCount = 10; // Capture 10 frames for hand analysis
-      const fps = 10; // Frames per second
+      const frameCount = 15; // Capture 15 frames for better hand movement detection
+      const fps = 5; // 5 fps = 200ms between frames - gives more time for hand movement
+      const baseTimestamp = Date.now();
       
       for (let i = 0; i < frameCount; i++) {
         const frameUri = await captureFrame();
         if (frameUri) {
+          // Use sequential numbering with timestamp to ensure proper ordering
           frames.push({
             uri: frameUri,
             type: "image/jpeg",
-            name: `hand_${Date.now()}_${i}.jpg`,
+            name: `hand_${baseTimestamp}_${String(i).padStart(4, '0')}.jpg`,
           });
         }
-        // Small delay between captures to simulate video frames
+        // Delay between captures to allow hand movement
         if (i < frameCount - 1) {
           await new Promise((resolve) => setTimeout(resolve, 1000 / fps));
         }
@@ -294,8 +302,19 @@ export default function StoryReaderScreen() {
       );
 
       console.log(`[Hand] ✅ Backend response:`, result);
+      
+      // Update hand speed state with results
+      if (result) {
+        setHandSpeed(result.hand_speed ?? null);
+        setHandIntensity(result.intensity ?? null);
+        setHandsDetected(result.hands_detected ?? null);
+        setHandMessage(result.message || result.note || null);
+      }
     } catch (err: any) {
       console.error("[Hand] Hand analysis error:", err);
+      // Set error state for hand detection
+      setHandsDetected(false);
+      setHandMessage("Error analyzing hand movement");
       // Don't block the session on individual analysis errors
     }
   };
@@ -327,6 +346,11 @@ export default function StoryReaderScreen() {
       setFinalEmotion(null);
       setEngagementLevel(null);
       setSummary(null);
+      // Reset hand speed state
+      setHandSpeed(null);
+      setHandIntensity(null);
+      setHandsDetected(null);
+      setHandMessage(null);
 
       // Generate session ID
       const newSessionId = generateSessionId();
@@ -650,6 +674,53 @@ export default function StoryReaderScreen() {
           ) : (
             <Text style={styles.outputPlaceholder}>
               Start a session to begin capturing and analyzing engagement data.
+            </Text>
+          )}
+        </View>
+
+        {/* Hand Speed Detection Card */}
+        <View style={styles.outputCard}>
+          <Text style={styles.outputCardTitle}>Hand Movement Speed</Text>
+          
+          {sessionActive || handsDetected !== null ? (
+            <>
+              {handsDetected === false ? (
+                <View style={styles.handStatusContainer}>
+                  <Text style={[styles.outputLabel, { color: "#FF6B6B" }]}>
+                    ⚠️ No hands detected
+                  </Text>
+                  {handMessage && (
+                    <Text style={styles.handMessage}>{handMessage}</Text>
+                  )}
+                </View>
+              ) : handsDetected === true && handSpeed !== null ? (
+                <>
+                  <Text style={styles.outputLabel}>
+                    Average Speed - <Text style={styles.outputValueGreen}>{handSpeed.toFixed(2)} px/s</Text>
+                  </Text>
+                  <Text style={styles.outputLabel}>
+                    Intensity - <Text style={[
+                      styles.outputValueIntensity,
+                      handIntensity === "HIGH" && styles.outputValueHigh,
+                      handIntensity === "MEDIUM" && styles.outputValueMedium,
+                      handIntensity === "LOW" && styles.outputValueLow,
+                    ]}>
+                      {handIntensity ?? "—"}
+                    </Text>
+                  </Text>
+                  {handMessage && (
+                    <Text style={styles.handMessage}>{handMessage}</Text>
+                  )}
+                </>
+              ) : (
+                <Text style={styles.outputPlaceholder}>
+                  Analyzing hand movement...
+                </Text>
+              )}
+            </>
+          ) : (
+            <Text style={styles.outputPlaceholder}>
+              Start a session to detect hand movement speed.
             </Text>
           )}
         </View>
@@ -981,6 +1052,31 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: "#999",
     lineHeight: 20,
+    fontStyle: "italic",
+  },
+  outputValueGreen: {
+    color: "#28A745",
+    fontWeight: "900",
+  },
+  outputValueIntensity: {
+    fontWeight: "900",
+  },
+  outputValueHigh: {
+    color: "#DC3545", // Red for high intensity
+  },
+  outputValueMedium: {
+    color: "#FFC107", // Yellow/Orange for medium intensity
+  },
+  outputValueLow: {
+    color: "#28A745", // Green for low intensity
+  },
+  handStatusContainer: {
+    marginTop: 4,
+  },
+  handMessage: {
+    fontSize: 12,
+    color: "#666",
+    marginTop: 4,
     fontStyle: "italic",
   },
 

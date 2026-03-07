@@ -57,12 +57,13 @@ router.post("/analyze", upload.array("frames", 200), (req, res) => {
       // Store a zero sample even when no frames received
       const emptyResult = {
         hand_speed: 0.0,
-        intensity: "IDLE",
-        level: 0,
+        intensity: "LOW",
+        level: 1,
         frames_used: 0,
         valid_steps: 0,
         fps: parseFloat(fps) || 10,
-        note: "No frames received",
+        hands_detected: false,
+        message: "No frames received",
         sessionId,
         t: Date.now(),
       };
@@ -88,10 +89,19 @@ router.post("/analyze", upload.array("frames", 200), (req, res) => {
     
     console.log(`[Hand] Moved ${movedFiles.length} files to session directory: ${sessionDir}`);
     console.log(`[Hand] Processing ${movedFiles.length} frames for session ${sessionId}, fps=${fps}`);
+    
+    // Verify files exist
+    const existingFiles = fs.readdirSync(sessionDir);
+    console.log(`[Hand] Files in directory: ${existingFiles.length} files found`);
+    if (existingFiles.length > 0) {
+      console.log(`[Hand] Sample files: ${existingFiles.slice(0, 3).join(', ')}`);
+    }
 
     // All frames are now in the same session directory
     const framesDir = sessionDir;
     const scriptPath = join(__dirname, "..", "..", "models", "hand_speed_analyze.py");
+    
+    console.log(`[Hand] Calling Python script: ${config.PYTHON_CMD} ${scriptPath} --frames_dir ${framesDir} --fps ${fps}`);
 
     const py = spawn(config.PYTHON_CMD, [
       scriptPath,
@@ -112,12 +122,13 @@ router.post("/analyze", upload.array("frames", 200), (req, res) => {
         console.error(`[Hand] Python script timeout for session ${sessionId}`);
         const timeoutResult = {
           hand_speed: 0.0,
-          intensity: "IDLE",
-          level: 0,
+          intensity: "LOW",
+          level: 1,
           frames_used: movedFiles.length,
           valid_steps: 0,
           fps: parseFloat(fps) || 10,
-          note: "Python script timeout (60s)",
+          hands_detected: false,
+          message: "Python script timeout (60s)",
           error: "Timeout",
           sessionId,
           t: Date.now(),
@@ -130,37 +141,81 @@ router.post("/analyze", upload.array("frames", 200), (req, res) => {
       }
     }, 60000);
 
-    py.stdout.on("data", (d) => (out += d.toString()));
-    py.stderr.on("data", (d) => (out += d.toString()));
+    py.stdout.on("data", (d) => {
+      const data = d.toString();
+      out += data;
+      // Log debug output to console
+      if (data.includes("[DEBUG]")) {
+        console.log(`[Hand Script Debug] ${data.trim()}`);
+      }
+    });
+    py.stderr.on("data", (d) => {
+      const data = d.toString();
+      out += data;
+      // Log stderr to console for debugging
+      if (data.includes("[DEBUG]") || data.trim().length > 0) {
+        console.log(`[Hand Script] ${data.trim()}`);
+      }
+    });
 
     py.on("close", (code) => {
       clearTimeout(timeout);
       if (responseSent) return;
       try {
         const lines = out.trim().split(/\r?\n/).filter(Boolean);
-        const last = lines.pop();
+        // Find the last line that looks like JSON (starts with {)
+        let last = null;
+        for (let i = lines.length - 1; i >= 0; i--) {
+          const line = lines[i].trim();
+          if (line.startsWith('{') && line.endsWith('}')) {
+            last = line;
+            break;
+          }
+        }
         
         let result;
-        if (!last || code !== 0) {
-          // If script failed or no output, create a fallback result
-          console.warn(`Hand analysis script exited with code ${code}, output: ${out.substring(0, 200)}`);
+        if (!last) {
+          // No JSON output found
+          console.warn(`[Hand] No JSON output from script. Code: ${code}, Output: ${out.substring(0, 500)}`);
           result = {
             hand_speed: 0.0,
-            intensity: "IDLE",
-            level: 0,
+            intensity: "LOW",
+            level: 1,
             frames_used: movedFiles.length,
             valid_steps: 0,
             fps: parseFloat(fps) || 10,
-            note: code !== 0 ? `Script failed with exit code ${code}` : "No output from script",
-            error: code !== 0 ? `Exit code ${code}` : "No output"
+            hands_detected: false,
+            message: "No output from script",
+            error: "No JSON output"
           };
         } else {
-          result = JSON.parse(last);
-          // Ensure required fields exist
-          if (typeof result.hand_speed === 'undefined') result.hand_speed = 0.0;
-          if (!result.intensity) result.intensity = "IDLE";
-          if (typeof result.level === 'undefined') result.level = 0;
-          if (typeof result.frames_used === 'undefined') result.frames_used = movedFiles.length;
+          try {
+            result = JSON.parse(last);
+            // Ensure required fields exist
+            if (typeof result.hand_speed === 'undefined') result.hand_speed = 0.0;
+            if (!result.intensity) result.intensity = "LOW";
+            if (typeof result.level === 'undefined') result.level = 1;
+            if (typeof result.frames_used === 'undefined') result.frames_used = movedFiles.length;
+            // Ensure hands_detected field exists
+            if (typeof result.hands_detected === 'undefined') {
+              result.hands_detected = result.hand_speed > 0 || result.valid_steps > 0;
+            }
+            // Log the result for debugging
+            console.log(`[Hand] Script result: speed=${result.hand_speed}, hands_detected=${result.hands_detected}, frames_with_hands=${result.frames_with_hands || 0}`);
+          } catch (parseErr) {
+            console.error(`[Hand] Failed to parse JSON: ${parseErr.message}, Last line: ${last.substring(0, 200)}`);
+            result = {
+              hand_speed: 0.0,
+              intensity: "LOW",
+              level: 1,
+              frames_used: movedFiles.length,
+              valid_steps: 0,
+              fps: parseFloat(fps) || 10,
+              hands_detected: false,
+              message: "Failed to parse script output",
+              error: parseErr.message
+            };
+          }
         }
         
         // Add sessionId and timestamp
@@ -182,12 +237,13 @@ router.post("/analyze", upload.array("frames", 200), (req, res) => {
         // Create fallback result and store it
         const fallbackResult = {
           hand_speed: 0.0,
-          intensity: "IDLE",
-          level: 0,
+          intensity: "LOW",
+          level: 1,
           frames_used: movedFiles.length,
           valid_steps: 0,
           fps: parseFloat(fps) || 10,
-          note: "Failed to parse script output",
+          hands_detected: false,
+          message: "Failed to parse script output",
           error: String(e),
           sessionId,
           t: Date.now(),
@@ -212,12 +268,13 @@ router.post("/analyze", upload.array("frames", 200), (req, res) => {
       // Store a fallback result even when spawn fails
       const errorResult = {
         hand_speed: 0.0,
-        intensity: "IDLE",
-        level: 0,
+        intensity: "LOW",
+        level: 1,
         frames_used: movedFiles.length,
         valid_steps: 0,
         fps: parseFloat(fps) || 10,
-        note: "Failed to spawn Python process",
+        hands_detected: false,
+        message: "Failed to spawn Python process",
         error: String(err),
         sessionId,
         t: Date.now(),

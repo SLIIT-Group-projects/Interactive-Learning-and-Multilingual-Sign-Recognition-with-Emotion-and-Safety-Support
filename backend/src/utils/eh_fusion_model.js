@@ -49,10 +49,11 @@ export function computeFusion(session) {
 
   const avgConfidence = emotionSum > 0 ? totalConfidence / emotionSum : 0;
 
-  // Compute hand movement summary
-  const handSpeeds = hands.map((h) => h.hand_speed || 0).filter((s) => s > 0);
-  const handLevels = hands.map((h) => h.level || 0);
-  const handIntensities = hands.map((h) => h.intensity || "IDLE");
+  // Compute hand movement summary - ONLY use samples where hands were actually detected
+  const validHands = hands.filter((h) => h.hands_detected === true);
+  const handSpeeds = validHands.map((h) => h.hand_speed || 0).filter((s) => s > 0);
+  const handLevels = validHands.map((h) => h.level || 0);
+  const handIntensities = validHands.map((h) => h.intensity || "LOW");
 
   const avgHandSpeed = handSpeeds.length > 0
     ? handSpeeds.reduce((a, b) => a + b, 0) / handSpeeds.length
@@ -66,6 +67,9 @@ export function computeFusion(session) {
   handIntensities.forEach((int) => {
     intensityCounts[int] = (intensityCounts[int] || 0) + 1;
   });
+  
+  // Check if hands were actually detected
+  const handsActuallyDetected = validHands.length > 0;
 
   // Compute engagement level
   // High: positive emotions (happy, surprise) + active hand movement
@@ -94,7 +98,13 @@ export function computeFusion(session) {
   // Generate summary text
   let summary = `Analyzed ${emotions.length} emotion samples and ${hands.length} hand movement samples. `;
   summary += `Dominant emotion: ${finalEmotion} (${(avgConfidence * 100).toFixed(1)}% avg confidence). `;
-  summary += `Hand movement: ${avgHandSpeed.toFixed(1)} px/s average, ${handIntensities[handIntensities.length - 1] || "IDLE"} intensity. `;
+  
+  // Only show hand movement if hands were actually detected
+  if (handsActuallyDetected && avgHandSpeed > 0) {
+    summary += `Hand movement: ${avgHandSpeed.toFixed(1)} px/s average, ${handIntensities[handIntensities.length - 1] || "LOW"} intensity. `;
+  } else {
+    summary += `Hand movement: No hands detected. `;
+  }
   summary += `Engagement: ${engagementLevel}.`;
 
   return {
@@ -103,10 +113,12 @@ export function computeFusion(session) {
     summary,
     emotionDistribution: emotionCounts,
     handSummary: {
-      avgSpeed: Math.round(avgHandSpeed * 100) / 100,
-      avgLevel: Math.round(avgHandLevel * 100) / 100,
+      avgSpeed: handsActuallyDetected ? Math.round(avgHandSpeed * 100) / 100 : 0,
+      avgLevel: handsActuallyDetected ? Math.round(avgHandLevel * 100) / 100 : 0,
       intensityDistribution: intensityCounts,
       samples: hands.length,
+      handsDetected: handsActuallyDetected,
+      validSamples: validHands.length,
     },
   };
 }
