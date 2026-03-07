@@ -90,9 +90,9 @@ def detect_hand_opencv(img):
             return None
     
     # VALIDATION: Check if the detected region is in a reasonable position
-    # Hands are usually in the lower 2/3 of the image (not at the very top where face is)
+    # STRICT: Hands must be in lower 50% of image (below face/upper body region)
     center_y = y + h_box // 2
-    if center_y < h * 0.15:  # Too high in image (probably face/ceiling/wall)
+    if center_y < h * 0.5:  # Too high in image (probably face/neck/upper body)
         return None
     
     # VALIDATION: Check if the region has reasonable color variance (hands have texture)
@@ -473,15 +473,16 @@ def main():
                             wrist = landmarks_list[0]
                             hand_pos = np.array([wrist.x * w, wrist.y * h], dtype=np.float32)
                             
-                            # MediaPipe validation: check if wrist is in reasonable position (not face region)
+                            # VERY STRICT MediaPipe validation: hands must be in lower 60% (below face/upper body)
+                            # This prevents upper body movement from being detected as hand movement
                             y_pos_ratio = hand_pos[1] / h
-                            if y_pos_ratio < 0.4:  # Too high = probably face/neck
+                            if y_pos_ratio < 0.4:  # Too high = probably face/neck/upper body (stricter: lower 60% only)
                                 if detection_attempts <= 3:
-                                    print(f"[DEBUG] Frame {idx+1}: MediaPipe detected but rejected (y={hand_pos[1]:.1f}, likely face/neck)", file=sys.stderr)
+                                    print(f"[DEBUG] Frame {idx+1}: MediaPipe detected but rejected (y={hand_pos[1]:.1f}, y_ratio={y_pos_ratio:.2f}, likely face/neck/upper body)", file=sys.stderr)
                                 hand_pos = None
                             else:
                                 if detection_attempts <= 5:
-                                    print(f"[DEBUG] Frame {idx+1}: MediaPipe detected HAND at ({hand_pos[0]:.1f}, {hand_pos[1]:.1f})", file=sys.stderr)
+                                    print(f"[DEBUG] Frame {idx+1}: MediaPipe detected HAND at ({hand_pos[0]:.1f}, {hand_pos[1]:.1f}), y_ratio={y_pos_ratio:.2f}", file=sys.stderr)
                     except Exception as e:
                         if detection_attempts <= 3:
                             print(f"[DEBUG] MediaPipe detection error: {e}", file=sys.stderr)
@@ -497,12 +498,13 @@ def main():
                                 h_img, w_img = img.shape[:2]
                                 y_pos_ratio = hand_pos[1] / h_img  # Vertical position (0=top, 1=bottom)
                                 
-                                # Hands should be in lower portion (below typical face region)
-                                # If detected in upper 40%, it's probably face/neck, not hand
-                                if y_pos_ratio < 0.4:
+                                # VERY STRICT: Hands must be in lower 60% of image (below face/upper body)
+                                # This prevents upper body movement from being detected as hand movement
+                                # If detected in upper 40%, it's probably face/neck/upper body, not hand
+                                if y_pos_ratio < 0.4:  # Stricter: lower 60% only
                                     if detection_attempts <= 3:
-                                        print(f"[DEBUG] Frame {idx+1}: Rejected detection at y={hand_pos[1]:.1f} (too high, likely face/neck)", file=sys.stderr)
-                                    hand_pos = None  # Reject - probably face/neck
+                                        print(f"[DEBUG] Frame {idx+1}: Rejected detection at y={hand_pos[1]:.1f} (y_ratio={y_pos_ratio:.2f}, too high, likely face/neck/upper body)", file=sys.stderr)
+                                    hand_pos = None  # Reject - probably face/neck/upper body
                                 else:
                                     if detection_attempts <= 5:
                                         print(f"[DEBUG] Frame {idx+1}: OpenCV detected HAND at ({hand_pos[0]:.1f}, {hand_pos[1]:.1f}), area={area:.0f}, y_ratio={y_pos_ratio:.2f}", file=sys.stderr)
@@ -510,42 +512,20 @@ def main():
                         if detection_attempts <= 3:
                             print(f"[DEBUG] OpenCV detection error: {e}", file=sys.stderr)
                 
-                # LAST RESORT: Try motion detection if both failed
+                # LAST RESORT: Try motion detection if both failed (MediaPipe already tried in PRIMARY)
                 if hand_pos is None and prev_img is not None:
                     try:
                         result = detect_hand_motion_blob(img, prev_img)
                         if result:
                             hand_pos, area = result
                             if hand_pos is not None:
-                                # Validate position for motion detection too
+                                # Validate position for motion detection too - VERY STRICT
+                                # This prevents upper body movement from being detected as hand movement
                                 y_pos_ratio = hand_pos[1] / h
-                                if y_pos_ratio < 0.4:
-                                    hand_pos = None  # Reject if too high
+                                if y_pos_ratio < 0.4:  # Must be in lower 60% (below face region) - stricter
+                                    hand_pos = None  # Reject if too high (likely face/upper body)
                                 elif detection_attempts <= 5:
-                                    print(f"[DEBUG] Frame {idx+1}: Motion detection found hand at ({hand_pos[0]:.1f}, {hand_pos[1]:.1f})", file=sys.stderr)
-                    except Exception as e:
-                        pass
-                    try:
-                        from mediapipe import Image as MPImage
-                        rgb_img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-                        mp_image = MPImage(image_format=MPImage.ImageFormat.SRGB, data=rgb_img)
-                        detection_result = hand_landmarker.detect(mp_image)
-                        
-                        if detection_result.hand_landmarks and len(detection_result.hand_landmarks) > 0:
-                            landmarks_list = detection_result.hand_landmarks[0]
-                            # Get wrist position (landmark 0) - MediaPipe is accurate for hands
-                            wrist = landmarks_list[0]
-                            hand_pos = np.array([wrist.x * w, wrist.y * h], dtype=np.float32)
-                            
-                            # MediaPipe validation: check if wrist is in reasonable position (not face region)
-                            y_pos_ratio = hand_pos[1] / h
-                            if y_pos_ratio < 0.4:  # Too high = probably face/neck
-                                if detection_attempts <= 3:
-                                    print(f"[DEBUG] Frame {idx+1}: MediaPipe detected but rejected (y={hand_pos[1]:.1f}, likely face/neck)", file=sys.stderr)
-                                hand_pos = None
-                            else:
-                                if detection_attempts <= 5:
-                                    print(f"[DEBUG] Frame {idx+1}: MediaPipe detected HAND at ({hand_pos[0]:.1f}, {hand_pos[1]:.1f})", file=sys.stderr)
+                                    print(f"[DEBUG] Frame {idx+1}: Motion detection found hand at ({hand_pos[0]:.1f}, {hand_pos[1]:.1f}), y_ratio={y_pos_ratio:.2f}", file=sys.stderr)
                     except Exception as e:
                         pass
                 
@@ -577,13 +557,15 @@ def main():
                 except:
                     pass
 
-        # VALIDATION: Require hands in at least 30% of frames to avoid false positives
-        # If hands are only detected in a few frames, it's probably noise
-        min_required_frames = max(2, int(len(frame_paths) * 0.3))  # At least 30% of frames
+        # VALIDATION: Require hands in at least 50% of frames to avoid false positives
+        # If hands are only detected in a few frames, it's probably noise (face/upper body movement)
+        min_required_frames = max(5, int(len(frame_paths) * 0.5))  # At least 50% of frames (VERY STRICT)
         
         print(f"[DEBUG] Detection complete: {frames_with_hands} frames with hands out of {detection_attempts} attempts", file=sys.stderr)
         print(f"[DEBUG] Minimum required frames for validation: {min_required_frames}", file=sys.stderr)
         
+        # CRITICAL: If not enough frames with hands, it's NOT a valid hand detection
+        # Don't calculate speed at all - just return "no hands detected"
         if frames_with_hands < min_required_frames:
             result = {
                 "hand_speed": 0.0,
@@ -595,7 +577,7 @@ def main():
                 "hands_detected": False,
                 "detection_attempts": detection_attempts,
                 "frames_with_hands": frames_with_hands,
-                "message": f"Hands detected in only {frames_with_hands} frame(s) out of {detection_attempts}. This is likely a false positive. Please ensure your hands are clearly visible in front of the camera."
+                "message": f"Hands detected in only {frames_with_hands} frame(s) out of {detection_attempts}. This is likely a false positive (face/upper body movement detected instead of hands). Please ensure your HANDS are clearly visible in the LOWER portion of the camera frame."
             }
             print(json.dumps(result))
             sys.exit(0)
@@ -615,13 +597,48 @@ def main():
             print(json.dumps(result))
             sys.exit(0)
 
-        # Calculate speeds from hand positions
+        # CRITICAL VALIDATION: Only calculate speed if we have enough valid hand detections
+        # Double-check that we have enough frames (should have passed earlier check, but be extra safe)
+        if frames_with_hands < min_required_frames:
+            result = {
+                "hand_speed": 0.0,
+                "intensity": "LOW",
+                "level": 1,
+                "frames_used": len(frame_paths),
+                "valid_steps": 0,
+                "fps": args.fps,
+                "hands_detected": False,
+                "frames_with_hands": frames_with_hands,
+                "message": f"Not enough valid hand detections ({frames_with_hands} frames). Upper body movement may have been detected. Please show your HANDS in the lower portion of the camera."
+            }
+            print(json.dumps(result))
+            sys.exit(0)
+        
+        # Calculate speeds from hand positions (only if we have valid detections)
         dt = 1.0 / max(args.fps, 1e-6)
         all_speeds = calculate_hand_speed(hand_positions, dt)
         
-        # If no speeds calculated, try fallback calculation
+        # If no speeds calculated, check if it's because of insufficient detections
         if not all_speeds:
             valid_positions = [p for p in hand_positions if p is not None]
+            
+            # If we have valid positions but they're too few, it's likely false positive
+            if len(valid_positions) < min_required_frames:
+                result = {
+                    "hand_speed": 0.0,
+                    "intensity": "LOW",
+                    "level": 1,
+                    "frames_used": len(frame_paths),
+                    "frames_with_hands": frames_with_hands,
+                    "valid_steps": 0,
+                    "fps": args.fps,
+                    "hands_detected": False,
+                    "message": f"Insufficient hand detections ({len(valid_positions)} valid positions). This may be upper body movement, not hands. Please show your HANDS clearly."
+                }
+                print(json.dumps(result))
+                sys.exit(0)
+            
+            # Try fallback calculation only if we have enough valid positions
             if len(valid_positions) > 1:
                 total_dist = 0.0
                 for i in range(1, len(valid_positions)):
