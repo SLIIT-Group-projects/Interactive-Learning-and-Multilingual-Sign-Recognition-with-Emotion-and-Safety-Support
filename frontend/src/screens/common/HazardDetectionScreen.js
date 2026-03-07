@@ -66,6 +66,12 @@ export default function HazardDetectionScreen() {
   const criticalAlertRef = useRef(false); // Track if critical alert is active
   const currentAlertPriorityRef = useRef(0); // Track current alert priority
   const currentAlertMessageRef = useRef(null); // Track current alert message
+  const lastLocationFetchRef = useRef(0);
+  const criticalSoundIdRef = useRef(null);
+  const criticalHazardTypeRef = useRef(null);
+  const safetyCheckTimeoutRef = useRef(null);
+  const LOCATION_FETCH_COOLDOWN_MS = 60 * 1000;
+  const SAFETY_CHECK_DELAY_MS = 15000;
 
   const getAlertColor = (urgency) => {
     switch (urgency) {
@@ -120,6 +126,112 @@ export default function HazardDetectionScreen() {
       console.error('❌ Backend health check failed:', error.message);
       setError(`Backend connection failed: ${error.message}`);
     }
+  };
+
+  const fetchLocationForCriticalAlert = async () => {
+    const now = Date.now();
+
+    // Avoid frequent GPS calls during ongoing critical state.
+    if (currentLocation && (now - lastLocationFetchRef.current) < LOCATION_FETCH_COOLDOWN_MS) {
+      return currentLocation;
+    }
+
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        console.warn('⚠️ Location permission not granted for critical alert');
+        return null;
+      }
+
+      const loc = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+
+      const locationData = {
+        type: 'Point',
+        coordinates: [loc.coords.longitude, loc.coords.latitude],
+        latitude: loc.coords.latitude,
+        longitude: loc.coords.longitude,
+      };
+
+      setCurrentLocation(locationData);
+      lastLocationFetchRef.current = now;
+      console.log('📍 Critical alert location captured:', locationData);
+      return locationData;
+    } catch (locationError) {
+      console.error('❌ Error getting critical alert location:', locationError);
+      return null;
+    }
+  };
+
+  const askYesNoQuestion = (title, message) => {
+    return new Promise((resolve) => {
+      Alert.alert(
+        title,
+        message,
+        [
+          { text: 'No', onPress: () => resolve(false) },
+          { text: 'Yes', onPress: () => resolve(true) },
+        ],
+        { cancelable: false }
+      );
+    });
+  };
+
+  const runPostCriticalSafetyCheck = async () => {
+    const userId = userData?.uid;
+    if (!userId) {
+      return;
+    }
+
+    const safetyQuestions = [
+      'Are you safe now?',
+      'Is there still fire or danger around you?',
+      'Do you need help right now?',
+    ];
+
+    try {
+      const responses = [];
+      for (const question of safetyQuestions) {
+        const answer = await askYesNoQuestion('Safety Check', question);
+        responses.push({ question, answer });
+      }
+
+      const childConfirmedSafe =
+        responses[0]?.answer === true &&
+        responses[1]?.answer === false &&
+        responses[2]?.answer === false;
+
+      await apiService.submitCriticalSafetyCheck({
+        soundId: criticalSoundIdRef.current || null,
+        userId,
+        hazardType: criticalHazardTypeRef.current || null,
+        childConfirmedSafe,
+        responses,
+      });
+
+      Alert.alert(
+        'Safety Check Shared',
+        childConfirmedSafe
+          ? 'Great! Your safety update was sent to your parent.'
+          : 'Thanks. Your answers were sent to your parent for quick support.'
+      );
+    } catch (safetyError) {
+      console.error('❌ Failed to submit safety check:', safetyError);
+      Alert.alert('Safety Check Error', 'Could not send safety check update. Please try again.');
+    }
+  };
+
+  const schedulePostCriticalSafetyCheck = () => {
+    if (safetyCheckTimeoutRef.current) {
+      clearTimeout(safetyCheckTimeoutRef.current);
+      safetyCheckTimeoutRef.current = null;
+    }
+
+    safetyCheckTimeoutRef.current = setTimeout(async () => {
+      safetyCheckTimeoutRef.current = null;
+      await runPostCriticalSafetyCheck();
+    }, SAFETY_CHECK_DELAY_MS);
   };
 
   // Make screen full size by hiding the navigation header
@@ -250,6 +362,10 @@ export default function HazardDetectionScreen() {
       if (processingIntervalRef.current) {
         clearInterval(processingIntervalRef.current);
         processingIntervalRef.current = null;
+      }
+      if (safetyCheckTimeoutRef.current) {
+        clearTimeout(safetyCheckTimeoutRef.current);
+        safetyCheckTimeoutRef.current = null;
       }
       // Stop any ongoing alerts
       if (hazardAlertService && typeof hazardAlertService.stopAlert === 'function') {
@@ -603,28 +719,10 @@ export default function HazardDetectionScreen() {
       // Get user ID from auth context
       const userId = userData?.uid || null;
 
-      // Get GPS location
+      // Battery optimization: include location only while a critical alert is active.
       let locationData = null;
-      try {
-        const { status } = await Location.requestForegroundPermissionsAsync();
-        if (status === 'granted') {
-          const loc = await Location.getCurrentPositionAsync({
-            accuracy: Location.Accuracy.Balanced,
-          });
-          locationData = {
-            type: 'Point',
-            coordinates: [loc.coords.longitude, loc.coords.latitude],
-            latitude: loc.coords.latitude,
-            longitude: loc.coords.longitude,
-          };
-          setCurrentLocation(locationData);
-          console.log('📍 GPS location captured:', locationData);
-        } else {
-          console.warn('⚠️ Location permission not granted');
-        }
-      } catch (locationError) {
-        console.error('❌ Error getting location:', locationError);
-        // Continue without location if it fails
+      if (criticalAlertRef.current) {
+        locationData = await fetchLocationForCriticalAlert();
       }
 
       // Get current context (time, location, userId, etc.)
@@ -649,6 +747,11 @@ export default function HazardDetectionScreen() {
       }
 
       if (response.success && response.data) {
+        const highestPrioritySoundId =
+          response.data?.metadata?.highestPrioritySoundId ||
+          response.data?.metadata?.savedSoundIds?.[0] ||
+          null;
+
         // CRITICAL: Check if there's already an active critical alert
         // If so, only update detections if the new detection is also critical (priority >= 9)
         // This prevents lower priority detections from overwriting critical alerts
@@ -856,6 +959,20 @@ export default function HazardDetectionScreen() {
 
                 // Start continuous vibration for critical alerts
                 if (isCritical) {
+                  // Track which hazard record should be updated after the child confirms safety.
+                  criticalSoundIdRef.current = highestPrioritySoundId;
+                  criticalHazardTypeRef.current = hazardType;
+                  if (safetyCheckTimeoutRef.current) {
+                    clearTimeout(safetyCheckTimeoutRef.current);
+                    safetyCheckTimeoutRef.current = null;
+                  }
+
+                  // Capture GPS only for critical alerts (avoids per-chunk battery drain).
+                  const criticalLocation = await fetchLocationForCriticalAlert();
+                  if (criticalLocation) {
+                    hazard.location = criticalLocation;
+                  }
+
                   // Clear any existing vibration interval
                   if (vibrationIntervalRef.current) {
                     clearInterval(vibrationIntervalRef.current);
@@ -1231,6 +1348,9 @@ export default function HazardDetectionScreen() {
   };
 
   const dismissAlert = () => {
+    const currentPriority = currentAlertPriorityRef.current || detections?.highestPriority?.priority || 0;
+    const wasCritical = criticalAlertRef.current || isCriticalAlert || currentPriority >= 9;
+
     // Stop any ongoing alerts
     if (hazardAlertService && typeof hazardAlertService.stopAlert === 'function') {
       hazardAlertService.stopAlert();
@@ -1277,6 +1397,10 @@ export default function HazardDetectionScreen() {
       setAlertMessage(null);
       setDetections(null);
     });
+
+    if (wasCritical) {
+      schedulePostCriticalSafetyCheck();
+    }
 
     // Note: We keep detection history even after dismissing alert
     // This allows the system to still track patterns

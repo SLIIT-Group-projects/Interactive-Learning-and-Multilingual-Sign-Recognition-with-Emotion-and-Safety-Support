@@ -421,6 +421,113 @@ async function notifyParent(parentId, alertData) {
 }
 
 /**
+ * Notify parent after child completes a post-critical safety check
+ * @param {string} parentId - Parent user ID
+ * @param {Object} safetyData - Safety check payload
+ * @returns {Promise<string|null>} Notification document ID or null
+ */
+async function notifyParentSafetyCheck(parentId, safetyData) {
+  if (!parentId) {
+    console.warn('⚠️ No parent ID provided for safety-check notification');
+    return null;
+  }
+
+  try {
+    const hazardTypeFormatted = (safetyData.hazardType || 'Critical hazard')
+      .split('_')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
+
+    const safeText = safetyData.childConfirmedSafe
+      ? '✅ Child reported they are safe.'
+      : '⚠️ Child may still need help.';
+
+    const questionSummary = (safetyData.responses || [])
+      .map((item, idx) => `Q${idx + 1}: ${item.answer ? 'Yes' : 'No'}`)
+      .join(', ');
+
+    let message = `${safetyData.childName || 'Your child'} completed safety check for ${hazardTypeFormatted}.\n${safeText}`;
+    if (questionSummary) {
+      message += `\n${questionSummary}`;
+    }
+
+    const notificationData = {
+      parentId: parentId,
+      type: 'critical_safety_check',
+      title: '🛡️ Child Safety Check Update',
+      message,
+      hazardType: safetyData.hazardType || null,
+      childUserId: safetyData.childUserId || null,
+      childName: safetyData.childName || 'Your child',
+      soundId: safetyData.soundId || null,
+      childConfirmedSafe: !!safetyData.childConfirmedSafe,
+      responses: safetyData.responses || [],
+      timestamp: new Date().toISOString(),
+      read: false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    const notificationRef = await db.collection(NOTIFICATIONS_COLLECTION).add(notificationData);
+
+    try {
+      const parentDoc = await db.collection(USERS_COLLECTION).doc(parentId).get();
+      if (parentDoc.exists) {
+        const parentData = parentDoc.data();
+        const fcmToken = parentData.fcmToken || parentData.fcmTokens?.[0];
+        const expoPushToken = parentData.expoPushToken;
+
+        if (fcmToken && fcmToken.startsWith && !fcmToken.startsWith('ExponentPushToken')) {
+          try {
+            const fcmMessage = {
+              token: fcmToken,
+              notification: {
+                title: '🛡️ Child Safety Check Update',
+                body: message,
+              },
+              data: {
+                type: 'critical_safety_check',
+                notificationId: notificationRef.id,
+                soundId: safetyData.soundId || '',
+                childUserId: safetyData.childUserId || '',
+                hazardType: safetyData.hazardType || '',
+                childConfirmedSafe: String(!!safetyData.childConfirmedSafe),
+              },
+            };
+            await messaging.send(fcmMessage);
+          } catch (fcmError) {
+            console.error('❌ Error sending FCM safety-check push:', fcmError);
+          }
+        }
+
+        if (expoPushToken || (fcmToken && fcmToken.startsWith && fcmToken.startsWith('ExponentPushToken'))) {
+          const token = expoPushToken || fcmToken;
+          await sendExpoPushNotification(token, {
+            title: '🛡️ Child Safety Check Update',
+            body: message,
+            data: {
+              type: 'critical_safety_check',
+              notificationId: notificationRef.id,
+              soundId: safetyData.soundId || '',
+              childUserId: safetyData.childUserId || '',
+              hazardType: safetyData.hazardType || '',
+              childConfirmedSafe: String(!!safetyData.childConfirmedSafe),
+            },
+          });
+        }
+      }
+    } catch (pushError) {
+      console.error(`❌ Error sending safety-check push notification to parent ${parentId}:`, pushError);
+    }
+
+    return notificationRef.id;
+  } catch (error) {
+    console.error(`❌ Error creating safety-check notification for parent ${parentId}:`, error);
+    return null;
+  }
+}
+
+/**
  * Get the last known location for a user from the sounds collection
  * @param {string} userId - User ID
  * @returns {Promise<string|null>} Last known location string or null
@@ -750,6 +857,7 @@ router.post('/detect', upload.single('audio'), async (req, res, next) => {
         metadata: {
           ...audioMetadata,
           savedSoundIds, // Include IDs of saved sound records
+          highestPrioritySoundId: savedSoundIds.length > 0 ? savedSoundIds[0] : null,
         }
       }
     };
@@ -873,6 +981,7 @@ router.post('/detect-stream', upload.array('audio', 10), async (req, res, next) 
         metadata: {
           ...audioMetadata,
           savedSoundIds,
+          highestPrioritySoundId: savedSoundIds.length > 0 ? savedSoundIds[0] : null,
         }
       }
     });
@@ -886,6 +995,109 @@ router.post('/detect-stream', upload.array('audio', 10), async (req, res, next) 
         }
       }
     }
+    next(error);
+  }
+});
+
+/**
+ * POST /api/hazard/safety-check
+ * Child post-critical safety confirmation flow:
+ * - updates the related hazard sound document
+ * - stores question responses in metadata.safetyCheck
+ * - notifies parent with the answers
+ */
+router.post('/safety-check', async (req, res, next) => {
+  try {
+    const {
+      soundId,
+      userId,
+      hazardType,
+      childConfirmedSafe,
+      responses = [],
+    } = req.body || {};
+
+    if (!userId) {
+      return res.status(400).json({ error: 'userId is required' });
+    }
+
+    let targetSoundId = soundId || null;
+    let soundData = null;
+
+    if (targetSoundId) {
+      const soundDoc = await db.collection(SOUNDS_COLLECTION).doc(targetSoundId).get();
+      if (soundDoc.exists) {
+        soundData = soundDoc.data();
+      } else {
+        targetSoundId = null;
+      }
+    }
+
+    // Fallback: find the latest critical hazard sound for this child if soundId was not provided.
+    if (!targetSoundId) {
+      const snapshot = await db.collection(SOUNDS_COLLECTION)
+        .where('userId', '==', userId)
+        .where('isHazard', '==', true)
+        .limit(25)
+        .get();
+
+      const latestCritical = snapshot.docs
+        .map(doc => ({ id: doc.id, ...doc.data() }))
+        .filter(item => (item.priority || 0) >= 9)
+        .sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0))[0];
+
+      if (!latestCritical) {
+        return res.status(404).json({ error: 'No critical hazard record found for this user' });
+      }
+
+      targetSoundId = latestCritical.id;
+      soundData = latestCritical;
+    }
+
+    const docRef = db.collection(SOUNDS_COLLECTION).doc(targetSoundId);
+    const safetyCheckPayload = {
+      submittedAt: new Date().toISOString(),
+      childConfirmedSafe: !!childConfirmedSafe,
+      responses: Array.isArray(responses) ? responses : [],
+    };
+
+    await docRef.update({
+      status: childConfirmedSafe ? 'child_confirmed_safe' : 'child_needs_help',
+      'metadata.safetyCheck': safetyCheckPayload,
+      updatedAt: new Date(),
+    });
+
+    // Notify parent
+    const parentId = await getParentIdFromChild(userId);
+    if (parentId) {
+      let childName = 'Your child';
+      try {
+        const childDoc = await db.collection(USERS_COLLECTION).doc(userId).get();
+        if (childDoc.exists) {
+          childName = childDoc.data().name || childName;
+        }
+      } catch (nameError) {
+        console.warn('⚠️ Could not fetch child name for safety check:', nameError);
+      }
+
+      await notifyParentSafetyCheck(parentId, {
+        soundId: targetSoundId,
+        childUserId: userId,
+        childName,
+        hazardType: hazardType || soundData?.type || null,
+        childConfirmedSafe: !!childConfirmedSafe,
+        responses: safetyCheckPayload.responses,
+      });
+    }
+
+    return res.json({
+      success: true,
+      data: {
+        soundId: targetSoundId,
+        status: childConfirmedSafe ? 'child_confirmed_safe' : 'child_needs_help',
+        safetyCheck: safetyCheckPayload,
+      },
+    });
+  } catch (error) {
     next(error);
   }
 });

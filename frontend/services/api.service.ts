@@ -221,6 +221,21 @@ class ApiService {
   }
 
   /**
+   * Submit post-critical safety check answers from child
+   */
+  async submitCriticalSafetyCheck(payload: CriticalSafetyCheckPayload) {
+    try {
+      const response = await this.client.post(
+        API_CONFIG.ENDPOINTS.HAZARD_SAFETY_CHECK,
+        payload
+      );
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
    * Process audio and get spectrogram metadata
    */
   async processAudio(audioUri: string) {
@@ -335,6 +350,17 @@ export interface HazardDetectionResponse {
       processingTime?: number;
     };
   };
+}
+
+export interface CriticalSafetyCheckPayload {
+  soundId?: string | null;
+  userId: string;
+  hazardType?: string | null;
+  childConfirmedSafe: boolean;
+  responses: Array<{
+    question: string;
+    answer: boolean;
+  }>;
 }
 
 // Export singleton instance

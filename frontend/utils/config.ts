@@ -54,6 +54,7 @@ export const API_CONFIG = {
     AUDIO_PREPARE_MODEL: "/api/audio/prepare-model-input",
     HAZARD_DETECT: "/api/hazard/detect",
     HAZARD_DETECT_STREAM: "/api/hazard/detect-stream",
+    HAZARD_SAFETY_CHECK: "/api/hazard/safety-check",
     HAZARD_PRIORITIES: "/api/hazard/priorities",
     PLACES: "/api/places",
     SOUNDS: "/api/sounds",
