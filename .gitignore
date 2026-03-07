@@ -36,7 +36,7 @@ confusion_matrix*.png
 previous_confusion_matrix.pkl
 
 # Model training folder (local training only)
-Model/
+model/
 
 # Jupyter Notebook checkpoints
 .ipynb_checkpoints/

@@ -4,7 +4,10 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useAuth } from '../contexts/AuthContext';
 import { LoginScreen, RegisterScreen } from '../screens/auth';
 import { ParentDashboard, AddChildScreen } from '../screens/parent';
+import LearningProgressScreen from '../screens/parent/LearningProgressScreen';
 import { ChildDashboard, LearnSigns, PlayGame } from '../screens/child';
+import GameSelectScreen from '../screens/child/GameSelectScreen';
+import PlayGameTimed from '../screens/child/PlayGameTimed';
 import { HazardDetectionScreen } from '../screens/common';
 import PlacesScreen from '../screens/parent/PlacesScreen';
 import HazardHistoryScreen from '../screens/parent/HazardHistoryScreen';
@@ -52,6 +55,7 @@ export default function AppNavigator() {
         <>
           <Stack.Screen name="ParentDashboard" component={ParentDashboard} />
           <Stack.Screen name="AddChild" component={AddChildScreen} />
+          <Stack.Screen name="LearningProgress" component={LearningProgressScreen} />
           <Stack.Screen name="ParentPlaces" component={PlacesScreen} />
           <Stack.Screen name="HazardHistory" component={HazardHistoryScreen} />
           <Stack.Screen name="HazardDetection" component={HazardDetectionScreen} />
@@ -62,8 +66,10 @@ export default function AppNavigator() {
         // Child screens
         <>
           <Stack.Screen name="ChildDashboard" component={ChildDashboard} />
+          <Stack.Screen name="GameSelect" component={GameSelectScreen} />
           <Stack.Screen name="LearnSigns" component={LearnSigns} />
           <Stack.Screen name="PlayGame" component={PlayGame} />
+          <Stack.Screen name="PlayGameTimed" component={PlayGameTimed} />
           <Stack.Screen name="HazardDetection" component={HazardDetectionScreen} />
         </>
 

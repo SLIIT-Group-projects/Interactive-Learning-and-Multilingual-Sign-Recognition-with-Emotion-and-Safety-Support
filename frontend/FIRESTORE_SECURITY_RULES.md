@@ -52,6 +52,17 @@ service cloud.firestore {
       }
     }
     
+    // Children progress (XP, level, unlocked games) - one doc per child
+    match /children/{childId} {
+      // Children can read/write their own progress
+      allow read, write: if isAuthenticated() && request.auth.uid == childId;
+      
+      // Parents can read their children's progress
+      allow read: if isAuthenticated() && 
+        getUserData().role == 'parent' && 
+        get(/databases/$(database)/documents/users/$(childId)).data.parentId == request.auth.uid;
+    }
+    
     // Game Sessions collection
     match /gameSessions/{sessionId} {
       // Children can read their own sessions

@@ -111,9 +111,9 @@ const ChildDashboard = ({ navigation }) => {
 
   const handlePlayGame = () => {
     if (navigation && navigation.navigate) {
-      navigation.navigate('PlayGame');
+      navigation.navigate('GameSelect');
     } else {
-      console.log('Navigate to Play Game screen');
+      console.log('Navigate to Game Select screen');
     }
   };
 

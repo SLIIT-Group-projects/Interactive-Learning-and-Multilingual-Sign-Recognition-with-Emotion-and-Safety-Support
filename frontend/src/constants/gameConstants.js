@@ -59,3 +59,12 @@ export const OBJECTS = [
 export const TOTAL_QUESTIONS = 10;
 export const TOTAL_LETTERS = ALPHABET.length;
 
+/** Game types for level-unlock system. Only 'basic' is implemented; others are placeholders. */
+export const GAME_TYPES = [
+  { id: 'basic', name: 'Basic Letter Practice', requiredLevel: 1, description: 'Show the sign for each letter' },
+  { id: 'timed', name: 'Timed Mode', requiredLevel: 2, description: '10 seconds per letter' },
+  { id: 'similar', name: 'Similar Letter Challenge', requiredLevel: 3, description: 'e.g. M vs N' },
+  { id: 'speed', name: 'Speed Challenge', requiredLevel: 4, description: 'Race against the clock' },
+  { id: 'mixed', name: 'Random Mixed Mode', requiredLevel: 5, description: 'Letters and objects mixed' },
+];
+
