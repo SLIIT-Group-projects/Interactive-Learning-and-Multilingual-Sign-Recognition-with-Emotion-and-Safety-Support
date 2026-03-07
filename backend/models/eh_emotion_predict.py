@@ -268,7 +268,7 @@ def predict_probs(x, img_path=None, face_detected_custom=None):
             if not face_detected:
                 return None, False
             
-        preds = MODEL.predict(x, verbose=0)[0]
+            preds = MODEL.predict(x, verbose=0)[0]
             return [float(p) for p in preds], True
         except Exception as e:
             print(f"[Model] Prediction error: {e}", file=sys.stderr)
