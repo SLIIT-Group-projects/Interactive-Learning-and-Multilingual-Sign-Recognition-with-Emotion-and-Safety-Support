@@ -1,0 +1,125 @@
+# Python
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Python Virtual Environment
+venv/
+env/
+ENV/
+.venv
+
+# Model files (too large for GitHub - use Git LFS or external storage)
+*.h5
+*.pkl
+*.pickle
+*.pb
+*.tflite
+*.onnx
+*.pt
+*.pth
+
+# Training outputs and generated files
+*.png
+*.jpg
+*.jpeg
+!sample_image.png  # Keep sample images if needed for documentation
+training_history*.png
+confusion_matrix*.png
+previous_confusion_matrix.pkl
+
+# Model training folder (local training only)
+model/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# Node.js / React Native / Expo
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json  # Optional: some prefer to commit this, some don't
+# Keep package.json but consider ignoring package-lock.json
+
+# Expo
+.expo/
+.expo-shared/
+dist/
+web-build/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+*.env
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.backup
+
+# Windows specific
+# Keep .bat and .ps1 files if they're part of your setup (like add_firewall_rule.bat)
+# Uncomment below if you want to ignore them:
+# *.bat
+# *.ps1
+
+# API keys and secrets (if any)
+secrets.json
+config.json
+*.key
+*.pem
+*.p12
+*.jks
+*.mobileprovision
+
+# Coverage reports
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+
+# pytest
+.pytest_cache/
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+backend/serviceAccountKey.json

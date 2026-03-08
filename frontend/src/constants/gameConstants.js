@@ -1,0 +1,70 @@
+export const ALPHABET = [
+  "A",
+  "B",
+  "C",
+  "D",
+  "E",
+  "F",
+  "G",
+  "H",
+  "I",
+  "J",
+  "K",
+  "L",
+  "M",
+  "N",
+  "O",
+  "P",
+  "Q",
+  "R",
+  "S",
+  "T",
+  "U",
+  "V",
+  "W",
+  "X",
+  "Y",
+  "Z",
+];
+
+export const OBJECTS = [
+  { icon: "apple", iconFamily: "MaterialIcons", letter: "A", name: "Apple" },
+  { icon: "pets", iconFamily: "MaterialIcons", letter: "B", name: "Bear" },
+  { icon: "pets", iconFamily: "MaterialIcons", letter: "C", name: "Cat" },
+  { icon: "pets", iconFamily: "MaterialIcons", letter: "D", name: "Dog" },
+  { icon: "pets", iconFamily: "MaterialIcons", letter: "E", name: "Elephant" },
+  { icon: "water", iconFamily: "MaterialIcons", letter: "F", name: "Fish" },
+  { icon: "pets", iconFamily: "MaterialIcons", letter: "G", name: "Giraffe" },
+  { icon: "pets", iconFamily: "MaterialIcons", letter: "H", name: "Horse" },
+  { icon: "icecream", iconFamily: "MaterialIcons", letter: "I", name: "Ice Cream" },
+  { icon: "water", iconFamily: "MaterialIcons", letter: "J", name: "Jellyfish" },
+  { icon: "kitesurfing", iconFamily: "MaterialIcons", letter: "K", name: "Kite" },
+  { icon: "pets", iconFamily: "MaterialIcons", letter: "L", name: "Lion" },
+  { icon: "pets", iconFamily: "MaterialIcons", letter: "M", name: "Monkey" },
+  { icon: "nightlight", iconFamily: "MaterialIcons", letter: "N", name: "Night" },
+  { icon: "pets", iconFamily: "MaterialIcons", letter: "O", name: "Owl" },
+  { icon: "pets", iconFamily: "MaterialIcons", letter: "P", name: "Penguin" },
+  { icon: "star", iconFamily: "MaterialIcons", letter: "Q", name: "Queen" },
+  { icon: "wb-sunny", iconFamily: "MaterialIcons", letter: "R", name: "Rainbow" },
+  { icon: "star", iconFamily: "MaterialIcons", letter: "S", name: "Star" },
+  { icon: "park", iconFamily: "MaterialIcons", letter: "T", name: "Tree" },
+  { icon: "umbrella", iconFamily: "MaterialIcons", letter: "U", name: "Umbrella" },
+  { icon: "local-shipping", iconFamily: "MaterialIcons", letter: "V", name: "Van" },
+  { icon: "water", iconFamily: "MaterialIcons", letter: "W", name: "Water" },
+  { icon: "close", iconFamily: "MaterialIcons", letter: "X", name: "X-ray" },
+  { icon: "toys", iconFamily: "MaterialIcons", letter: "Y", name: "Yoyo" },
+  { icon: "pets", iconFamily: "MaterialIcons", letter: "Z", name: "Zebra" },
+];
+
+export const TOTAL_QUESTIONS = 10;
+export const TOTAL_LETTERS = ALPHABET.length;
+
+/** Game types for level-unlock system. Only 'basic' is implemented; others are placeholders. */
+export const GAME_TYPES = [
+  { id: 'basic', name: 'Basic Letter Practice', requiredLevel: 1, description: 'Show the sign for each letter' },
+  { id: 'timed', name: 'Timed Mode', requiredLevel: 2, description: '10 seconds per letter' },
+  { id: 'similar', name: 'Similar Letter Challenge', requiredLevel: 3, description: 'e.g. M vs N' },
+  { id: 'speed', name: 'Speed Challenge', requiredLevel: 4, description: 'Race against the clock' },
+  { id: 'mixed', name: 'Random Mixed Mode', requiredLevel: 5, description: 'Letters and objects mixed' },
+];
+

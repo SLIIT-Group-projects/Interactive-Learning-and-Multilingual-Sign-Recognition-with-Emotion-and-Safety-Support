@@ -13,3 +13,6 @@ models/*.pb
 venv/
 .venv/
 .venv-hand/
+
+serviceAccountKey.json
+

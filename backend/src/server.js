@@ -10,6 +10,9 @@ import emotionRoutes from "./routes/emotion.routes.js";
 import handRoutes from "./routes/hand.routes.js";
 import ehFusionRoutes from "./routes/eh_fusion.routes.js";
 import config from "../config/index.js";
+import soundRoutes from "./routes/sound.routes.js";
+import placeRoutes from "./routes/location.routes.js";
+import notificationRoutes from "./routes/notification.routes.js";
 
 // Load environment variables
 dotenv.config();
@@ -25,7 +28,7 @@ app.use(
   cors({
     origin: config.CORS_ORIGIN, // Allow all origins in development
     credentials: true,
-  })
+  }),
 );
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -38,6 +41,9 @@ app.use("/api/emotion", emotionRoutes);
 app.use("/api/hand", handRoutes);
 app.use("/api/eh", ehFusionRoutes);
 
+app.use("/api/sounds", soundRoutes);
+app.use("/api/places", placeRoutes);
+app.use("/api/notifications", notificationRoutes);
 
 // Health check endpoint
 app.get("/health", (req, res) => {
@@ -96,7 +102,7 @@ app.listen(PORT, "0.0.0.0", () => {
   console.log(`🧪 Test endpoint: http://localhost:${PORT}/test`);
   console.log(`🌐 Network access (Android emulator): http://10.0.2.2:${PORT}/health`);
   console.log(`🌐 Network access example: http://192.168.1.11:${PORT}/health`);
-  console.log(`🌍 Environment: ${config.NODE_ENV}`);
+  console.log(`🌍 Environment: ${process.env.NODE_ENV || "development"}`);
   console.log(`📁 Upload directory: ${config.UPLOAD_DIR}`);
   console.log(`🐍 Python command: ${config.PYTHON_CMD}`);
   console.log(`\n✅ Backend is ready to accept connections!\n`);
@@ -106,6 +112,7 @@ app.listen(PORT, "0.0.0.0", () => {
     console.error(`   Port ${PORT} is already in use. Please stop the other process or change the port.`);
   }
   process.exit(1);
+
 });
 
 export default app;

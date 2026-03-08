@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "532720185132",
+    "project_id": "deaf-kids",
+    "storage_bucket": "deaf-kids.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:532720185132:android:8c0c6f9ab55e659f1a4689",
+        "android_client_info": {
+          "package_name": "dead.kids"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDGKZO1S93Q_JL4F-gAW4ssgtLBpu-jeAk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
