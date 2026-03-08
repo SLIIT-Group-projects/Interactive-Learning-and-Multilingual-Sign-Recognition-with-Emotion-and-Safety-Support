@@ -22,6 +22,56 @@ const NOTIFICATIONS_COLLECTION = 'notifications';
 const MIN_CONFIDENCE_THRESHOLD = parseFloat(process.env.MIN_CONFIDENCE_THRESHOLD || '0.65');
 // False positive types to filter out
 const FALSE_POSITIVE_TYPES = ['silence', 'background_noise', 'noise', 'static', 'white_noise', 'ambient', 'room_tone'];
+// Deduplicate repeated detections/alerts (same user + hazard type within this window)
+const SOUND_DEDUP_WINDOW_MS = parseInt(process.env.SOUND_DEDUP_WINDOW_MS || '60000', 10);
+const PARENT_ALERT_DEDUP_WINDOW_MS = parseInt(process.env.PARENT_ALERT_DEDUP_WINDOW_MS || '60000', 10);
+
+async function hasRecentDuplicateSound(userId, hazardType, dedupWindowMs = SOUND_DEDUP_WINDOW_MS) {
+  if (!userId || !hazardType || dedupWindowMs <= 0) return false;
+
+  try {
+    const snapshot = await db.collection(SOUNDS_COLLECTION)
+      .where('userId', '==', userId)
+      .where('type', '==', hazardType)
+      .limit(20)
+      .get();
+
+    const now = Date.now();
+    return snapshot.docs.some((doc) => {
+      const data = doc.data() || {};
+      const ts = new Date(data.timestamp || data.createdAt || 0).getTime();
+      return Number.isFinite(ts) && (now - ts) <= dedupWindowMs;
+    });
+  } catch (error) {
+    console.warn(`⚠️ Error checking duplicate sound for ${userId}/${hazardType}:`, error.message);
+    return false;
+  }
+}
+
+async function hasRecentDuplicateParentAlert(parentId, alertData, dedupWindowMs = PARENT_ALERT_DEDUP_WINDOW_MS) {
+  if (!parentId || dedupWindowMs <= 0) return false;
+
+  try {
+    const snapshot = await db.collection(NOTIFICATIONS_COLLECTION)
+      .where('parentId', '==', parentId)
+      .limit(50)
+      .get();
+
+    const now = Date.now();
+    return snapshot.docs.some((doc) => {
+      const data = doc.data() || {};
+      if (data.type !== 'critical_hazard_alert') return false;
+      if ((data.hazardType || '') !== (alertData.hazardType || '')) return false;
+      if ((data.childUserId || '') !== (alertData.childUserId || '')) return false;
+
+      const ts = new Date(data.timestamp || data.createdAt || 0).getTime();
+      return Number.isFinite(ts) && (now - ts) <= dedupWindowMs;
+    });
+  } catch (error) {
+    console.warn(`⚠️ Error checking duplicate parent alert for ${parentId}:`, error.message);
+    return false;
+  }
+}
 
 /**
  * Save detected sounds to database
@@ -73,6 +123,16 @@ async function saveSoundsToDatabase(detections, context = {}, audioFileUrl = nul
       }
 
       const isCriticalAlert = (basePriority >= 9 || calculatedPriority >= 9);
+
+      // Skip duplicate records for rapid repeated detections of the same hazard.
+      if (hasUserId) {
+        const isDuplicateSound = await hasRecentDuplicateSound(context.userId, hazardType);
+        if (isDuplicateSound) {
+          console.log(`⏭️ Skipping duplicate ${isCriticalAlert ? 'CRITICAL ' : ''}sound: ${hazardType} for user ${context.userId} (within ${SOUND_DEDUP_WINDOW_MS}ms window)`);
+          continue;
+        }
+      }
+
       console.log(`✅ Will save ${isCriticalAlert ? 'CRITICAL' : 'identified'} sound: ${hazardType} (confidence: ${confidence.toFixed(2)}, priority: ${priority}, userId: ${context.userId || 'none'})`);
 
       // Clean context to remove undefined values
@@ -287,6 +347,13 @@ async function notifyParent(parentId, alertData) {
   }
 
   try {
+    // Skip duplicate parent alerts when the same critical sound repeats rapidly.
+    const isDuplicateParentAlert = await hasRecentDuplicateParentAlert(parentId, alertData);
+    if (isDuplicateParentAlert) {
+      console.log(`⏭️ Skipping duplicate parent alert for ${alertData.hazardType} (child: ${alertData.childUserId}, parent: ${parentId})`);
+      return null;
+    }
+
     // Format location for message
     const locationText = formatLocation(alertData.location);
     const hazardTypeFormatted = (alertData.hazardType || 'Critical hazard')

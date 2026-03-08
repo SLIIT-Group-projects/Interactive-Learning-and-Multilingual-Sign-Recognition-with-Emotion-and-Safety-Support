@@ -1,7 +1,3 @@
-/**
- * Hazard Priority Utility
- * Handles prioritization of detected hazards based on urgency and context
- */
 
 /**
  * Contextual Harm Factors H_c(z)
@@ -14,7 +10,7 @@ const harmFactors = {
   siren: { default: 1.8, night: 1.9, residential: 1.9 },
   glass_breaking: { default: 1.5, night: 1.8, indoor: 1.7 },
   car_horn: { default: 1.2, residential: 1.4, night: 1.3 },
-  baby_crying: { default: 0.5, home: 0.6, night: 0.6 },
+  baby_crying: { default: 0.7, home: 0.8, night: 1.0 },
   dog_barking: { default: 1.0, night: 1.4, indoor: 0.8 },
   door_knock: { default: 0.9, night: 1.3, home: 1.0 },
   gun_shot: { default: 2.0, night: 2.0, residential: 2.0 },

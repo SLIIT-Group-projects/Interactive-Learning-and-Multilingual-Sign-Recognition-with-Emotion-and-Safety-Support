@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, Animated, StyleSheet, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, Animated, StyleSheet, ActivityIndicator, Alert, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
@@ -10,7 +10,7 @@ const ChildDashboard = ({ navigation }) => {
   const { userData } = useAuth();
   const [loading, setLoading] = useState(true);
   const [analytics, setAnalytics] = useState(null);
-  
+
   const totalLetters = 26;
   const childName = userData?.name || 'Student';
 
@@ -27,10 +27,10 @@ const ChildDashboard = ({ navigation }) => {
   // Calculate badges based on achievements
   const calculateBadges = () => {
     if (!analytics) return { count: 0, name: 'Beginner' };
-    
+
     let badgeCount = 0;
     let badgeName = 'Beginner';
-    
+
     if (analytics.totalSessions >= 1) {
       badgeCount++;
       badgeName = 'Beginner';
@@ -55,7 +55,7 @@ const ChildDashboard = ({ navigation }) => {
       badgeCount++;
       badgeName = 'ASL Champion';
     }
-    
+
     return { count: badgeCount, name: badgeName };
   };
 
@@ -140,7 +140,11 @@ const ChildDashboard = ({ navigation }) => {
 
   return (
     <SafeAreaView className="flex-1 bg-blue-50">
-      <View className="flex-1 px-6 pt-4">
+      <ScrollView
+        className="flex-1 px-6 pt-4"
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 24 }}
+      >
         {/* Header Section */}
         <View className="flex-row items-center justify-between mb-6">
           <View className="flex-row items-center">
@@ -177,23 +181,23 @@ const ChildDashboard = ({ navigation }) => {
               <Text className="text-base text-gray-600 mb-4">
                 You have learned {lettersLearned} out of {totalLetters} letters
               </Text>
-              
+
               {/* Progress Bar */}
               <View className="h-6 bg-gray-200 rounded-full overflow-hidden">
                 <Animated.View
                   className="h-full rounded-full"
-                  style={{ 
+                  style={{
                     width: progressWidth,
                     backgroundColor: '#60a5fa', // blue-400
                   }}
                 />
               </View>
-              
+
               <View className="flex-row justify-between mt-2">
                 <Text className="text-sm text-gray-500">0</Text>
                 <Text className="text-sm text-gray-500">{totalLetters}</Text>
               </View>
-              
+
               {analytics && analytics.totalSessions > 0 && (
                 <View className="mt-4 pt-4 border-t border-gray-200">
                   <View className="flex-row justify-between">
@@ -290,11 +294,11 @@ const ChildDashboard = ({ navigation }) => {
         {/* Motivation Message */}
         <View className="bg-pink-100 rounded-2xl p-5 items-center shadow-md">
           <Text className="text-xl font-semibold text-gray-800 text-center">
-            {loading 
+            {loading
               ? 'Loading your progress...'
               : analytics && analytics.totalSessions > 0
-              ? `Great job! You've completed ${analytics.totalSessions} session${analytics.totalSessions > 1 ? 's' : ''}! Keep going!`
-              : "Ready to start learning? Let's play your first game!"}
+                ? `Great job! You've completed ${analytics.totalSessions} session${analytics.totalSessions > 1 ? 's' : ''}! Keep going!`
+                : "Ready to start learning? Let's play your first game!"}
           </Text>
           {analytics && analytics.mostStrongLetters.length > 0 && (
             <View className="mt-3">
@@ -307,7 +311,7 @@ const ChildDashboard = ({ navigation }) => {
             </View>
           )}
         </View>
-      </View>
+      </ScrollView>
     </SafeAreaView>
   );
 };

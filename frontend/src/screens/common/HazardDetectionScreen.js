@@ -951,8 +951,18 @@ export default function HazardDetectionScreen() {
                 setAlertMessage(message);
                 currentAlertMessageRef.current = message; // Update ref
 
-                // Check if this is a critical alert (priority >= 9)
-                const isCritical = priority >= 9;
+                // Whitelist of sound types that are allowed to trigger full-screen critical alerts.
+                // All other sounds will display as normal banner alerts only, regardless of priority.
+                const FULLSCREEN_ALERT_TYPES = ['fire_alarm', 'smoke_alarm', 'gun_shot', 'siren'];
+                // dog_barking is critical only at night (10 PM – 6 AM)
+                const currentHour = new Date().getHours();
+                const isNightTime = currentHour >= 22 || currentHour < 6;
+                if (isNightTime) {
+                  FULLSCREEN_ALERT_TYPES.push('dog_barking');
+                }
+
+                // Check if this is a critical alert (priority >= 9 AND sound type is whitelisted)
+                const isCritical = priority >= 9 && FULLSCREEN_ALERT_TYPES.includes(hazardType);
                 setIsCriticalAlert(isCritical);
                 criticalAlertRef.current = isCritical; // Update ref
                 currentAlertPriorityRef.current = priority; // Update ref
@@ -1221,6 +1231,37 @@ export default function HazardDetectionScreen() {
           }),
         ])
       ).start();
+
+      // Add pulsing animations for critical alert overlay
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(criticalPulseAnimation, {
+            toValue: 1.1,
+            duration: 800,
+            useNativeDriver: true,
+          }),
+          Animated.timing(criticalPulseAnimation, {
+            toValue: 1,
+            duration: 800,
+            useNativeDriver: true,
+          }),
+        ])
+      ).start();
+
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(criticalScaleAnimation, {
+            toValue: 1.05,
+            duration: 400,
+            useNativeDriver: true,
+          }),
+          Animated.timing(criticalScaleAnimation, {
+            toValue: 1,
+            duration: 400,
+            useNativeDriver: true,
+          }),
+        ])
+      ).start();
     } else {
       // For non-critical alerts, single flash
       Animated.sequence([
@@ -1374,6 +1415,12 @@ export default function HazardDetectionScreen() {
     // Stop flash animation
     flashAnimation.stopAnimation();
     flashAnimation.setValue(0);
+
+    // Stop critical pulse animations
+    criticalPulseAnimation.stopAnimation();
+    criticalPulseAnimation.setValue(1);
+    criticalScaleAnimation.stopAnimation();
+    criticalScaleAnimation.setValue(1);
 
     // Reset critical alert state (both state and refs)
     setIsCriticalAlert(false);

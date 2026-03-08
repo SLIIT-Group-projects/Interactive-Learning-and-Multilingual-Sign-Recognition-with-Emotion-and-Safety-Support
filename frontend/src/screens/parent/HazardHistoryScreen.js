@@ -13,6 +13,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
 import { getParentChildren } from '../../services/firestore/userService';
 import hazardDatabaseService from '../../../services/hazardDatabase.service';
+import notificationService from '../../../services/notification.service';
 
 /**
  * Parent Hazard History Screen
@@ -20,7 +21,7 @@ import hazardDatabaseService from '../../../services/hazardDatabase.service';
  * This is a React Navigation version of the Expo Router dashboard.
  */
 
-const HazardHistoryScreen = () => {
+const HazardHistoryScreen = ({ navigation }) => {
   const { userData } = useAuth();
   const userId = userData?.uid || null;
 
@@ -30,6 +31,7 @@ const HazardHistoryScreen = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [filter, setFilter] = useState('all'); // 'all' | 'critical' | 'high' | 'medium' | 'low'
   const [children, setChildren] = useState([]);
+  const [latestSafetyCheckBySoundId, setLatestSafetyCheckBySoundId] = useState({});
 
   // Load children for parent users
   useEffect(() => {
@@ -100,6 +102,27 @@ const HazardHistoryScreen = () => {
       .join(' ');
   };
 
+  const buildAlertDetailsPayload = (alert) => {
+    const locationText = alert?.location?.coordinates
+      ? `${alert.location.coordinates[1]}, ${alert.location.coordinates[0]}`
+      : Number.isFinite(alert?.location?.latitude) && Number.isFinite(alert?.location?.longitude)
+        ? `${alert.location.latitude}, ${alert.location.longitude}`
+        : '';
+
+    return {
+      soundId: alert.id,
+      hazardType: alert.type,
+      childUserId: alert.userId || null,
+      childName: null,
+      location: alert.location || null,
+      locationText,
+      priority: alert.priority,
+      timestamp: alert.timestamp,
+      read: true,
+      message: `${formatHazardType(alert.type)} detected${locationText ? ` at ${locationText}` : ''}`,
+    };
+  };
+
   const loadData = async () => {
     try {
       setLoading(true);
@@ -118,7 +141,12 @@ const HazardHistoryScreen = () => {
         queryParams.userId = userId;
       }
 
-      const [alertsData, statsData] = await Promise.all([
+      const notificationsPromise =
+        userData?.role === 'parent' && userData?.uid
+          ? notificationService.getNotifications(userData.uid, { limit: 300 })
+          : Promise.resolve([]);
+
+      const [alertsData, statsData, notificationsData] = await Promise.all([
         hazardDatabaseService.getHazardAlerts({
           ...queryParams,
           limit: 100,
@@ -126,6 +154,7 @@ const HazardHistoryScreen = () => {
         hazardDatabaseService.getHazardStats({
           ...queryParams,
         }),
+        notificationsPromise,
       ]);
 
       let filtered = alertsData;
@@ -138,6 +167,21 @@ const HazardHistoryScreen = () => {
 
       setAlerts(filtered);
       setStats(statsData);
+
+      const safetyCheckMap = {};
+      notificationsData
+        .filter((item) => item.type === 'critical_safety_check' && item.soundId)
+        .sort(
+          (a, b) =>
+            new Date(b.timestamp || b.createdAt || 0).getTime() -
+            new Date(a.timestamp || a.createdAt || 0).getTime()
+        )
+        .forEach((item) => {
+          if (!safetyCheckMap[item.soundId]) {
+            safetyCheckMap[item.soundId] = item;
+          }
+        });
+      setLatestSafetyCheckBySoundId(safetyCheckMap);
     } catch (error) {
       console.error('Error loading hazard history:', error);
       Alert.alert('Error', error.message || 'Failed to load hazard alerts');
@@ -297,7 +341,35 @@ const HazardHistoryScreen = () => {
                   </View>
                 )}
 
+                {latestSafetyCheckBySoundId[alert.id] && (
+                  <View style={styles.safetyStatusRow}>
+                    <MaterialIcons
+                      name={latestSafetyCheckBySoundId[alert.id].childConfirmedSafe ? 'verified-user' : 'warning-amber'}
+                      size={16}
+                      color={latestSafetyCheckBySoundId[alert.id].childConfirmedSafe ? '#10b981' : '#d97706'}
+                    />
+                    <Text style={styles.safetyStatusText}>
+                      {latestSafetyCheckBySoundId[alert.id].childConfirmedSafe
+                        ? 'Follow-up: Child reported safe'
+                        : 'Follow-up: Child may still need help'}
+                    </Text>
+                  </View>
+                )}
+
                 <View style={styles.actionsRow}>
+                  <TouchableOpacity
+                    style={styles.actionButton}
+                    onPress={() =>
+                      navigation.navigate('ParentAlertDetails', {
+                        alertData: buildAlertDetailsPayload(alert),
+                      })
+                    }
+                  >
+                    <MaterialIcons name="open-in-new" size={18} color="#2563eb" />
+                    <Text style={[styles.actionText, { color: '#2563eb' }]}>
+                      View More Details
+                    </Text>
+                  </TouchableOpacity>
                   {alert.status === 'detected' && (
                     <TouchableOpacity
                       style={styles.actionButton}
@@ -491,6 +563,21 @@ const styles = StyleSheet.create({
   locationText: {
     fontSize: 13,
     color: '#6b7280',
+  },
+  safetyStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 6,
+    backgroundColor: '#fffbeb',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+  },
+  safetyStatusText: {
+    fontSize: 12,
+    color: '#92400e',
+    fontWeight: '500',
   },
   actionsRow: {
     flexDirection: 'row',

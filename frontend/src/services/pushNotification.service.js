@@ -1,7 +1,8 @@
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
-import { Platform, Alert } from 'react-native';
-import apiService from './api.service';
+import Constants from 'expo-constants';
+import { Alert } from 'react-native';
+import apiService from '../../services/api.service';
 
 // Configure notification handler
 Notifications.setNotificationHandler({
@@ -11,6 +12,15 @@ Notifications.setNotificationHandler({
     shouldSetBadge: true,
   }),
 });
+
+function resolveExpoProjectId() {
+  return (
+    process.env.EXPO_PUBLIC_EXPO_PROJECT_ID ||
+    Constants?.expoConfig?.extra?.eas?.projectId ||
+    Constants?.easConfig?.projectId ||
+    null
+  );
+}
 
 /**
  * Register push token for parent
@@ -47,10 +57,11 @@ export async function registerPushToken(userId) {
       return null;
     }
 
-    // Get Expo push token
-    const tokenData = await Notifications.getExpoPushTokenAsync({
-      projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID || 'deaf-kids',
-    });
+    // Get Expo push token (projectId must be an Expo EAS UUID, not Firebase project ID)
+    const projectId = resolveExpoProjectId();
+    const tokenData = projectId
+      ? await Notifications.getExpoPushTokenAsync({ projectId })
+      : await Notifications.getExpoPushTokenAsync();
 
     const expoPushToken = tokenData.data;
     console.log('📱 Expo Push Token:', expoPushToken);
@@ -78,7 +89,9 @@ export async function registerPushToken(userId) {
  * @param {Object} navigation - React Navigation object
  * @returns {Function} Cleanup function
  */
-export function setupNotificationListener(navigation) {
+export function setupNotificationListener(navigation, options = {}) {
+  const { onCriticalAlert } = options;
+
   // Handle notification received while app is foregrounded
   const notificationListener = Notifications.addNotificationReceivedListener(notification => {
     console.log('📬 Notification received:', notification);
@@ -86,6 +99,21 @@ export function setupNotificationListener(navigation) {
     
     // Show alert for critical alerts
     if (data && data.type === 'critical_hazard_alert') {
+      if (typeof onCriticalAlert === 'function') {
+        onCriticalAlert({
+          id: data.notificationId || `${Date.now()}`,
+          type: data.type,
+          title: notification.request.content.title || '🚨 Critical Alert',
+          message: notification.request.content.body || 'A critical hazard has been detected',
+          childName: data.childName,
+          locationText: data.locationText,
+          priority: Number(data.priority || 9),
+          read: false,
+          timestamp: new Date().toISOString(),
+        });
+        return;
+      }
+
       Alert.alert(
         notification.request.content.title || '🚨 Critical Alert',
         notification.request.content.body || 'A critical hazard has been detected',

@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
 import { logoutUser } from '../../services/auth/authService';
 import { getParentChildren } from '../../services/firestore/userService';
-import hazardDatabaseService from '../../../services/hazardDatabase.service';
 import notificationService from '../../../services/notification.service';
 
 const ParentDashboard = ({ navigation }) => {
@@ -13,11 +12,7 @@ const ParentDashboard = ({ navigation }) => {
   const [selectedChild, setSelectedChild] = useState(null);
   const [children, setChildren] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [recentHazards, setRecentHazards] = useState([]);
-  const [hazardsLoading, setHazardsLoading] = useState(false);
-  const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
-  const [notificationsLoading, setNotificationsLoading] = useState(false);
   
   // Load children on mount
 
@@ -40,13 +35,6 @@ const ParentDashboard = ({ navigation }) => {
     loadChildren();
   }, [userData]);
 
-  // Load recent hazards from all children
-  useEffect(() => {
-    if (children.length > 0) {
-      loadRecentHazards();
-    }
-  }, [children]);
-
   // Load notifications for parent
   useEffect(() => {
     if (userData && userData.role === 'parent' && userData.uid) {
@@ -54,60 +42,14 @@ const ParentDashboard = ({ navigation }) => {
     }
   }, [userData]);
 
-  const loadChildAnalytics = async (childId) => {
-    if (!childId || !userData) return;
-    
-    setAnalyticsLoading(true);
-    try {
-      const childAnalytics = await getChildAnalytics(childId, userData.uid);
-      setAnalytics(childAnalytics);
-      
-      // Load recent sessions for chart
-      const recentSessions = await getParentGameSessions(userData.uid, 20);
-      const childSessions = recentSessions.filter(s => s.childId === childId);
-      setSessions(childSessions);
-    } catch (error) {
-      console.error('Error loading analytics:', error);
-    } finally {
-      setAnalyticsLoading(false);
-    }
-  };
-
-  const loadRecentHazards = async () => {
-    if (children.length === 0) return;
-    
-    setHazardsLoading(true);
-    try {
-      const childrenUserIds = children.map(child => child.uid).filter(Boolean);
-      if (childrenUserIds.length > 0) {
-        const hazards = await hazardDatabaseService.getHazardAlerts({
-          userIds: childrenUserIds,
-          limit: 5, // Show 5 most recent hazards
-        });
-        setRecentHazards(hazards);
-      }
-    } catch (error) {
-      console.error('Error loading recent hazards:', error);
-    } finally {
-      setHazardsLoading(false);
-    }
-  };
-
   const loadNotifications = async () => {
     if (!userData?.uid) return;
     
-    setNotificationsLoading(true);
     try {
-      const [notificationsList, unread] = await Promise.all([
-        notificationService.getNotifications(userData.uid, { limit: 10 }),
-        notificationService.getUnreadCount(userData.uid),
-      ]);
-      setNotifications(notificationsList);
+      const unread = await notificationService.getUnreadCount(userData.uid);
       setUnreadCount(unread);
     } catch (error) {
       console.error('Error loading notifications:', error);
-    } finally {
-      setNotificationsLoading(false);
     }
   };
 
@@ -142,74 +84,33 @@ const ParentDashboard = ({ navigation }) => {
               <Text className="text-3xl font-bold text-gray-800">
                 Parent Dashboard
               </Text>
-              {unreadCount > 0 && (
-                <View className="ml-3 bg-red-500 rounded-full px-3 py-1">
-                  <Text className="text-white font-bold text-sm">{unreadCount}</Text>
-                </View>
-              )}
             </View>
-            <TouchableOpacity
-              onPress={handleLogout}
-              className="bg-white rounded-full p-3 shadow-md"
-            >
-              <MaterialIcons name="logout" size={24} color="#374151" />
-            </TouchableOpacity>
-          </View>
-
-          {/* Critical Alert Notifications */}
-          {notifications.length > 0 && (
-            <View className="bg-red-50 border-l-4 border-red-500 rounded-lg p-4 mb-6">
-              <View className="flex-row items-center justify-between mb-2">
-                <Text className="text-lg font-bold text-red-800">
-                  🚨 Critical Alerts
-                </Text>
-                <TouchableOpacity onPress={() => navigation.navigate('HazardHistory')}>
-                  <Text className="text-sm text-red-600 font-semibold">View All</Text>
-                </TouchableOpacity>
-              </View>
-              {notifications.slice(0, 3).map((notification) => (
-                <TouchableOpacity
-                  key={notification.id}
-                  onPress={async () => {
-                    if (!notification.read) {
-                      await notificationService.markAsRead(notification.id);
-                      loadNotifications();
-                    }
-                    navigation.navigate('HazardHistory');
-                  }}
-                  className={`bg-white rounded-lg p-3 mb-2 ${!notification.read ? 'border-l-4 border-red-500' : ''}`}
-                >
-                  <Text className="font-semibold text-gray-800">
-                    {notification.title}
-                  </Text>
-                  <Text className="text-sm text-gray-600 mt-1">
-                    {notification.message}
-                  </Text>
-                  {notification.childName && (
-                    <Text className="text-xs text-gray-500 mt-1">
-                      From: {notification.childName}
-                    </Text>
-                  )}
-                  {notification.location && (
-                    <View className="flex-row items-center mt-1">
-                      <MaterialIcons name="location-on" size={14} color="#ef4444" />
-                      <Text className="text-xs text-gray-500 ml-1">
-                        {notification.locationText || 
-                          (notification.location.coordinates 
-                            ? `${notification.location.coordinates[1]?.toFixed(6)}, ${notification.location.coordinates[0]?.toFixed(6)}`
-                            : notification.location.latitude 
-                              ? `${notification.location.latitude.toFixed(6)}, ${notification.location.longitude.toFixed(6)}`
-                              : 'Location available')}
+            <View className="flex-row items-center">
+              <TouchableOpacity
+                onPress={() => navigation.navigate('HazardHistory')}
+                className="bg-white rounded-full p-3 shadow-md mr-3"
+              >
+                <View>
+                  <MaterialIcons name="notifications" size={24} color="#374151" />
+                  {unreadCount > 0 && (
+                    <View className="absolute -top-2 -right-2 bg-red-500 rounded-full min-w-[18px] h-[18px] px-1 items-center justify-center">
+                      <Text className="text-white font-bold text-[10px]">
+                        {unreadCount > 99 ? '99+' : unreadCount}
                       </Text>
                     </View>
                   )}
-                  <Text className="text-xs text-gray-400 mt-1">
-                    {new Date(notification.timestamp).toLocaleString()}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+                </View>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleLogout}
+                className="bg-white rounded-full p-3 shadow-md"
+              >
+                <MaterialIcons name="logout" size={24} color="#374151" />
+              </TouchableOpacity>
             </View>
-          )}
+          </View>
+
+          
           
           {/* Child Selection */}
           <View className="bg-white rounded-2xl p-4 mb-6 shadow-md">
@@ -314,65 +215,7 @@ const ParentDashboard = ({ navigation }) => {
               </TouchableOpacity>
             </View>
 
-            {/* Recent Hazards Summary */}
-            {hazardsLoading ? (
-              <View className="mt-4 py-4 items-center">
-                <ActivityIndicator size="small" color="#ef4444" />
-              </View>
-            ) : recentHazards.length > 0 ? (
-              <View className="mt-4">
-                <View className="flex-row items-center justify-between mb-2">
-                  <Text className="text-sm font-semibold text-gray-700">
-                    Recent Hazards Detected
-                  </Text>
-                  <TouchableOpacity onPress={() => navigation.navigate('HazardHistory')}>
-                    <Text className="text-xs text-red-500 font-semibold">View All</Text>
-                  </TouchableOpacity>
-                </View>
-                {recentHazards.slice(0, 3).map((hazard, index) => {
-                  const getUrgencyColor = (priority) => {
-                    if (priority >= 9) return '#FF3B30';
-                    if (priority >= 7) return '#FF9500';
-                    if (priority >= 5) return '#FFCC00';
-                    return '#34C759';
-                  };
-                  const formatHazardType = (type) => {
-                    return type.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-                  };
-                  const formatDate = (dateString) => {
-                    try {
-                      const date = new Date(dateString);
-                      const now = new Date();
-                      const diffMins = Math.floor((now.getTime() - date.getTime()) / 60000);
-                      if (diffMins < 1) return 'Just now';
-                      if (diffMins < 60) return `${diffMins}m ago`;
-                      const diffHours = Math.floor(diffMins / 60);
-                      if (diffHours < 24) return `${diffHours}h ago`;
-                      return date.toLocaleDateString();
-                    } catch {
-                      return dateString;
-                    }
-                  };
-                  const color = getUrgencyColor(hazard.priority);
-                  return (
-                    <View
-                      key={hazard.id || index}
-                      className="bg-gray-50 rounded-xl p-3 mb-2 flex-row items-center"
-                    >
-                      <View className="w-2 h-2 rounded-full mr-3" style={{ backgroundColor: color }} />
-                      <View className="flex-1">
-                        <Text className="text-sm font-semibold text-gray-800">
-                          {formatHazardType(hazard.type)}
-                        </Text>
-                        <Text className="text-xs text-gray-500">
-                          {formatDate(hazard.timestamp)} • {(hazard.confidence * 100).toFixed(0)}% confidence
-                        </Text>
-                      </View>
-                    </View>
-                  );
-                })}
-              </View>
-            ) : null}
+            
           </View>
 
           {/* Track Child Learning Progress */}
@@ -424,6 +267,7 @@ const ParentDashboard = ({ navigation }) => {
           </TouchableOpacity>
         </View>
       </ScrollView>
+
     </SafeAreaView>
   );
 };

@@ -22,6 +22,11 @@ export interface Notification {
   read: boolean;
   createdAt?: string;
   updatedAt?: string;
+  responses?: Array<{
+    question?: string;
+    answer?: boolean;
+  }>;
+  childConfirmedSafe?: boolean;
 }
 
 class NotificationService {
@@ -105,6 +110,21 @@ class NotificationService {
     } catch (error) {
       console.error('Error getting unread count:', error);
       return 0;
+    }
+  }
+
+  /**
+   * Get a single notification by ID for a parent
+   */
+  async getNotificationById(parentId: string, notificationId: string): Promise<Notification | null> {
+    try {
+      const notifications = await this.getNotifications(parentId, {
+        limit: 200,
+      });
+      return notifications.find((item) => item.id === notificationId) || null;
+    } catch (error) {
+      console.error('Error getting notification by ID:', error);
+      return null;
     }
   }
 }
