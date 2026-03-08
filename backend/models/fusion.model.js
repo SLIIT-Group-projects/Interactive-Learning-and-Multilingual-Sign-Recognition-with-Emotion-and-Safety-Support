@@ -2,58 +2,67 @@ export function fuseEmotion(faceEmotion, hand) {
   const emotion = (faceEmotion?.emotion || "neutral").toLowerCase();
   const conf = Number(faceEmotion?.confidence ?? 0.0);
 
-  const intensity = (hand?.intensity || "IDLE").toUpperCase();
-  const level = Number(hand?.level ?? 0);
+  const intensity = (hand?.intensity || "LOW").toUpperCase();
+  const level = Number(hand?.level ?? 1);
   const speed = Number(hand?.hand_speed ?? 0);
 
-  // Basic mapping table (simple + explainable to supervisors)
-  // You can adjust these easily later.
+  // Behavior mapping based on emotion + hand speed intensity (arousal level)
+  // HIGH arousal (intensity HIGH or level >= 3): Intensified emotions
+  // MEDIUM arousal (intensity MEDIUM or level === 2): Maintain base emotion
+  // LOW arousal (intensity LOW or level === 1): Subdued emotions
   let final_state = "Neutral";
+
+  // Determine arousal level
+  const isHighArousal = intensity === "HIGH" || level >= 3;
+  const isMediumArousal = intensity === "MEDIUM" || level === 2;
+  const isLowArousal = intensity === "LOW" || level === 1;
 
   // HAPPY
   if (emotion === "happy") {
-    if (intensity === "HIGH" || level >= 3) final_state = "Excited Happy";
-    else if (intensity === "MEDIUM" || level === 2) final_state = "Engaged Happy";
+    if (isHighArousal) final_state = "Excited Happy";
+    else if (isMediumArousal) final_state = "Happy"; // Maintain base emotion
     else final_state = "Calm Happy";
   }
 
   // ANGRY
   else if (emotion === "angry") {
-    if (intensity === "HIGH" || level >= 3) final_state = "Escalated Anger";
-    else if (intensity === "MEDIUM" || level === 2) final_state = "Irritated";
+    if (isHighArousal) final_state = "Highly Agitated Angry";
+    else if (isMediumArousal) final_state = "Angry"; // Maintain base emotion
     else final_state = "Controlled Anger";
   }
 
   // SAD
   else if (emotion === "sad") {
-    if (intensity === "IDLE" || level === 0) final_state = "Low Mood / Withdrawn";
-    else if (intensity === "LOW" || level === 1) final_state = "Quiet Sad";
-    else final_state = "Restless Sad";
+    if (isHighArousal) final_state = "Distressed";
+    else if (isMediumArousal) final_state = "Sad"; // Maintain base emotion
+    else final_state = "Low-energy Sad";
   }
 
   // FEAR
   else if (emotion === "fear") {
-    if (intensity === "HIGH" || level >= 3) final_state = "Anxious / Panic";
-    else if (intensity === "MEDIUM" || level === 2) final_state = "Anxious";
-    else final_state = "Mild Fear";
+    if (isHighArousal) final_state = "Panicked";
+    else if (isMediumArousal) final_state = "Fear"; // Maintain base emotion
+    else final_state = "Nervous";
   }
 
   // DISGUST
   else if (emotion === "disgust") {
-    if (intensity === "HIGH" || level >= 3) final_state = "Strong Disgust";
-    else final_state = "Discomfort";
+    if (isHighArousal) final_state = "Strong Disgust";
+    else if (isMediumArousal) final_state = "Disgust"; // Maintain base emotion
+    else final_state = "Mild Disgust";
   }
 
   // SURPRISE
   else if (emotion === "surprise") {
-    if (intensity === "HIGH" || level >= 3) final_state = "Excited Surprise";
-    else final_state = "Surprised";
+    if (isHighArousal) final_state = "Strong Shock";
+    else if (isMediumArousal) final_state = "Surprise"; // Maintain base emotion
+    else final_state = "Mild Surprise";
   }
 
   // NEUTRAL (or unknown)
   else {
-    if (intensity === "HIGH" || level >= 3) final_state = "Restless / Hyper";
-    else if (intensity === "MEDIUM" || level === 2) final_state = "Focused";
+    if (isHighArousal) final_state = "Hyperactive";
+    else if (isMediumArousal) final_state = "Neutral"; // Maintain base emotion
     else final_state = "Calm Neutral";
   }
 

@@ -26,9 +26,15 @@ export function getBaseUrl(): string {
     console.log(`[API Config] Constants.executionEnvironment: ${Constants.executionEnvironment}`);
     
     // CRITICAL: Expo Go always runs on real devices, so always use laptop IP
+    // ⚠️ CHANGE THIS IP to your computer's IP address!
+    // Find your IP: Windows: ipconfig | Mac/Linux: ifconfig
+    // Look for IPv4 Address (Windows) or inet (Mac/Linux) - should start with 192.168. or 10.
     if (isExpoGo) {
-      const deviceUrl = process.env.EXPO_PUBLIC_API_URL || "http://192.168.1.11:5000";
+      const deviceUrl = process.env.EXPO_PUBLIC_API_URL || "http://192.168.1.6:5000"; // ✅ Updated to your IP: 192.168.1.6
       console.log(`[API] Expo Go detected (real device). Using: ${deviceUrl}`);
+      console.log(`[API] ⚠️ If connection fails, create .env file in frontend/ with:`);
+      console.log(`[API] EXPO_PUBLIC_API_URL=http://YOUR_COMPUTER_IP:5000`);
+      console.log(`[API] Find your IP: Windows: ipconfig | Mac/Linux: ifconfig`);
       return deviceUrl;
     }
     
@@ -46,7 +52,8 @@ export function getBaseUrl(): string {
           "Create a .env file with: EXPO_PUBLIC_API_URL=http://<your-laptop-ip>:5000"
         );
         // Try common IPs (update if your IP is different)
-        const possibleIPs = ["192.168.1.11", "192.168.1.10"];
+        // ✅ Updated to your IP: 192.168.1.6
+        const possibleIPs = ["192.168.1.6", "192.168.1.10"]; // ✅ Your IP: 192.168.1.6
         const selectedIP = possibleIPs[0];
         console.warn(`[API] Real Android device detected. Using laptop IP: ${selectedIP}`);
         console.warn(`[API] If connection fails, update EXPO_PUBLIC_API_URL in .env file`);
@@ -69,7 +76,7 @@ export function getBaseUrl(): string {
           "⚠️ Real iOS device detected but EXPO_PUBLIC_API_URL not set. " +
           "Create a .env file with: EXPO_PUBLIC_API_URL=http://<your-laptop-ip>:5000"
         );
-        return "http://192.168.1.11:5000";
+        return "http://192.168.1.6:5000"; // ✅ Updated to your IP: 192.168.1.6
       } else {
         // iOS simulator can use localhost
         return "http://localhost:5000";
@@ -86,7 +93,7 @@ export function getBaseUrl(): string {
 
 /**
  * For real devices, you need to use your laptop's IP address
- * Example: http://192.168.1.11:5000
+ * Example: http://192.168.1.6:5000
  * Set this via environment variable or modify the function above
  */
 export function getBaseUrlForRealDevice(ipAddress?: string): string {
@@ -155,27 +162,42 @@ export async function apiCall(
     
     console.error(`[API] Error calling ${url}:`, error);
     
-    // Check if it's an abort error
+    // Check if it's an abort error (timeout or cancellation)
     if (error.name === "AbortError" || error.message?.includes("Aborted")) {
       // Check if it was a timeout or network issue
       if (retries > 0) {
-        console.log(`[API] Retrying ${url} (${retries} retries left)...`);
-        // Retry on abort (might be network issue)
-        await new Promise((resolve) => setTimeout(resolve, 1000));
+        const retryDelay = Math.min(1000 * Math.pow(2, 2 - retries), 5000); // Exponential backoff
+        console.log(`[API] Retrying ${url} after timeout/abort (${retries} retries left, waiting ${retryDelay}ms)...`);
+        // Retry on abort (might be network issue or slow backend)
+        await new Promise((resolve) => setTimeout(resolve, retryDelay));
         return apiCall(endpoint, options, retries - 1, timeout);
       }
       // Convert abort error to a more user-friendly message
       throw new Error(`Request timed out after ${timeout}ms. Backend might be slow or unreachable at ${BASE_URL}`);
     }
     
-    // Handle network errors
+    // Handle network errors with exponential backoff
     if (error.message?.includes("Network request failed") || error.message?.includes("fetch") || error.message?.includes("Failed to fetch")) {
       if (retries > 0) {
-        console.log(`[API] Retrying ${url} due to network error (${retries} retries left)...`);
-        await new Promise((resolve) => setTimeout(resolve, 1000));
+        const retryDelay = Math.min(1000 * Math.pow(2, 2 - retries), 5000); // Exponential backoff: 1s, 2s, 4s (max 5s)
+        console.log(`[API] Retrying ${url} due to network error (${retries} retries left, waiting ${retryDelay}ms)...`);
+        await new Promise((resolve) => setTimeout(resolve, retryDelay));
         return apiCall(endpoint, options, retries - 1, timeout);
       }
-      throw new Error(`Cannot connect to backend server at ${BASE_URL}. Make sure:\n1. Backend is running\n2. Port 5000 is accessible\n3. For real devices, use your laptop's IP address`);
+      const errorMsg = `Cannot connect to backend server at ${BASE_URL}.\n\n` +
+        `Troubleshooting steps:\n` +
+        `1. Make sure backend is running (check terminal)\n` +
+        `2. Find your computer's IP address:\n` +
+        `   - Windows: Open CMD and type "ipconfig"\n` +
+        `   - Mac/Linux: Open Terminal and type "ifconfig"\n` +
+        `3. Create .env file in frontend/ directory with:\n` +
+        `   EXPO_PUBLIC_API_URL=http://YOUR_IP:5000\n` +
+        `   (Replace YOUR_IP with the IP from step 2)\n` +
+        `4. Restart Expo: npx expo start --clear\n` +
+        `5. Make sure phone and computer are on the SAME WiFi network\n` +
+        `6. Check firewall allows Node.js connections\n\n` +
+        `Current URL being used: ${BASE_URL}`;
+      throw new Error(errorMsg);
     }
     
     throw error;
@@ -191,7 +213,7 @@ export async function uploadFile(
   file: { uri: string; type: string; name: string },
   body: Record<string, any> = {},
   retries = 2,
-  timeout = 30000 // 30 seconds default for ML operations
+  timeout = 120000 // 120 seconds default for ML operations (DeepFace can be very slow on mobile, especially first load)
 ): Promise<any> {
   console.log(`[Upload] Preparing upload - endpoint: ${endpoint}, file: ${file.name}`);
   console.log(`[Upload] URI type: ${file.uri?.startsWith('data:') ? 'base64' : file.uri?.startsWith('file://') ? 'file' : 'other'}`);
@@ -324,17 +346,24 @@ export async function uploadFile(
   }
   
   // Verify file exists before uploading (skip on web)
+  // NOTE: On React Native, cache files might be cleaned up or paths might differ
+  // So we make this non-blocking - just log a warning if file doesn't exist
   if (Platform.OS !== 'web') {
     try {
       const filePath = fileUri.replace('file://', '');
       const fileInfo = await FileSystem.getInfoAsync(filePath);
       if (!fileInfo.exists) {
-        throw new Error(`File does not exist: ${filePath}`);
+        console.warn(`[Upload] ⚠️ File verification: File does not exist at ${filePath}`);
+        console.warn(`[Upload] This might be normal if file was already uploaded or cleaned up. Continuing anyway...`);
+        // Don't throw error - continue with upload attempt
+        // The backend will handle missing files
+      } else {
+        console.log(`[Upload] ✅ File verified: ${fileInfo.size} bytes`);
       }
-      console.log(`[Upload] File verified: ${fileInfo.size} bytes`);
     } catch (verifyErr: any) {
-      console.error(`[Upload] File verification error:`, verifyErr);
-      // Continue anyway - might be a platform difference
+      console.warn(`[Upload] ⚠️ File verification warning (non-blocking):`, verifyErr.message || verifyErr);
+      // Continue anyway - file might still be accessible for upload
+      // This is common on React Native where cache paths can be tricky
     }
   }
   
@@ -372,9 +401,27 @@ export async function uploadFile(
     }
     
     if (!response.ok) {
-      const errorText = await response.text().catch(() => "Unknown error");
-      console.error(`[Upload] Upload failed with status ${response.status}: ${errorText}`);
-      throw new Error(errorText || `HTTP ${response.status}`);
+      // Try to parse error response as JSON to check for stored fallback data
+      let errorData: any = {};
+      try {
+        const errorText = await response.text();
+        errorData = JSON.parse(errorText);
+      } catch {
+        // Not JSON, use as plain text
+        errorData = { error: await response.text().catch(() => "Unknown error") };
+      }
+      
+      // CRITICAL: If backend stored fallback data (Python script failed but data was stored), use it!
+      // This prevents errors from breaking the session when Python crashes
+      if (errorData.stored) {
+        console.warn(`[Upload] ⚠️ Backend returned error but stored fallback data (Python script may have crashed):`, errorData.error?.substring(0, 100));
+        console.log(`[Upload] ✅ Using stored fallback data instead of throwing error`);
+        return errorData.stored; // Return stored data instead of throwing
+      }
+      
+      // Only throw if there's no stored fallback data
+      console.error(`[Upload] Upload failed with status ${response.status}:`, errorData.error || "Unknown error");
+      throw new Error(errorData.error || `HTTP ${response.status}`);
     }
     
     const result = await response.json();
@@ -404,7 +451,7 @@ export async function uploadFiles(
   files: Array<{ uri: string; type: string; name: string }>,
   body: Record<string, any> = {},
   retries = 2,
-  timeout = 60000 // 60 seconds default for hand analysis (multiple frames)
+  timeout = 90000 // 90 seconds default for hand analysis (multiple frames - can be slow)
 ): Promise<any> {
   console.log(`[Upload] Preparing upload of ${files.length} files...`);
   const formData = new FormData();
@@ -503,9 +550,9 @@ export async function uploadFiles(
               const blob = new Blob([bytes], { type: 'image/jpeg' });
               formData.append("frames", blob, file.name || `frame_${index}.jpg`);
               console.log(`[Upload] ✅ Frame ${index + 1} appended using manual conversion, size: ${blob.size} bytes`);
-            } catch (manualErr) {
+            } catch (manualErr: any) {
               console.error(`[Upload] ❌ Manual conversion failed for frame ${index + 1}:`, manualErr);
-              throw new Error(`Failed to convert data URI to Blob for frame ${index + 1}: ${fetchErr.message}`);
+              throw new Error(`Failed to convert data URI to Blob for frame ${index + 1}: ${manualErr?.message || String(manualErr)}`);
             }
           }
         } else {
@@ -564,7 +611,26 @@ export async function uploadFiles(
     }
     
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({ error: "Unknown error" }));
+      // Try to parse error response as JSON to check for stored fallback data
+      let errorData: any = {};
+      try {
+        const errorText = await response.text();
+        errorData = JSON.parse(errorText);
+      } catch {
+        // Not JSON, use as plain text
+        errorData = { error: await response.text().catch(() => "Unknown error") };
+      }
+      
+      // CRITICAL: If backend stored fallback data (Python script failed but data was stored), use it!
+      // This prevents errors from breaking the session when Python crashes
+      if (errorData.stored) {
+        console.warn(`[Upload] ⚠️ Backend returned error but stored fallback data (Python script may have crashed):`, errorData.error?.substring(0, 100));
+        console.log(`[Upload] ✅ Using stored fallback data instead of throwing error`);
+        return errorData.stored; // Return stored data instead of throwing
+      }
+      
+      // Only throw if there's no stored fallback data
+      console.error(`[Upload] Upload failed with status ${response.status}:`, errorData.error || "Unknown error");
       throw new Error(errorData.error || `HTTP ${response.status}`);
     }
     

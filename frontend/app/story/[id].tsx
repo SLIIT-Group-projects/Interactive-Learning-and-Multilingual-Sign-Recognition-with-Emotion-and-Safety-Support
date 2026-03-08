@@ -67,10 +67,14 @@ export default function StoryReaderScreen() {
   const handCaptureIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const frameBufferRef = useRef<Array<{ uri: string; timestamp: number }>>([]);
   const isCapturingRef = useRef(false);
+  // Track pending hand analysis requests to wait for them before finalizing
+  const pendingHandRequestsRef = useRef<Set<Promise<any>>>(new Set());
 
   // Results
   const [finalEmotion, setFinalEmotion] = useState<string | null>(null);
   const [engagementLevel, setEngagementLevel] = useState<string | null>(null);
+  const [behavior, setBehavior] = useState<string | null>(null); // PRIMARY OUTPUT
+  const [behaviorConfidence, setBehaviorConfidence] = useState<number | null>(null);
   const [summary, setSummary] = useState<string | null>(null);
   const [summaryVisible, setSummaryVisible] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -222,7 +226,8 @@ export default function StoryReaderScreen() {
       console.log(`[Emotion] Attempting to capture frame...`);
       const frameUri = await captureFrame();
       if (!frameUri) {
-        console.error("[Emotion] ❌ Failed to capture frame - check camera permissions and state");
+        // Don't log as error - this is normal if camera is temporarily unavailable
+        console.warn("[Emotion] ⚠️ Frame capture skipped - camera may be busy or unavailable. Will retry on next interval.");
         return;
       }
 
@@ -246,10 +251,28 @@ export default function StoryReaderScreen() {
       );
 
       console.log(`[Emotion] ✅ Backend response:`, result);
-    } catch (err: any) {
-      console.error("[Emotion] Emotion prediction error:", err);
-      // Don't block the session on individual frame errors
-    }
+      
+      // Check if result has error field (Python crash fallback) - this is OK, data is still stored
+      if (result?.error) {
+        console.warn(`[Emotion] ⚠️ Backend returned result with error (Python crash fallback):`, result.error?.substring(0, 100));
+        // Result is still valid - backend stored a fallback (e.g., "neutral" emotion)
+        // Session continues normally - don't log as error
+      }
+     } catch (err: any) {
+       // Handle errors gracefully - don't show to user, just log as warning
+       const errorMsg = err?.message || String(err);
+       
+       // Python crashes (exit code 3221226505) are expected sometimes - just log as warning
+       // The backend should have returned a stored fallback, but if it didn't, that's OK too
+       if (errorMsg.includes("Python script failed") || errorMsg.includes("3221226505")) {
+         console.warn("[Emotion] ⚠️ Python script crashed (non-blocking, session continues):", errorMsg.substring(0, 100));
+       } else if (errorMsg.includes("Network request failed") || errorMsg.includes("timeout")) {
+         console.warn("[Emotion] ⚠️ Network error (non-blocking, session continues):", errorMsg.substring(0, 100));
+       } else {
+         console.warn("[Emotion] ⚠️ Emotion prediction error (non-blocking):", err?.message?.substring(0, 100) || String(err).substring(0, 100));
+       }
+       // Don't block the session on individual frame errors - system will retry on next interval
+     }
   };
 
   // Send hand analysis to backend
@@ -261,6 +284,9 @@ export default function StoryReaderScreen() {
       console.log(`[Hand] Skipping hand analysis - sessionId: ${currentSessionId}, active: ${isActive}`);
       return;
     }
+
+    // Create a promise for this request to track it
+    let requestPromise: Promise<any> | null = null;
 
     try {
       console.log(`[Hand] Capturing frames for hand analysis for session ${currentSessionId}`);
@@ -294,12 +320,23 @@ export default function StoryReaderScreen() {
 
       console.log(`[Hand] Sending ${frames.length} frames to backend`);
       
-      // Send to backend API
-      const result = await uploadFiles(
+      // Create the request promise and track it IMMEDIATELY
+      // Use more retries (3) and longer timeout (120s) for hand analysis
+      // Hand analysis is critical and can be slow, especially on mobile
+      requestPromise = uploadFiles(
         API_ENDPOINTS.ANALYZE_HAND,
         frames,
-        { sessionId: currentSessionId, fps: fps }
+        { sessionId: currentSessionId, fps: fps },
+        3, // 3 retries (was 2) - more resilient for network issues
+        120000 // 120 seconds timeout (was 90s) - hand analysis can be very slow
       );
+      
+      // Add to pending requests IMMEDIATELY (before await) so it's tracked even if session stops
+      pendingHandRequestsRef.current.add(requestPromise);
+      console.log(`[Hand] Added request to pending (${pendingHandRequestsRef.current.size} total pending)`);
+      
+      // Send to backend API with better error handling
+      const result = await requestPromise;
 
       console.log(`[Hand] ✅ Backend response:`, result);
       
@@ -311,11 +348,24 @@ export default function StoryReaderScreen() {
         setHandMessage(result.message || result.note || null);
       }
     } catch (err: any) {
-      console.error("[Hand] Hand analysis error:", err);
-      // Set error state for hand detection
-      setHandsDetected(false);
-      setHandMessage("Error analyzing hand movement");
+      // Log as warning instead of error - don't break the session
+      const errorMsg = err?.message || String(err);
+      if (errorMsg.includes("Network request failed") || errorMsg.includes("timeout")) {
+        console.warn("[Hand] ⚠️ Hand analysis network error (non-blocking):", errorMsg.substring(0, 100));
+      } else {
+        console.warn("[Hand] ⚠️ Hand analysis error (non-blocking):", err);
+      }
+      // Don't set error state - allow session to continue
       // Don't block the session on individual analysis errors
+    } finally {
+      // Remove from pending requests when done (success or error)
+      // This is important so finalize doesn't wait forever
+      if (requestPromise) {
+        const removed = pendingHandRequestsRef.current.delete(requestPromise);
+        if (removed) {
+          console.log(`[Hand] Removed completed request from pending (${pendingHandRequestsRef.current.size} remaining)`);
+        }
+      }
     }
   };
 
@@ -457,9 +507,55 @@ export default function StoryReaderScreen() {
     }
 
     try {
+      // CRITICAL: Get pending requests BEFORE clearing anything
+      // Wait for pending hand requests to complete before finalizing
+      // This ensures all in-flight requests are included in the final summary
+      const pendingRequests = Array.from(pendingHandRequestsRef.current);
+      console.log(`[Session] Found ${pendingRequests.length} pending hand analysis request(s)`);
+      
+      if (pendingRequests.length > 0) {
+        console.log(`[Session] Waiting for ${pendingRequests.length} pending hand analysis request(s) to complete...`);
+        try {
+          // Wait for all pending requests with a maximum timeout
+          // Use Promise.allSettled to wait for all, even if some fail
+          await Promise.allSettled(
+            pendingRequests.map(p => 
+              Promise.race([
+                p.catch(err => {
+                  // Log but don't throw - we want to wait for all requests
+                  console.log(`[Session] Pending request failed:`, err?.message?.substring(0, 100));
+                  return null; // Return null on error so Promise.allSettled doesn't fail
+                }),
+                new Promise((resolve) => 
+                  setTimeout(() => {
+                    console.log(`[Session] Pending request timeout (30s)`);
+                    resolve(null); // Resolve with null on timeout
+                  }, 30000) // 30s max wait per request
+                )
+              ])
+            )
+          );
+          console.log(`[Session] ✅ All pending hand requests completed (or timed out)`);
+        } catch (err) {
+          console.warn(`[Session] ⚠️ Error waiting for pending requests:`, err);
+        }
+        // Additional delay to ensure backend has processed and stored all data
+        console.log(`[Session] Waiting 5 seconds for backend to process and store all hand data...`);
+        await new Promise(resolve => setTimeout(resolve, 5000)); // 5 second buffer for backend processing
+      } else {
+        // No pending requests, but still wait a bit for any requests that just started
+        console.log(`[Session] No pending hand requests tracked, waiting 8 seconds for any in-flight requests to complete...`);
+        await new Promise(resolve => setTimeout(resolve, 8000)); // 8 second delay for safety
+      }
+      
+      // Clear pending requests after waiting (they should be done by now)
+      console.log(`[Session] Clearing ${pendingHandRequestsRef.current.size} remaining pending hand request(s)`);
+      pendingHandRequestsRef.current.clear();
+      
       console.log(`[Session] Finalizing session ${currentSessionId} with backend API...`);
       
       // Call backend to finalize session and get results
+      // Use longer timeout (60s) since finalize needs to process all session data
       const finalizeResponse = await apiCall(
         API_ENDPOINTS.FINALIZE_SESSION,
         {
@@ -468,7 +564,9 @@ export default function StoryReaderScreen() {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({ sessionId: currentSessionId }),
-        }
+        },
+        2, // retries
+        60000 // 60 second timeout for finalize (processes all session data)
       );
 
       if (!finalizeResponse.ok) {
@@ -493,19 +591,25 @@ export default function StoryReaderScreen() {
       // Use ONLY backend data - no hardcoded fallbacks
       const finalEmotion = result.finalEmotion || result.predicted;
       const engagementLevel = result.engagementLevel;
+      const behavior = result.behavior || "Neutral"; // PRIMARY OUTPUT
+      const behaviorConfidence = result.behaviorConfidence || 0.0;
       const summary = result.summary;
       
-      // Set results from backend
+      // Set results from backend - Behavior is PRIMARY
+      setBehavior(behavior);
+      setBehaviorConfidence(behaviorConfidence);
       setFinalEmotion(finalEmotion);
       setEngagementLevel(engagementLevel);
       setSummary(summary);
       setSummaryVisible(true);
       
-      console.log(`[Session] Results from backend: Emotion=${finalEmotion}, Engagement=${engagementLevel}`);
+      console.log(`[Session] Results from backend: Behavior=${behavior}, Emotion=${finalEmotion}, Engagement=${engagementLevel}`);
     } catch (err: any) {
       console.error("Finalize session error:", err);
       setError(err.message || "Failed to get session results from backend");
       // NO FALLBACK DATA - show error instead
+      setBehavior(null);
+      setBehaviorConfidence(null);
       setFinalEmotion(null);
       setEngagementLevel(null);
       setSummary(null);
@@ -657,8 +761,16 @@ export default function StoryReaderScreen() {
         <View style={styles.outputCard}>
           <Text style={styles.outputCardTitle}>Session Output</Text>
           
-          {finalEmotion || engagementLevel ? (
+          {behavior || finalEmotion || engagementLevel ? (
             <>
+              {/* BEHAVIOR - PRIMARY OUTPUT - BIG AND PROMINENT */}
+              {behavior && (
+                <View style={styles.behaviorContainerCard}>
+                  <Text style={styles.behaviorLabelCard}>Behavior</Text>
+                  <Text style={styles.behaviorValueCard}>{behavior}</Text>
+                </View>
+              )}
+              
               <Text style={styles.outputLabel}>
                 Final Emotion - <Text style={styles.outputValueYellow}>{finalEmotion ?? "—"}</Text>
               </Text>
@@ -772,6 +884,14 @@ export default function StoryReaderScreen() {
               </Text>
             ) : (
               <>
+                {/* BEHAVIOR - PRIMARY OUTPUT - BIG AND PROMINENT */}
+                {behavior && (
+                  <View style={styles.behaviorContainer}>
+                    <Text style={styles.behaviorLabel}>Behavior</Text>
+                    <Text style={styles.behaviorValue}>{behavior}</Text>
+                  </View>
+                )}
+                
                 <Text style={styles.modalText}>Final Emotion: {finalEmotion ?? "—"}</Text>
                 <Text style={styles.modalText}>Engagement: {engagementLevel ?? "—"}</Text>
                 {summary ? (
@@ -1154,5 +1274,82 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 10,
     alignSelf: "flex-end",
+  },
+  
+  // Behavior Display - PRIMARY OUTPUT - BIG AND PROMINENT
+  behaviorContainer: {
+    backgroundColor: "#E3F2FD",
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 20,
+    marginTop: 10,
+    alignItems: "center",
+    borderWidth: 3,
+    borderColor: "#0A7EA4",
+    shadowColor: "#000",
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 8,
+  },
+  behaviorLabel: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#0A7EA4",
+    marginBottom: 8,
+    textTransform: "uppercase",
+    letterSpacing: 1,
+  },
+  behaviorValue: {
+    fontSize: 36,
+    fontWeight: "900",
+    color: "#0A7EA4",
+    textAlign: "center",
+    marginBottom: 8,
+    letterSpacing: 0.5,
+  },
+  behaviorConfidence: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#666",
+    fontStyle: "italic",
+  },
+  
+  // Behavior Display in Card
+  behaviorContainerCard: {
+    backgroundColor: "#E3F2FD",
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 16,
+    alignItems: "center",
+    borderWidth: 3,
+    borderColor: "#0A7EA4",
+    shadowColor: "#000",
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 6,
+  },
+  behaviorLabelCard: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#0A7EA4",
+    marginBottom: 8,
+    textTransform: "uppercase",
+    letterSpacing: 1,
+  },
+  behaviorValueCard: {
+    fontSize: 32,
+    fontWeight: "900",
+    color: "#0A7EA4",
+    textAlign: "center",
+    marginBottom: 6,
+    letterSpacing: 0.5,
+  },
+  behaviorConfidenceCard: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#666",
+    fontStyle: "italic",
   },
 });

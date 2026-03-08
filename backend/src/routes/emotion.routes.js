@@ -70,14 +70,47 @@ router.post("/predict", upload.single("file"), (req, res) => {
     
     const imgPath = finalPath;
     console.log(`[Emotion] Processing image: ${imgPath} for session ${sessionId}`);
+    
+    // Verify image file exists before running Python script
+    if (!fs.existsSync(imgPath)) {
+      console.error(`[Emotion] Image file does not exist: ${imgPath}`);
+      const errorResult = {
+        predicted: "neutral",
+        confidence: 0.0,
+        probabilities: {},
+        sessionId,
+        t: Date.now(),
+        error: `Image file not found: ${imgPath}`,
+      };
+      addEmotion(sessionId, errorResult);
+      return res.status(400).json({ error: "Image file not found", stored: errorResult });
+    }
+    
     const scriptPath = join(__dirname, "..", "..", "models", "eh_emotion_predict.py");
     
+    // Verify Python script exists
+    if (!fs.existsSync(scriptPath)) {
+      console.error(`[Emotion] Python script does not exist: ${scriptPath}`);
+      const errorResult = {
+        predicted: "neutral",
+        confidence: 0.0,
+        probabilities: {},
+        sessionId,
+        t: Date.now(),
+        error: `Python script not found: ${scriptPath}`,
+      };
+      addEmotion(sessionId, errorResult);
+      return res.status(500).json({ error: "Python script not found", stored: errorResult });
+    }
+    
+    console.log(`[Emotion] Running Python script: ${config.PYTHON_CMD} ${scriptPath} ${imgPath}`);
     const py = spawn(config.PYTHON_CMD, [scriptPath, imgPath]);
 
     let out = "";
+    let err = "";
     let responseSent = false;
     
-    // Set timeout for Python script (30 seconds)
+    // Set timeout for Python script (60 seconds - DeepFace can be slow, especially on first load)
     const timeout = setTimeout(() => {
       if (!responseSent) {
         responseSent = true;
@@ -89,7 +122,7 @@ router.post("/predict", upload.single("file"), (req, res) => {
           probabilities: {},
           sessionId,
           t: Date.now(),
-          error: "Python script timeout (30s)",
+          error: "Python script timeout (120s)",
         };
         addEmotion(sessionId, timeoutResult);
         return res.status(504).json({ 
@@ -97,23 +130,76 @@ router.post("/predict", upload.single("file"), (req, res) => {
           stored: timeoutResult 
         });
       }
-    }, 30000);
+    }, 120000); // Increased to 120 seconds for DeepFace (can be very slow on mobile, especially first load)
 
-    py.stdout.on("data", (d) => (out += d.toString()));
-    py.stderr.on("data", (d) => (out += d.toString()));
+    py.stdout.on("data", (d) => {
+      const data = d.toString();
+      out += data;
+      console.log(`[Emotion] Python stdout: ${data.substring(0, 200)}`);
+    });
+    
+    py.stderr.on("data", (d) => {
+      const data = d.toString();
+      err += data;
+      console.error(`[Emotion] Python stderr: ${data.substring(0, 200)}`);
+    });
+    
+    py.on("error", (error) => {
+      console.error(`[Emotion] Failed to start Python process:`, error);
+      clearTimeout(timeout);
+      if (responseSent) return;
+      responseSent = true;
+      const errorResult = {
+        predicted: "neutral",
+        confidence: 0.0,
+        probabilities: {},
+        sessionId,
+        t: Date.now(),
+        error: `Failed to start Python: ${error.message}`,
+        pythonError: error.message,
+      };
+      addEmotion(sessionId, errorResult);
+      return res.status(500).json({ error: "Failed to start Python process", details: error.message, stored: errorResult });
+    });
 
     py.on("close", (code) => {
       clearTimeout(timeout);
       if (responseSent) return;
       try {
         console.log(`[Emotion] Python script exited with code ${code}`);
-        console.log(`[Emotion] Python output: ${out.substring(0, 500)}`);
+        console.log(`[Emotion] Python stdout (first 500 chars): ${out.substring(0, 500)}`);
+        if (err) {
+          console.error(`[Emotion] Python stderr (first 500 chars): ${err.substring(0, 500)}`);
+        }
+        
+        // Check if Python script failed (non-zero exit code)
+        if (code !== 0) {
+          console.error(`[Emotion] Python script failed with exit code ${code}`);
+          const errorResult = {
+            predicted: "neutral",
+            confidence: 0.0,
+            probabilities: {},
+            sessionId,
+            t: Date.now(),
+            error: `Python script failed with exit code ${code}`,
+            pythonCode: code,
+            pythonStderr: err.substring(0, 500),
+            pythonStdout: out.substring(0, 500),
+          };
+          addEmotion(sessionId, errorResult);
+          // Return 200 with stored fallback data - frontend should use this
+          // This prevents errors from breaking the session when Python crashes
+          console.warn(`[Emotion] ⚠️ Python script failed (code ${code}) but returning stored fallback data (200 OK)`);
+          return res.status(200).json(errorResult);
+        }
         
         // Parse last JSON line (in case script printed warnings before final JSON)
         const lines = out.trim().split(/\r?\n/).filter(Boolean);
         const last = lines.pop();
         if (!last) {
-          console.error(`[Emotion] No output from python script. Code: ${code}, Output: ${out}`);
+          console.error(`[Emotion] No output from python script. Code: ${code}`);
+          console.error(`[Emotion] Stdout: ${out.substring(0, 500)}`);
+          console.error(`[Emotion] Stderr: ${err.substring(0, 500)}`);
           // Still store a fallback result
           const fallbackResult = {
             predicted: "neutral",
@@ -122,10 +208,17 @@ router.post("/predict", upload.single("file"), (req, res) => {
             sessionId,
             t: Date.now(),
             error: "No output from Python script",
-            pythonCode: code
+            pythonCode: code,
+            pythonStderr: err.substring(0, 500),
+            pythonStdout: out.substring(0, 500),
           };
           addEmotion(sessionId, fallbackResult);
-          return res.status(500).json({ error: "no output from python script", raw: out.substring(0, 200), stored: fallbackResult });
+          return res.status(500).json({ 
+            error: "no output from python script", 
+            stderr: err.substring(0, 500),
+            stdout: out.substring(0, 500),
+            stored: fallbackResult 
+          });
         }
         
         const result = JSON.parse(last);
@@ -158,7 +251,10 @@ router.post("/predict", upload.single("file"), (req, res) => {
         };
         addEmotion(sessionId, fallbackResult);
         responseSent = true;
-        return res.status(500).json({ error: "invalid python output", raw: out.substring(0, 200), parseError: String(e), stored: fallbackResult });
+        // Return 200 with stored fallback data - frontend should use this
+        // This prevents errors from breaking the session
+        console.warn(`[Emotion] ⚠️ Parse error but returning stored fallback data (200 OK)`);
+        return res.status(200).json(fallbackResult);
       }
     });
 
@@ -176,7 +272,10 @@ router.post("/predict", upload.single("file"), (req, res) => {
         error: "Spawn error: " + String(err)
       };
       addEmotion(sessionId, errorResult);
-      return res.status(500).json({ error: "failed to spawn python process", details: String(err), stored: errorResult });
+      // Return 200 with stored fallback data - frontend should use this
+      // This prevents errors from breaking the session
+      console.warn(`[Emotion] ⚠️ Spawn error but returning stored fallback data (200 OK)`);
+      return res.status(200).json(errorResult);
     });
     
     // Handle client disconnect

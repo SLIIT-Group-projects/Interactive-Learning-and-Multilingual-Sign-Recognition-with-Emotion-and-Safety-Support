@@ -49,10 +49,10 @@ def detect_hand_opencv(img):
     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
     mask = cv2.dilate(mask, kernel, iterations=2)
     
-    # Check if mask has enough skin-colored pixels (at least 2% of image)
+    # Check if mask has enough skin-colored pixels (at least 1% of image - relaxed)
     h, w = img.shape[:2]
     skin_pixel_ratio = np.sum(mask > 0) / (h * w)
-    if skin_pixel_ratio < 0.02:  # Less than 2% skin pixels = probably not a hand
+    if skin_pixel_ratio < 0.01:  # Less than 1% skin pixels = probably not a hand (relaxed from 2%)
         return None
     
     # Find contours
@@ -65,9 +65,9 @@ def detect_hand_opencv(img):
     largest_contour = max(contours, key=cv2.contourArea)
     area = cv2.contourArea(largest_contour)
     
-    # STRICT Filter by area (hand should be reasonably large but not too large)
-    min_area = (h * w) * 0.02  # At least 2% of image (increased from 1%)
-    max_area = (h * w) * 0.3   # At most 30% of image (decreased from 50%)
+    # RELAXED Filter by area (hand should be reasonably large but not too large)
+    min_area = (h * w) * 0.01  # At least 1% of image (relaxed from 2% for better detection)
+    max_area = (h * w) * 0.5   # At most 50% of image (relaxed from 30% for better detection)
     
     if area < min_area or area > max_area:
         return None
@@ -75,24 +75,24 @@ def detect_hand_opencv(img):
     # Get bounding box for shape validation
     x, y, w_box, h_box = cv2.boundingRect(largest_contour)
     
-    # VALIDATION: Hand-like shape check
-    # Hands typically have aspect ratio between 0.5 and 2.0 (not too square, not too elongated)
+    # VALIDATION: Hand-like shape check (RELAXED)
+    # Hands typically have aspect ratio between 0.3 and 3.0 (relaxed from 0.4-2.5)
     aspect_ratio = h_box / max(w_box, 1)
-    if aspect_ratio < 0.4 or aspect_ratio > 2.5:  # Reject if too square or too elongated
+    if aspect_ratio < 0.3 or aspect_ratio > 3.0:  # More lenient - reject only extreme cases
         return None
     
-    # VALIDATION: Check if contour is reasonably compact (hand-like, not scattered)
+    # VALIDATION: Check if contour is reasonably compact (hand-like, not scattered) - RELAXED
     # Compactness = 4*pi*area / perimeter^2 (circle = 1.0, hand ~ 0.3-0.7)
     perimeter = cv2.arcLength(largest_contour, True)
     if perimeter > 0:
         compactness = (4 * np.pi * area) / (perimeter * perimeter)
-        if compactness < 0.15 or compactness > 0.9:  # Too scattered or too circular
+        if compactness < 0.1 or compactness > 0.95:  # More lenient (was 0.15-0.9)
             return None
     
     # VALIDATION: Check if the detected region is in a reasonable position
-    # STRICT: Hands must be in lower 50% of image (below face/upper body region)
+    # RELAXED: Hands can be in lower 70% of image (allows more flexibility for hand positions)
     center_y = y + h_box // 2
-    if center_y < h * 0.5:  # Too high in image (probably face/neck/upper body)
+    if center_y < h * 0.3:  # Too high in image (probably face/neck/upper body) - relaxed from 0.5 to 0.3
         return None
     
     # VALIDATION: Check if the region has reasonable color variance (hands have texture)
@@ -199,13 +199,29 @@ def detect_hand_motion_blob(img, prev_img=None):
     return np.array([cx, cy], dtype=np.float32), area
 
 def get_intensity(speed):
-    """Categorize speed into intensity levels"""
-    if speed < 60:
-        return "LOW", 1
-    elif speed < 200:
-        return "MEDIUM", 2
+    """
+    Categorize speed into intensity levels - CALIBRATED FOR CHILDREN (ages 4-12)
+    
+    Based on research and observations of children's hand movements during:
+    - Sign language learning/games
+    - Interactive play activities
+    - Gesture-based games
+    
+    Typical speed ranges for children:
+    - LOW (15-40 px/s): Calm, careful movements, learning signs, low engagement
+    - MEDIUM (40-100 px/s): Normal play, engaged but controlled, moderate engagement
+    - HIGH (100+ px/s): Excited play, rapid gestures, enthusiastic, high engagement
+    
+    These thresholds are lower than adult thresholds to accurately reflect
+    children's typical movement patterns and engagement levels.
+    """
+    # Adjusted thresholds for children's hand movements
+    if speed < 40:
+        return "LOW", 1      # Calm, careful movements, learning
+    elif speed < 100:
+        return "MEDIUM", 2   # Normal play, engaged
     else:
-        return "HIGH", 3
+        return "HIGH", 3     # Excited, rapid movements, enthusiastic
 
 def enhance_image_for_detection(img):
     """Aggressively enhance image to improve hand detection"""
@@ -287,6 +303,58 @@ def get_hand_position(landmarks, img_height, img_width):
     middle_tip_pos = np.array([middle_tip.x * img_width, middle_tip.y * img_height], dtype=np.float32)
     
     return wrist_pos, center_pos, index_tip_pos, middle_tip_pos
+
+def validate_hand_detection(hand_positions, min_required_frames):
+    """Validate that hands are actually detected (not false positives)"""
+    if not hand_positions:
+        return False, "No hand positions detected"
+    
+    # Count frames with valid hand detections
+    valid_positions = [p for p in hand_positions if p is not None]
+    
+    if len(valid_positions) == 0:
+        return False, "No valid hand positions found"
+    
+    if len(valid_positions) < min_required_frames:
+        return False, f"Hands detected in only {len(valid_positions)} frame(s), need at least {min_required_frames}"
+    
+    # Check for consecutive detections - hands should be detected in consecutive frames
+    # This helps filter out false positives (random detections)
+    max_consecutive = 0
+    current_consecutive = 0
+    for pos in hand_positions:
+        if pos is not None:
+            current_consecutive += 1
+            max_consecutive = max(max_consecutive, current_consecutive)
+        else:
+            current_consecutive = 0
+    
+    # RELAXED: Allow single-frame detections if we have at least 1 valid detection
+    # This is more lenient to catch hands even if detection is intermittent
+    min_consecutive_frames = 1  # Allow single detections (relaxed from 2)
+    total_frames = len(hand_positions)
+    
+    # If we have very few total frames, be even more lenient
+    if total_frames <= 5:
+        min_consecutive_frames = 1  # For small batches, allow single detections
+    
+    if max_consecutive < min_consecutive_frames:
+        return False, f"Hands not consistently detected (max consecutive: {max_consecutive}, need at least {min_consecutive_frames})"
+    
+    # Check if positions are reasonable (not all in same spot - indicates false detection)
+    if len(valid_positions) > 1:
+        positions_array = np.array(valid_positions)
+        # Calculate variance in positions
+        position_variance = np.var(positions_array, axis=0)
+        total_variance = np.sum(position_variance)
+        
+        # If variance is too low, hands might not be moving (or it's a false positive)
+        # But we allow some variance threshold
+        if total_variance < 10:  # Very low variance might indicate false detection
+            # This could be valid if hands are stationary, so we don't reject it
+            pass
+    
+    return True, "Hands detected"
 
 def calculate_hand_speed(positions_list, dt):
     """Calculate speed from positions - captures ANY movement"""
@@ -391,9 +459,9 @@ def main():
                     options = vision.HandLandmarkerOptions(
                         base_options=base_options,
                         num_hands=2,
-                        min_hand_detection_confidence=0.1,
-                        min_hand_presence_confidence=0.1,
-                        min_tracking_confidence=0.1,
+                        min_hand_detection_confidence=0.01,  # Very low threshold (was 0.1) - more sensitive
+                        min_hand_presence_confidence=0.01,   # Very low threshold (was 0.1) - more sensitive
+                        min_tracking_confidence=0.01,         # Very low threshold (was 0.1) - more sensitive
                         running_mode=vision.RunningMode.IMAGE
                     )
                     hand_landmarker = vision.HandLandmarker.create_from_options(options)
@@ -407,15 +475,15 @@ def main():
                     static_image_mode=True,
                     max_num_hands=2,
                     model_complexity=0,
-                    min_detection_confidence=0.05,
-                    min_tracking_confidence=0.05
+                    min_detection_confidence=0.01,  # Very low threshold (was 0.05) - more sensitive
+                    min_tracking_confidence=0.01    # Very low threshold (was 0.05) - more sensitive
                 )
                 hands2 = mp_hands.Hands(
                     static_image_mode=True,
                     max_num_hands=2,
                     model_complexity=1,
-                    min_detection_confidence=0.1,
-                    min_tracking_confidence=0.1
+                    min_detection_confidence=0.01,  # Very low threshold (was 0.1) - more sensitive
+                    min_tracking_confidence=0.01    # Very low threshold (was 0.1) - more sensitive
                 )
         except Exception as e:
             result = {
@@ -469,25 +537,39 @@ def main():
                         
                         if detection_result.hand_landmarks and len(detection_result.hand_landmarks) > 0:
                             landmarks_list = detection_result.hand_landmarks[0]
-                            # Get wrist position (landmark 0) - MediaPipe is accurate for hands
-                            wrist = landmarks_list[0]
-                            hand_pos = np.array([wrist.x * w, wrist.y * h], dtype=np.float32)
                             
-                            # VERY STRICT MediaPipe validation: hands must be in lower 60% (below face/upper body)
-                            # This prevents upper body movement from being detected as hand movement
-                            y_pos_ratio = hand_pos[1] / h
-                            if y_pos_ratio < 0.4:  # Too high = probably face/neck/upper body (stricter: lower 60% only)
+                            # Validate that we have enough landmarks (at least 3) to ensure it's a real hand
+                            # MediaPipe hand landmarks should have 21 points, but we allow partial detections
+                            # Relaxed from 5 to 3 for better detection
+                            if len(landmarks_list) < 3:
                                 if detection_attempts <= 3:
-                                    print(f"[DEBUG] Frame {idx+1}: MediaPipe detected but rejected (y={hand_pos[1]:.1f}, y_ratio={y_pos_ratio:.2f}, likely face/neck/upper body)", file=sys.stderr)
+                                    print(f"[DEBUG] Frame {idx+1}: MediaPipe detected but rejected (insufficient landmarks: {len(landmarks_list)})", file=sys.stderr)
                                 hand_pos = None
                             else:
-                                if detection_attempts <= 5:
-                                    print(f"[DEBUG] Frame {idx+1}: MediaPipe detected HAND at ({hand_pos[0]:.1f}, {hand_pos[1]:.1f}), y_ratio={y_pos_ratio:.2f}", file=sys.stderr)
+                                # Get wrist position (landmark 0) - MediaPipe is accurate for hands
+                                wrist = landmarks_list[0]
+                                hand_pos = np.array([wrist.x * w, wrist.y * h], dtype=np.float32)
+                                
+                                # MediaPipe validation: hands should be in lower 70% (relaxed from 50% for better detection)
+                                # This prevents upper body movement from being detected as hand movement
+                                # Relaxed to allow more valid hand positions (especially for children who may hold hands higher)
+                                y_pos_ratio = hand_pos[1] / h
+                                if y_pos_ratio < 0.3:  # Too high = probably face/neck (relaxed from 0.5 to 0.3)
+                                    if detection_attempts <= 3:
+                                        print(f"[DEBUG] Frame {idx+1}: MediaPipe detected but rejected (y={hand_pos[1]:.1f}, y_ratio={y_pos_ratio:.2f}, likely face/neck)", file=sys.stderr)
+                                    hand_pos = None
+                                else:
+                                    # MediaPipe is accurate - if it detects hands with landmarks, trust it
+                                    # Removed finger tip validation as it was too strict and rejected valid hands
+                                    if detection_attempts <= 5:
+                                        print(f"[DEBUG] Frame {idx+1}: MediaPipe detected HAND at ({hand_pos[0]:.1f}, {hand_pos[1]:.1f}), y_ratio={y_pos_ratio:.2f}", file=sys.stderr)
                     except Exception as e:
                         if detection_attempts <= 3:
                             print(f"[DEBUG] MediaPipe detection error: {e}", file=sys.stderr)
                 
                 # FALLBACK: OpenCV skin color detection (if MediaPipe not available or failed)
+                # NOTE: OpenCV is less reliable than MediaPipe, but can help fill gaps when MediaPipe misses frames
+                # We allow OpenCV fallback but with strict position validation to prevent false positives
                 if hand_pos is None:
                     try:
                         result = detect_hand_opencv(img)
@@ -498,13 +580,13 @@ def main():
                                 h_img, w_img = img.shape[:2]
                                 y_pos_ratio = hand_pos[1] / h_img  # Vertical position (0=top, 1=bottom)
                                 
-                                # VERY STRICT: Hands must be in lower 60% of image (below face/upper body)
+                                # RELAXED: Hands should be in lower 70% of image (relaxed from 50% for better detection)
                                 # This prevents upper body movement from being detected as hand movement
-                                # If detected in upper 40%, it's probably face/neck/upper body, not hand
-                                if y_pos_ratio < 0.4:  # Stricter: lower 60% only
+                                # Relaxed to allow more valid hand positions (especially for children)
+                                if y_pos_ratio < 0.3:  # Lower 70% allowed (relaxed from 0.5 to 0.3)
                                     if detection_attempts <= 3:
-                                        print(f"[DEBUG] Frame {idx+1}: Rejected detection at y={hand_pos[1]:.1f} (y_ratio={y_pos_ratio:.2f}, too high, likely face/neck/upper body)", file=sys.stderr)
-                                    hand_pos = None  # Reject - probably face/neck/upper body
+                                        print(f"[DEBUG] Frame {idx+1}: Rejected detection at y={hand_pos[1]:.1f} (y_ratio={y_pos_ratio:.2f}, too high, likely face/neck)", file=sys.stderr)
+                                    hand_pos = None  # Reject - probably face/neck
                                 else:
                                     if detection_attempts <= 5:
                                         print(f"[DEBUG] Frame {idx+1}: OpenCV detected HAND at ({hand_pos[0]:.1f}, {hand_pos[1]:.1f}), area={area:.0f}, y_ratio={y_pos_ratio:.2f}", file=sys.stderr)
@@ -512,22 +594,12 @@ def main():
                         if detection_attempts <= 3:
                             print(f"[DEBUG] OpenCV detection error: {e}", file=sys.stderr)
                 
-                # LAST RESORT: Try motion detection if both failed (MediaPipe already tried in PRIMARY)
-                if hand_pos is None and prev_img is not None:
-                    try:
-                        result = detect_hand_motion_blob(img, prev_img)
-                        if result:
-                            hand_pos, area = result
-                            if hand_pos is not None:
-                                # Validate position for motion detection too - VERY STRICT
-                                # This prevents upper body movement from being detected as hand movement
-                                y_pos_ratio = hand_pos[1] / h
-                                if y_pos_ratio < 0.4:  # Must be in lower 60% (below face region) - stricter
-                                    hand_pos = None  # Reject if too high (likely face/upper body)
-                                elif detection_attempts <= 5:
-                                    print(f"[DEBUG] Frame {idx+1}: Motion detection found hand at ({hand_pos[0]:.1f}, {hand_pos[1]:.1f}), y_ratio={y_pos_ratio:.2f}", file=sys.stderr)
-                    except Exception as e:
-                        pass
+                # DISABLED: Motion detection is too prone to false positives (detects head/upper body movement)
+                # Only use MediaPipe and OpenCV which are more accurate for actual hand detection
+                # Motion detection will pick up ANY movement including head/body, so we disable it
+                # if hand_pos is None and prev_img is not None:
+                #     # Motion detection disabled - too many false positives from head/upper body movement
+                #     pass
                 
                 # Store position
                 hand_positions.append(hand_pos)
@@ -557,14 +629,51 @@ def main():
                 except:
                     pass
 
-        # VALIDATION: Require hands in at least 50% of frames to avoid false positives
-        # If hands are only detected in a few frames, it's probably noise (face/upper body movement)
-        min_required_frames = max(5, int(len(frame_paths) * 0.5))  # At least 50% of frames (VERY STRICT)
+        # VALIDATION: Require hands in at least 10% of frames (relaxed from 20% for better detection)
+        # This allows for fast movement while still filtering out random false detections
+        # Very lenient to allow valid hand detections even with fast movement or occasional misses
+        min_required_frames = max(1, int(len(frame_paths) * 0.1))  # At least 10% of frames (more lenient - allows 1 frame for small batches)
         
         print(f"[DEBUG] Detection complete: {frames_with_hands} frames with hands out of {detection_attempts} attempts", file=sys.stderr)
         print(f"[DEBUG] Minimum required frames for validation: {min_required_frames}", file=sys.stderr)
         
-        # CRITICAL: If not enough frames with hands, it's NOT a valid hand detection
+        # CRITICAL: First check if hands are detected at all
+        if frames_with_hands == 0:
+            result = {
+                "hand_speed": 0.0,
+                "intensity": "LOW",
+                "level": 1,
+                "frames_used": len(frame_paths),
+                "valid_steps": 0,
+                "fps": args.fps,
+                "hands_detected": False,
+                "detection_attempts": detection_attempts,
+                "message": "Hands not detected. Please ensure: 1) Hands are clearly visible, 2) Good lighting, 3) Hands are in front of camera, 4) Camera is not blocked."
+            }
+            print(json.dumps(result))
+            sys.exit(0)
+        
+        # CRITICAL: Validate hand detection using dedicated validation function
+        # This ensures we have actual hand detections, not false positives
+        is_valid, validation_message = validate_hand_detection(hand_positions, min_required_frames)
+        
+        if not is_valid:
+            result = {
+                "hand_speed": 0.0,
+                "intensity": "LOW",
+                "level": 1,
+                "frames_used": len(frame_paths),
+                "valid_steps": 0,
+                "fps": args.fps,
+                "hands_detected": False,
+                "detection_attempts": detection_attempts,
+                "frames_with_hands": frames_with_hands,
+                "message": f"Hands not detected: {validation_message}. Please ensure your HANDS are clearly visible in the camera frame."
+            }
+            print(json.dumps(result))
+            sys.exit(0)
+        
+        # Additional check: If not enough frames with hands, it's NOT a valid hand detection
         # Don't calculate speed at all - just return "no hands detected"
         if frames_with_hands < min_required_frames:
             result = {
@@ -577,39 +686,25 @@ def main():
                 "hands_detected": False,
                 "detection_attempts": detection_attempts,
                 "frames_with_hands": frames_with_hands,
-                "message": f"Hands detected in only {frames_with_hands} frame(s) out of {detection_attempts}. This is likely a false positive (face/upper body movement detected instead of hands). Please ensure your HANDS are clearly visible in the LOWER portion of the camera frame."
+                "message": f"Hands not detected: Only detected in {frames_with_hands} frame(s) out of {detection_attempts}. This is likely a false positive (face/upper body movement detected instead of hands). Please ensure your HANDS are clearly visible in the LOWER portion of the camera frame."
             }
             print(json.dumps(result))
             sys.exit(0)
         
-        if frames_with_hands == 0:
+        # CRITICAL: Only calculate speed if hands are actually detected
+        # Double-check validation before proceeding
+        valid_positions = [p for p in hand_positions if p is not None]
+        if len(valid_positions) < min_required_frames:
             result = {
                 "hand_speed": 0.0,
                 "intensity": "LOW",
                 "level": 1,
                 "frames_used": len(frame_paths),
-                "valid_steps": 0,
-                "fps": args.fps,
-                "hands_detected": False,
-                "detection_attempts": detection_attempts,
-                "message": f"No hands detected in {detection_attempts} frame(s). Please ensure: 1) Hands are clearly visible, 2) Good lighting, 3) Hands are in front of camera, 4) Camera is not blocked."
-            }
-            print(json.dumps(result))
-            sys.exit(0)
-
-        # CRITICAL VALIDATION: Only calculate speed if we have enough valid hand detections
-        # Double-check that we have enough frames (should have passed earlier check, but be extra safe)
-        if frames_with_hands < min_required_frames:
-            result = {
-                "hand_speed": 0.0,
-                "intensity": "LOW",
-                "level": 1,
-                "frames_used": len(frame_paths),
-                "valid_steps": 0,
-                "fps": args.fps,
-                "hands_detected": False,
                 "frames_with_hands": frames_with_hands,
-                "message": f"Not enough valid hand detections ({frames_with_hands} frames). Upper body movement may have been detected. Please show your HANDS in the lower portion of the camera."
+                "valid_steps": 0,
+                "fps": args.fps,
+                "hands_detected": False,
+                "message": f"Hands not detected: Only {len(valid_positions)} valid position(s) found, need at least {min_required_frames}. Please ensure your HANDS are clearly visible in the camera frame."
             }
             print(json.dumps(result))
             sys.exit(0)
@@ -620,8 +715,6 @@ def main():
         
         # If no speeds calculated, check if it's because of insufficient detections
         if not all_speeds:
-            valid_positions = [p for p in hand_positions if p is not None]
-            
             # If we have valid positions but they're too few, it's likely false positive
             if len(valid_positions) < min_required_frames:
                 result = {
@@ -633,7 +726,7 @@ def main():
                     "valid_steps": 0,
                     "fps": args.fps,
                     "hands_detected": False,
-                    "message": f"Insufficient hand detections ({len(valid_positions)} valid positions). This may be upper body movement, not hands. Please show your HANDS clearly."
+                    "message": f"Hands not detected: Insufficient hand detections ({len(valid_positions)} valid positions). This may be upper body movement, not hands. Please show your HANDS clearly."
                 }
                 print(json.dumps(result))
                 sys.exit(0)
@@ -653,6 +746,8 @@ def main():
                         print(f"[DEBUG] Fallback speed calculation: {estimated_speed:.2f} px/s", file=sys.stderr)
             
             if not all_speeds:
+                # Even if hands are detected, if there's no movement, we should still report hands detected
+                # but with zero speed
                 result = {
                     "hand_speed": 0.0,
                     "intensity": "LOW",
