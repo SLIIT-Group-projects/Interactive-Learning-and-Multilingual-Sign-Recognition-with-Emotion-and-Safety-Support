@@ -74,6 +74,11 @@ const ParentDashboard = ({ navigation }) => {
     );
   };
 
+  const handleNavigateToSignDetection = () => {
+    // Navigate to Sign Detection screen using React Navigation
+    navigation.navigate('SignDetection');
+  };
+
   return (
     <SafeAreaView className="flex-1 bg-blue-50">
       <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
@@ -242,6 +247,30 @@ const ParentDashboard = ({ navigation }) => {
             </View>
           </TouchableOpacity>
           
+          {/* Sign Detection Button */}
+          <TouchableOpacity
+            onPress={handleNavigateToSignDetection}
+            className="bg-blue-500 rounded-2xl p-5 mb-6 shadow-lg"
+            activeOpacity={0.8}
+          >
+            <View className="flex-row items-center justify-between">
+              <View className="flex-row items-center flex-1">
+                <View className="bg-white rounded-full p-3 mr-4">
+                  <MaterialIcons name="sign-language" size={32} color="#3b82f6" />
+                </View>
+                <View className="flex-1">
+                  <Text className="text-xl font-bold text-white mb-1">
+                    Sign Detection
+                  </Text>
+                  <Text className="text-sm text-blue-100">
+                    Real-time sign language recognition
+                  </Text>
+                </View>
+              </View>
+              <MaterialIcons name="arrow-forward" size={24} color="#ffffff" />
+            </View>
+          </TouchableOpacity>
+
           {/* Hazard Detection Button */}
           <TouchableOpacity
             onPress={() => navigation.navigate('HazardDetection')}

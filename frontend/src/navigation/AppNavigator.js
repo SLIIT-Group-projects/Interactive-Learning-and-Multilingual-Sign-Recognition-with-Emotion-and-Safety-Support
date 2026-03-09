@@ -15,6 +15,7 @@ import { HazardDetectionScreen } from '../screens/common';
 import PlacesScreen from '../screens/parent/PlacesScreen';
 import HazardHistoryScreen from '../screens/parent/HazardHistoryScreen';
 import ParentAlertDetailsScreen from '../screens/parent/ParentAlertDetailsScreen';
+import SignDetectionScreen from '../../app/(tabs)/sign-detection';
 import notificationService from '../../services/notification.service';
 import { registerPushToken, setupNotificationListener } from '../services/pushNotification.service';
 
@@ -233,6 +234,7 @@ export default function AppNavigator({ navigationRef }) {
             <Stack.Screen name="HazardHistory" component={HazardHistoryScreen} />
             <Stack.Screen name="ParentAlertDetails" component={ParentAlertDetailsScreen} />
             <Stack.Screen name="HazardDetection" component={HazardDetectionScreen} />
+            <Stack.Screen name="SignDetection" component={SignDetectionScreen} />
             <Stack.Screen name="Login" component={LoginScreen} />
           </>
         ) : isChild ? (

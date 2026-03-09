@@ -1,6 +1,7 @@
 import { initializeApp } from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
 import { initializeAuth, getReactNativePersistence, getAuth } from 'firebase/auth';
+import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Firebase configuration from environment variables
@@ -50,19 +51,33 @@ try {
     app = initializeApp(firebaseConfig);
     db = getFirestore(app);
     
-    // Initialize Auth with AsyncStorage for persistence
+    // Initialize Auth - use platform-specific initialization
     try {
-      auth = initializeAuth(app, {
-        persistence: getReactNativePersistence(AsyncStorage),
-      });
-      console.log('✅ Firebase initialized successfully with Auth persistence');
+      if (Platform.OS === 'web') {
+        // For web, use getAuth (browser handles persistence automatically)
+        auth = getAuth(app);
+        console.log('✅ Firebase initialized successfully (Web)');
+      } else {
+        // For React Native (iOS/Android), use initializeAuth with AsyncStorage persistence
+        auth = initializeAuth(app, {
+          persistence: getReactNativePersistence(AsyncStorage),
+        });
+        console.log('✅ Firebase initialized successfully with Auth persistence (React Native)');
+      }
     } catch (authError) {
       // If auth is already initialized, get the existing instance
       if (authError.code === 'auth/already-initialized') {
         auth = getAuth(app);
         console.log('✅ Firebase initialized (Auth already initialized)');
       } else {
-        throw authError;
+        console.error('❌ Auth initialization error:', authError);
+        // Fallback to getAuth for web compatibility
+        if (Platform.OS === 'web') {
+          auth = getAuth(app);
+          console.log('✅ Firebase Auth fallback initialized (Web)');
+        } else {
+          throw authError;
+        }
       }
     }
   } else {

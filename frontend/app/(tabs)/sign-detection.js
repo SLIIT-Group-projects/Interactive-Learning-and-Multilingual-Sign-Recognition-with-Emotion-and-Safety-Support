@@ -206,15 +206,14 @@ export default function SignDetectionScreen() {
 
     if (filteredSequence.length === 0) return "";
 
-    // Simple rule-based grammar
-    // Capitalize first letter
+    // Capitalize first letter of first word, make rest lowercase
     let sentence =
       filteredSequence[0].charAt(0).toUpperCase() +
-      filteredSequence[0].slice(1);
+      filteredSequence[0].slice(1).toLowerCase();
 
-    // Add spaces between signs
+    // Add spaces between signs (all subsequent words lowercase)
     for (let i = 1; i < filteredSequence.length; i++) {
-      sentence += " " + filteredSequence[i];
+      sentence += " " + filteredSequence[i].toLowerCase();
     }
 
     // Add period at the end
