@@ -11,13 +11,19 @@ export default function TabLayout() {
 
   return (
     <Tabs
-      initialRouteName="sign-detection"
+      initialRouteName="index"
       screenOptions={{
         tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
         headerShown: false,
         tabBarButton: HapticTab,
         tabBarStyle: { display: 'none' }, // Hide tab bar since there's only one tab
       }}>
+      <Tabs.Screen
+        name="index"
+        options={{
+          href: null, // Hide from tab bar
+        }}
+      />
       <Tabs.Screen
         name="sign-detection"
         options={{
