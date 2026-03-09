@@ -1,51 +1,57 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { StyleSheet, View, TouchableOpacity, Alert, ActivityIndicator, TextInput, Modal, ScrollView } from 'react-native';
-import { CameraView, useCameraPermissions } from 'expo-camera';
-import * as Speech from 'expo-speech';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { IconSymbol } from '@/components/ui/icon-symbol';
-import { Image } from 'react-native';
+import React, { useState, useRef, useEffect } from "react";
+import {
+  StyleSheet,
+  View,
+  TouchableOpacity,
+  Alert,
+  ActivityIndicator,
+  TextInput,
+  Modal,
+  ScrollView,
+} from "react-native";
+import { CameraView, useCameraPermissions } from "expo-camera";
+import * as Speech from "expo-speech";
+import { ThemedText } from "@/components/themed-text";
+import { ThemedView } from "@/components/themed-view";
+import { IconSymbol } from "@/components/ui/icon-symbol";
+import { Image } from "react-native";
 
-
-import closeIcon from '@/assets/icons/close.png';
-import flipIcon from '@/assets/icons/flip.png';
-import handIcon from '@/assets/icons/hand.png';
-import playIcon from '@/assets/icons/play.png';
-import stopIcon from '@/assets/icons/stop.png';
-import slIcon from '@/assets/icons/SL.png';
-import usaIcon from '@/assets/icons/USA.png';
-
-
+import closeIcon from "@/assets/icons/close.png";
+import flipIcon from "@/assets/icons/flip.png";
+import handIcon from "@/assets/icons/hand.png";
+import playIcon from "@/assets/icons/play.png";
+import stopIcon from "@/assets/icons/stop.png";
+import slIcon from "@/assets/icons/SL.png";
+import usaIcon from "@/assets/icons/USA.png";
 
 // For local development: 'http://localhost:5000'
-// For device testing: 'http://YOUR_COMPUTER_IP:5000' (e.g., 'http://192.168.1.100:5000')
+// For device testing: 'http://YOUR_COMPUTER_IP:5000' (e.g., 'http://192.168.1.9:5000')
 const API_BASE_URL = __DEV__
-  ? 'http://192.168.8.151:5000'  // Change to your computer's IP when testing on device
-  : 'https://your-production-api.com'; // Update with your production API URL
+  ? "http://192.168.8.151:5000" // Change to your computer's IP when testing on device
+  : "https://your-production-api.com"; // Update with your production API URL
 
 export default function SignDetectionScreen() {
-  const [facing, setFacing] = useState('front');
+  const [facing, setFacing] = useState("front");
   const [permission, requestPermission] = useCameraPermissions();
   const [isDetecting, setIsDetecting] = useState(false);
   const [isRealTimeMode, setIsRealTimeMode] = useState(false);
-  const [translatedText, setTranslatedText] = useState('');
+  const [translatedText, setTranslatedText] = useState("");
   const [confidence, setConfidence] = useState(0);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [apiUrl, setApiUrl] = useState(API_BASE_URL);
   const [showApiInput, setShowApiInput] = useState(false);
-  const [selectedLanguage, setSelectedLanguage] = useState('sinhala');
+  const [selectedLanguage, setSelectedLanguage] = useState("sinhala");
   const [showLanguagePicker, setShowLanguagePicker] = useState(false);
-  const [connectionStatus, setConnectionStatus] = useState('unknown'); // 'connected', 'disconnected', 'checking', 'unknown'
+  const [connectionStatus, setConnectionStatus] = useState("unknown"); // 'connected', 'disconnected', 'checking', 'unknown'
 
   // Sign sequence and detection state
   const [signSequence, setSignSequence] = useState([]); // Array of detected signs
-  const [currentSentence, setCurrentSentence] = useState(''); // Current sentence being built
+  const [currentSentence, setCurrentSentence] = useState(""); // Current sentence being built
   const [frameBuffer, setFrameBuffer] = useState([]); // Buffer for consistent detection
   const [lastDetectedSign, setLastDetectedSign] = useState(null); // Last confirmed sign
   const [holdSteadyCount, setHoldSteadyCount] = useState(0); // Count of consistent frames
   const [isHoldingSteady, setIsHoldingSteady] = useState(false); // User is holding sign steady
-  const [detectionFeedback, setDetectionFeedback] = useState(''); // Live feedback message
+  const [detectionFeedback, setDetectionFeedback] = useState(""); // Live feedback message
   const [sentenceFinalizeTimeout, setSentenceFinalizeTimeout] = useState(null); // Timeout for sentence finalization
 
   const cameraRef = useRef(null);
@@ -57,39 +63,52 @@ export default function SignDetectionScreen() {
   const isRealTimeModeRef = useRef(false); // Track real-time mode state
 
   const languages = [
-    { value: 'sinhala', label: 'Sinhala Sign Language', icon: slIcon, available: true },
-    { value: 'asl', label: 'American Sign Language', icon: usaIcon, available: true },
+    {
+      value: "sinhala",
+      label: "Sinhala Sign Language",
+      icon: slIcon,
+      available: true,
+    },
+    {
+      value: "asl",
+      label: "American Sign Language",
+      icon: usaIcon,
+      available: true,
+    },
   ];
 
   // Check connection status
   const checkConnection = async (showAlert = false) => {
-    setConnectionStatus('checking');
+    setConnectionStatus("checking");
     try {
       const response = await fetchWithTimeout(
         `${apiUrl}/health?language=${selectedLanguage}`,
-        { method: 'GET' },
-        5000 // 5 second timeout for quick check
+        { method: "GET" },
+        5000, // 5 second timeout for quick check
       );
       const data = await response.json();
-      if (data.status === 'healthy' && data.model_loaded) {
-        setConnectionStatus('connected');
+      if (data.status === "healthy" && data.model_loaded) {
+        setConnectionStatus("connected");
         if (showAlert) {
-          Alert.alert('✅ Connected!', 'Server is ready to use!');
+          Alert.alert("✅ Connected!", "Server is ready to use!");
         }
         return true;
       } else {
-        setConnectionStatus('disconnected');
+        setConnectionStatus("disconnected");
         if (showAlert) {
-          Alert.alert('⚠️ Server Issue', 'Server responded but model is not loaded.');
+          Alert.alert(
+            "⚠️ Server Issue",
+            "Server responded but model is not loaded.",
+          );
         }
         return false;
       }
     } catch (error) {
-      setConnectionStatus('disconnected');
+      setConnectionStatus("disconnected");
       if (showAlert) {
         Alert.alert(
-          '❌ Cannot Connect',
-          `Cannot reach server at ${apiUrl}\n\nMake sure:\n✨ Backend server is running\n✨ Correct IP address\n✨ Same Wi-Fi network`
+          "❌ Cannot Connect",
+          `Cannot reach server at ${apiUrl}\n\nMake sure:\n✨ Backend server is running\n✨ Correct IP address\n✨ Same Wi-Fi network`,
         );
       }
       return false;
@@ -98,7 +117,7 @@ export default function SignDetectionScreen() {
 
   useEffect(() => {
     isMountedRef.current = true;
-    
+
     // Request camera permission on mount
     if (!permission?.granted) {
       requestPermission();
@@ -106,24 +125,24 @@ export default function SignDetectionScreen() {
 
     // Check connection on mount and when API URL changes
     checkConnection();
-    
+
     // Reset buffers when language changes
     consecutiveFramesRef.current = 0;
     lastSignRef.current = null;
     setHoldSteadyCount(0);
     setIsHoldingSteady(false);
-    setDetectionFeedback('');
-    
+    setDetectionFeedback("");
+
     // Reset ASL backend buffer when switching to ASL
-    if (selectedLanguage === 'asl') {
+    if (selectedLanguage === "asl") {
       fetch(`${apiUrl}/reset-asl-buffer`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
       }).catch(() => {
         // Silently fail if backend is not available yet
       });
     }
-    
+
     // Cleanup on unmount
     return () => {
       isMountedRef.current = false;
@@ -139,7 +158,7 @@ export default function SignDetectionScreen() {
   }, [permission, apiUrl, selectedLanguage]);
 
   const toggleCameraFacing = () => {
-    setFacing((current) => (current === 'back' ? 'front' : 'back'));
+    setFacing((current) => (current === "back" ? "front" : "back"));
   };
 
   // Configuration constants
@@ -161,14 +180,20 @@ export default function SignDetectionScreen() {
     return Promise.race([
       fetch(url, options),
       new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Request timeout - server took too long to respond')), timeout)
-      )
+        setTimeout(
+          () =>
+            reject(
+              new Error("Request timeout - server took too long to respond"),
+            ),
+          timeout,
+        ),
+      ),
     ]);
   };
 
   // Rule-based grammar for converting sign sequence to sentence
   const buildSentenceFromSequence = (sequence) => {
-    if (sequence.length === 0) return '';
+    if (sequence.length === 0) return "";
 
     // Filter out consecutive duplicate signs
     const filteredSequence = [];
@@ -179,19 +204,21 @@ export default function SignDetectionScreen() {
       }
     }
 
-    if (filteredSequence.length === 0) return '';
+    if (filteredSequence.length === 0) return "";
 
     // Simple rule-based grammar
     // Capitalize first letter
-    let sentence = filteredSequence[0].charAt(0).toUpperCase() + filteredSequence[0].slice(1);
+    let sentence =
+      filteredSequence[0].charAt(0).toUpperCase() +
+      filteredSequence[0].slice(1);
 
     // Add spaces between signs
     for (let i = 1; i < filteredSequence.length; i++) {
-      sentence += ' ' + filteredSequence[i];
+      sentence += " " + filteredSequence[i];
     }
 
     // Add period at the end
-    sentence += '.';
+    sentence += ".";
 
     return sentence;
   };
@@ -204,7 +231,9 @@ export default function SignDetectionScreen() {
     // Handle no hand detected case
     if (result.no_hand) {
       if (isMountedRef.current && isRealTimeModeRef.current) {
-        setDetectionFeedback('👋 No hand detected. Please show your hand to the camera.');
+        setDetectionFeedback(
+          "👋 No hand detected. Please show your hand to the camera.",
+        );
         setIsHoldingSteady(false);
         setHoldSteadyCount(0);
       }
@@ -213,7 +242,12 @@ export default function SignDetectionScreen() {
       return null;
     }
 
-    if (!result.prediction || !isMountedRef.current || !isRealTimeModeRef.current) return null;
+    if (
+      !result.prediction ||
+      !isMountedRef.current ||
+      !isRealTimeModeRef.current
+    )
+      return null;
 
     const { prediction, english_translation, confidence } = result;
     // Use English translation if available, otherwise use prediction
@@ -221,9 +255,9 @@ export default function SignDetectionScreen() {
     const now = Date.now();
 
     // Language-specific processing
-    if (selectedLanguage === 'sinhala') {
+    if (selectedLanguage === "sinhala") {
       return processSinhalaDetection(result, displayText, confidence, now);
-    } else if (selectedLanguage === 'asl') {
+    } else if (selectedLanguage === "asl") {
       return processAslDetection(result, displayText, confidence, now);
     }
 
@@ -240,7 +274,9 @@ export default function SignDetectionScreen() {
     // Ignore low confidence predictions
     if (confidence < DETECTION_CONFIG.MIN_CONFIDENCE) {
       if (isMountedRef.current && isRealTimeModeRef.current) {
-        setDetectionFeedback(`Confidence too low: ${(confidence * 100).toFixed(0)}% (need ${(DETECTION_CONFIG.MIN_CONFIDENCE * 100).toFixed(0)}%)`);
+        setDetectionFeedback(
+          `Confidence too low: ${(confidence * 100).toFixed(0)}% (need ${(DETECTION_CONFIG.MIN_CONFIDENCE * 100).toFixed(0)}%)`,
+        );
         setIsHoldingSteady(false);
         setHoldSteadyCount(0);
       }
@@ -258,17 +294,30 @@ export default function SignDetectionScreen() {
 
     // Update hold steady feedback
     setHoldSteadyCount(consecutiveFramesRef.current);
-    setIsHoldingSteady(consecutiveFramesRef.current >= DETECTION_CONFIG.REQUIRED_CONSECUTIVE_FRAMES);
+    setIsHoldingSteady(
+      consecutiveFramesRef.current >=
+        DETECTION_CONFIG.REQUIRED_CONSECUTIVE_FRAMES,
+    );
 
-    if (consecutiveFramesRef.current < DETECTION_CONFIG.REQUIRED_CONSECUTIVE_FRAMES) {
-      setDetectionFeedback(`Hold steady... ${consecutiveFramesRef.current}/${DETECTION_CONFIG.REQUIRED_CONSECUTIVE_FRAMES} frames (${(confidence * 100).toFixed(0)}% confidence)`);
+    if (
+      consecutiveFramesRef.current <
+      DETECTION_CONFIG.REQUIRED_CONSECUTIVE_FRAMES
+    ) {
+      setDetectionFeedback(
+        `Hold steady... ${consecutiveFramesRef.current}/${DETECTION_CONFIG.REQUIRED_CONSECUTIVE_FRAMES} frames (${(confidence * 100).toFixed(0)}% confidence)`,
+      );
       return null; // Not enough consistent frames yet
     }
 
     // Check for duplicate prevention
     const timeSinceLastSign = now - lastSignTimeRef.current;
-    if (lastDetectedSign === result.prediction && timeSinceLastSign < DETECTION_CONFIG.DUPLICATE_PREVENTION_DELAY) {
-      setDetectionFeedback(`Sign detected! (waiting ${DETECTION_CONFIG.DUPLICATE_PREVENTION_DELAY - timeSinceLastSign}ms to prevent duplicates)`);
+    if (
+      lastDetectedSign === result.prediction &&
+      timeSinceLastSign < DETECTION_CONFIG.DUPLICATE_PREVENTION_DELAY
+    ) {
+      setDetectionFeedback(
+        `Sign detected! (waiting ${DETECTION_CONFIG.DUPLICATE_PREVENTION_DELAY - timeSinceLastSign}ms to prevent duplicates)`,
+      );
       return null;
     }
 
@@ -284,9 +333,13 @@ export default function SignDetectionScreen() {
     }
 
     // Filter out invalid predictions (backend returns "..." when sequence buffer is too short)
-    if (result.prediction === "..." || result.prediction === null || !result.prediction) {
+    if (
+      result.prediction === "..." ||
+      result.prediction === null ||
+      !result.prediction
+    ) {
       if (isMountedRef.current && isRealTimeModeRef.current) {
-        setDetectionFeedback('📹 Building sequence...');
+        setDetectionFeedback("📹 Building sequence...");
         setIsHoldingSteady(false);
         setHoldSteadyCount(1); // Show progress indicator
       }
@@ -296,7 +349,9 @@ export default function SignDetectionScreen() {
     // Ignore low confidence predictions
     if (confidence < DETECTION_CONFIG.ASL_MIN_CONFIDENCE) {
       if (isMountedRef.current && isRealTimeModeRef.current) {
-        setDetectionFeedback(`📹 Low confidence: ${(confidence * 100).toFixed(0)}%`);
+        setDetectionFeedback(
+          `📹 Low confidence: ${(confidence * 100).toFixed(0)}%`,
+        );
         setIsHoldingSteady(false);
         setHoldSteadyCount(1); // Show progress indicator
       }
@@ -305,8 +360,13 @@ export default function SignDetectionScreen() {
 
     // Check for duplicate prevention (~1 second delay for ASL)
     const timeSinceLastSign = now - lastSignTimeRef.current;
-    if (lastDetectedSign === result.prediction && timeSinceLastSign < DETECTION_CONFIG.ASL_DUPLICATE_PREVENTION_DELAY) {
-      setDetectionFeedback(`📹 Detected! (waiting ${DETECTION_CONFIG.ASL_DUPLICATE_PREVENTION_DELAY - timeSinceLastSign}ms to prevent duplicates)`);
+    if (
+      lastDetectedSign === result.prediction &&
+      timeSinceLastSign < DETECTION_CONFIG.ASL_DUPLICATE_PREVENTION_DELAY
+    ) {
+      setDetectionFeedback(
+        `📹 Detected! (waiting ${DETECTION_CONFIG.ASL_DUPLICATE_PREVENTION_DELAY - timeSinceLastSign}ms to prevent duplicates)`,
+      );
       setIsHoldingSteady(true); // Show that we detected something
       setHoldSteadyCount(1);
       return null;
@@ -316,7 +376,9 @@ export default function SignDetectionScreen() {
     // Backend handles sequence buffering and motion analysis
     setIsHoldingSteady(true);
     setHoldSteadyCount(1);
-    setDetectionFeedback(`✅ "${displayText}" detected! (${(confidence * 100).toFixed(0)}% confidence)`);
+    setDetectionFeedback(
+      `✅ "${displayText}" detected! (${(confidence * 100).toFixed(0)}% confidence)`,
+    );
     return confirmSign(displayText, result.prediction, confidence, now);
   };
 
@@ -329,10 +391,12 @@ export default function SignDetectionScreen() {
 
     setLastDetectedSign(prediction);
     lastSignTimeRef.current = now;
-    setDetectionFeedback(`✅ "${displayText}" added! (${(confidence * 100).toFixed(0)}% confidence)`);
+    setDetectionFeedback(
+      `✅ "${displayText}" added! (${(confidence * 100).toFixed(0)}% confidence)`,
+    );
 
     // Add to sequence (using English translation for display)
-    setSignSequence(prev => {
+    setSignSequence((prev) => {
       const newSequence = [...prev, displayText];
       const newSentence = buildSentenceFromSequence(newSequence);
       if (isMountedRef.current) {
@@ -366,13 +430,13 @@ export default function SignDetectionScreen() {
       const finalSentence = buildSentenceFromSequence(signSequence);
       setTranslatedText(finalSentence);
       setSignSequence([]);
-      setCurrentSentence('');
+      setCurrentSentence("");
       setLastDetectedSign(null);
-      setDetectionFeedback('Sentence completed! 👏');
+      setDetectionFeedback("Sentence completed! 👏");
 
       // Clear feedback after 2 seconds
       setTimeout(() => {
-        setDetectionFeedback('');
+        setDetectionFeedback("");
       }, 2000);
     }
 
@@ -397,17 +461,18 @@ export default function SignDetectionScreen() {
       // Language-specific capture settings
       // ASL: Lower quality for faster capture (live-frame approach)
       // Sinhala: Higher quality for static sign detection
-      const captureOptions = selectedLanguage === 'asl' 
-        ? {
-            quality: 0.6,  // Lower quality for faster capture
-            base64: true,
-            skipProcessing: true,  // Skip processing for speed
-          }
-        : {
-            quality: 0.8,  // Higher quality for static signs
-            base64: true,
-            skipProcessing: false,
-          };
+      const captureOptions =
+        selectedLanguage === "asl"
+          ? {
+              quality: 0.6, // Lower quality for faster capture
+              base64: true,
+              skipProcessing: true, // Skip processing for speed
+            }
+          : {
+              quality: 0.8, // Higher quality for static signs
+              base64: true,
+              skipProcessing: false,
+            };
 
       // Double-check camera ref before taking picture
       if (!cameraRef.current) {
@@ -423,23 +488,23 @@ export default function SignDetectionScreen() {
       }
 
       if (!photo?.base64) {
-        throw new Error('Failed to capture image');
+        throw new Error("Failed to capture image");
       }
 
       // Send to backend API with selected language and timeout
       const response = await fetchWithTimeout(
         `${apiUrl}/predict`,
         {
-          method: 'POST',
+          method: "POST",
           headers: {
-            'Content-Type': 'application/json',
+            "Content-Type": "application/json",
           },
           body: JSON.stringify({
             image: photo.base64,
             language: selectedLanguage,
           }),
         },
-        30000 // 30 second timeout
+        30000, // 30 second timeout
       );
 
       if (!response.ok) {
@@ -449,10 +514,10 @@ export default function SignDetectionScreen() {
       const data = await response.json();
 
       // Handle no hand detected case
-      if (!data.success && data.error === 'no_hand_detected') {
+      if (!data.success && data.error === "no_hand_detected") {
         return {
           no_hand: true,
-          message: data.message || 'No hand detected',
+          message: data.message || "No hand detected",
           prediction: null,
           english_translation: null,
           confidence: 0,
@@ -467,33 +532,46 @@ export default function SignDetectionScreen() {
           no_hand: false,
         };
       } else {
-        throw new Error(data.error || 'Unknown error');
+        throw new Error(data.error || "Unknown error");
       }
     } catch (error) {
       // Don't log or throw errors if component is unmounted or real-time mode stopped
-      if (!isMountedRef.current || (isRealTimeMode && !isRealTimeModeRef.current)) {
+      if (
+        !isMountedRef.current ||
+        (isRealTimeMode && !isRealTimeModeRef.current)
+      ) {
         return null;
       }
 
-      console.error('Error in captureAndDetect:', error);
+      console.error("Error in captureAndDetect:", error);
 
       // Handle camera unmount error gracefully
-      if (error.message.includes('Camera unmounted') || error.message.includes('unmounted')) {
+      if (
+        error.message.includes("Camera unmounted") ||
+        error.message.includes("unmounted")
+      ) {
         // This is expected when stopping real-time mode or unmounting
         return null;
       }
 
       // Provide child-friendly error messages
-      let errorMessage = 'Oops! Something went wrong. 😔';
+      let errorMessage = "Oops! Something went wrong. 😔";
 
-      if (error.message.includes('timeout') || error.message.includes('Network request timed out')) {
+      if (
+        error.message.includes("timeout") ||
+        error.message.includes("Network request timed out")
+      ) {
         errorMessage = `⏱️ The server is taking too long!\n\nTry:\n✨ Check if server is running\n✨ Make sure you're on the same Wi-Fi\n✨ Tap "Configure API" to check the URL`;
-      } else if (error.message.includes('Failed to fetch') || error.message.includes('ERR_CONNECTION_REFUSED') || error.message.includes('NetworkError')) {
+      } else if (
+        error.message.includes("Failed to fetch") ||
+        error.message.includes("ERR_CONNECTION_REFUSED") ||
+        error.message.includes("NetworkError")
+      ) {
         errorMessage = `🔌 Can't connect to server!\n\nMake sure:\n✨ Backend server is running\n✨ Using correct IP address\n✨ Phone and computer on same Wi-Fi\n\nTap "Configure API" to fix!`;
-      } else if (error.message.includes('API error')) {
+      } else if (error.message.includes("API error")) {
         errorMessage = `⚠️ Server returned an error\n\nPlease check the server logs`;
       } else {
-        errorMessage = `😕 ${error.message || 'Something went wrong'}`;
+        errorMessage = `😕 ${error.message || "Something went wrong"}`;
       }
 
       throw new Error(errorMessage);
@@ -502,12 +580,15 @@ export default function SignDetectionScreen() {
 
   const handleDetectSign = async () => {
     if (!permission?.granted) {
-      Alert.alert('Permission Required', 'Camera permission is required to detect sign language.');
+      Alert.alert(
+        "Permission Required",
+        "Camera permission is required to detect sign language.",
+      );
       return;
     }
 
     setIsDetecting(true);
-    setDetectionFeedback('Detecting sign...');
+    setDetectionFeedback("Detecting sign...");
 
     try {
       const result = await captureAndDetect();
@@ -519,12 +600,12 @@ export default function SignDetectionScreen() {
         }
       }
     } catch (error) {
-      console.error('Error detecting sign:', error);
-      const errorMessage = error.message || 'Unknown error';
-      setDetectionFeedback('❌ Detection failed');
+      console.error("Error detecting sign:", error);
+      const errorMessage = error.message || "Unknown error";
+      setDetectionFeedback("❌ Detection failed");
       Alert.alert(
-        'Oops! 😔',
-        `${errorMessage}\n\nCurrent API: ${apiUrl}\n\n💡 Tips:\n✨ Tap "⚙️ Configure API" to check settings\n✨ Make sure server is running\n✨ Check Wi-Fi connection`
+        "Oops! 😔",
+        `${errorMessage}\n\nCurrent API: ${apiUrl}\n\n💡 Tips:\n✨ Tap "⚙️ Configure API" to check settings\n✨ Make sure server is running\n✨ Check Wi-Fi connection`,
       );
     } finally {
       setIsDetecting(false);
@@ -542,7 +623,7 @@ export default function SignDetectionScreen() {
       // Finalize any pending sentence
       finalizeSentence();
       setIsRealTimeMode(false);
-      setDetectionFeedback('');
+      setDetectionFeedback("");
       setIsHoldingSteady(false);
       setHoldSteadyCount(0);
       consecutiveFramesRef.current = 0;
@@ -550,38 +631,44 @@ export default function SignDetectionScreen() {
     } else {
       // Reset sequence state
       setSignSequence([]);
-      setCurrentSentence('');
+      setCurrentSentence("");
       setLastDetectedSign(null);
-      setDetectionFeedback(selectedLanguage === 'asl' ? '📹 Starting motion capture...' : 'Starting real-time detection...');
+      setDetectionFeedback(
+        selectedLanguage === "asl"
+          ? "📹 Starting motion capture..."
+          : "Starting real-time detection...",
+      );
       // Clear buffers
       consecutiveFramesRef.current = 0;
       lastSignRef.current = null;
 
       // Reset ASL backend buffer when starting real-time mode with ASL
-      const resetAslBufferPromise = selectedLanguage === 'asl' 
-        ? fetch(`${apiUrl}/reset-asl-buffer`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' }
-          }).catch(() => {
-            // Silently fail if backend is not available yet
-          })
-        : Promise.resolve();
+      const resetAslBufferPromise =
+        selectedLanguage === "asl"
+          ? fetch(`${apiUrl}/reset-asl-buffer`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+            }).catch(() => {
+              // Silently fail if backend is not available yet
+            })
+          : Promise.resolve();
 
       // Check connection before starting real-time mode
       Promise.all([
         resetAslBufferPromise,
         fetchWithTimeout(
           `${apiUrl}/health?language=${selectedLanguage}`,
-          { method: 'GET' },
-          10000 // 10 second timeout for health check
-        )
+          { method: "GET" },
+          10000, // 10 second timeout for health check
+        ),
       ])
         .then(() => {
           // Determine detection interval based on language
-          const detectionInterval = selectedLanguage === 'asl' 
-            ? DETECTION_CONFIG.DETECTION_INTERVAL_ASL 
-            : DETECTION_CONFIG.DETECTION_INTERVAL_SINHALA;
-          
+          const detectionInterval =
+            selectedLanguage === "asl"
+              ? DETECTION_CONFIG.DETECTION_INTERVAL_ASL
+              : DETECTION_CONFIG.DETECTION_INTERVAL_SINHALA;
+
           // Start real-time detection
           setIsRealTimeMode(true);
           isRealTimeModeRef.current = true; // Set ref to allow captures
@@ -600,7 +687,11 @@ export default function SignDetectionScreen() {
               try {
                 const result = await captureAndDetect();
                 // Check again after async operation
-                if (isRealTimeModeRef.current && isMountedRef.current && result) {
+                if (
+                  isRealTimeModeRef.current &&
+                  isMountedRef.current &&
+                  result
+                ) {
                   processDetection(result);
                   if (result.confidence) {
                     setConfidence(result.confidence);
@@ -608,22 +699,28 @@ export default function SignDetectionScreen() {
                 }
               } catch (error) {
                 // Don't log camera unmount errors - they're expected when stopping
-                if (!error.message.includes('Camera unmounted') && !error.message.includes('unmounted')) {
-                  console.error('Real-time detection error:', error);
+                if (
+                  !error.message.includes("Camera unmounted") &&
+                  !error.message.includes("unmounted")
+                ) {
+                  console.error("Real-time detection error:", error);
                 }
                 // Stop real-time mode on persistent errors
-                if (error.message.includes('timeout') || error.message.includes('Can\'t connect')) {
+                if (
+                  error.message.includes("timeout") ||
+                  error.message.includes("Can't connect")
+                ) {
                   isRealTimeModeRef.current = false;
                   if (detectionIntervalRef.current) {
                     clearInterval(detectionIntervalRef.current);
                     detectionIntervalRef.current = null;
                   }
                   setIsRealTimeMode(false);
-                  setDetectionFeedback('❌ Connection lost');
+                  setDetectionFeedback("❌ Connection lost");
                   Alert.alert(
-                    'Connection Lost 😔',
-                    'Real-time detection stopped due to connection issues. Please check your connection and try again.',
-                    [{ text: 'OK' }]
+                    "Connection Lost 😔",
+                    "Real-time detection stopped due to connection issues. Please check your connection and try again.",
+                    [{ text: "OK" }],
                   );
                 }
               } finally {
@@ -636,9 +733,9 @@ export default function SignDetectionScreen() {
         })
         .catch(() => {
           Alert.alert(
-            'Connection Error 😔',
-            'Cannot connect to server. Please check:\n\n✨ Server is running\n✨ Correct API URL\n✨ Same Wi-Fi network',
-            [{ text: 'OK' }]
+            "Connection Error 😔",
+            "Cannot connect to server. Please check:\n\n✨ Server is running\n✨ Correct API URL\n✨ Same Wi-Fi network",
+            [{ text: "OK" }],
           );
         });
     }
@@ -646,7 +743,7 @@ export default function SignDetectionScreen() {
 
   const handleTextToSpeech = () => {
     if (!translatedText) {
-      Alert.alert('No Text', 'Please detect a sign first.');
+      Alert.alert("No Text", "Please detect a sign first.");
       return;
     }
 
@@ -656,25 +753,25 @@ export default function SignDetectionScreen() {
     } else {
       setIsSpeaking(true);
       Speech.speak(translatedText, {
-        language: 'en', // Change this based on your language preference
+        language: "en", // Change this based on your language preference
         pitch: 1.0,
         rate: 0.9,
         onDone: () => setIsSpeaking(false),
         onStopped: () => setIsSpeaking(false),
         onError: () => {
           setIsSpeaking(false);
-          Alert.alert('Error', 'Failed to speak text.');
+          Alert.alert("Error", "Failed to speak text.");
         },
       });
     }
   };
 
   const clearText = () => {
-    setTranslatedText('');
-    setCurrentSentence('');
+    setTranslatedText("");
+    setCurrentSentence("");
     setSignSequence([]);
     setLastDetectedSign(null);
-    setDetectionFeedback('');
+    setDetectionFeedback("");
     setIsHoldingSteady(false);
     setHoldSteadyCount(0);
     consecutiveFramesRef.current = 0;
@@ -694,7 +791,9 @@ export default function SignDetectionScreen() {
     return (
       <ThemedView style={styles.container}>
         <ActivityIndicator size="large" />
-        <ThemedText style={styles.loadingText}>Requesting camera permission...</ThemedText>
+        <ThemedText style={styles.loadingText}>
+          Requesting camera permission...
+        </ThemedText>
       </ThemedView>
     );
   }
@@ -702,7 +801,9 @@ export default function SignDetectionScreen() {
   if (!permission.granted) {
     return (
       <ThemedView style={styles.container}>
-        <ThemedText type="title" style={styles.title}>Camera Permission Required</ThemedText>
+        <ThemedText type="title" style={styles.title}>
+          Camera Permission Required
+        </ThemedText>
         <ThemedText style={styles.message}>
           We need access to your camera to detect sign language.
         </ThemedText>
@@ -716,7 +817,6 @@ export default function SignDetectionScreen() {
   return (
     <ThemedView style={styles.container}>
       <ThemedView style={styles.header}>
-
         {/* Connection Status Indicator
         <View style={styles.connectionStatusContainer}>
           <View style={[
@@ -756,7 +856,7 @@ export default function SignDetectionScreen() {
                 setApiUrl(text);
                 setConnectionStatus('unknown');
               }}
-              placeholder="Enter API URL (e.g., http://192.168.1.100:5000)"
+              placeholder="Enter API URL (e.g., http://192.168.1.9:5000)"
               placeholderTextColor="#999"
             />
             <TouchableOpacity 
@@ -802,17 +902,17 @@ export default function SignDetectionScreen() {
         >
           <View style={styles.languageButtonContent}>
             <Image
-              source={languages.find(l => l.value === selectedLanguage)?.icon}
+              source={languages.find((l) => l.value === selectedLanguage)?.icon}
               style={styles.languageIcon}
             />
 
             <ThemedText style={styles.languageButtonText}>
-              {languages.find(l => l.value === selectedLanguage)?.label || 'Select Language'}
+              {languages.find((l) => l.value === selectedLanguage)?.label ||
+                "Select Language"}
             </ThemedText>
             <IconSymbol name="chevron.down" size={20} color="#FF6B9D" />
           </View>
         </TouchableOpacity>
-
       </ThemedView>
 
       {/* Language Picker Modal */}
@@ -824,34 +924,37 @@ export default function SignDetectionScreen() {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <ThemedText type="title" style={styles.modalTitle}>Choose Sign Language 🌍</ThemedText>
+            <ThemedText type="title" style={styles.modalTitle}>
+              Choose Sign Language 🌍
+            </ThemedText>
             <ScrollView style={styles.languageList}>
               {languages.map((lang) => (
                 <TouchableOpacity
                   key={lang.value}
                   style={[
                     styles.languageOption,
-                    selectedLanguage === lang.value && styles.languageOptionSelected,
-                    !lang.available && styles.languageOptionDisabled
+                    selectedLanguage === lang.value &&
+                      styles.languageOptionSelected,
+                    !lang.available && styles.languageOptionDisabled,
                   ]}
                   onPress={async () => {
                     if (lang.available) {
                       try {
                         await fetch(`${apiUrl}/reset-asl-buffer`, {
-                          method: 'POST',
+                          method: "POST",
                         });
                       } catch (e) {
-                        console.log('Could not reset ASL buffer');
+                        console.log("Could not reset ASL buffer");
                       }
-                  
+
                       setSelectedLanguage(lang.value);
                       setShowLanguagePicker(false);
                       clearText();
                     } else {
                       Alert.alert(
-                        'Coming Soon! 🚀',
+                        "Coming Soon! 🚀",
                         `${lang.label} will be available soon! Stay tuned!`,
-                        [{ text: 'OK', style: 'default' }]
+                        [{ text: "OK", style: "default" }],
                       );
                     }
                   }}
@@ -860,18 +963,27 @@ export default function SignDetectionScreen() {
                   <View style={styles.languageOptionContent}>
                     <Image source={lang.icon} style={styles.languageIcon} />
 
-                    <ThemedText style={[
-                      styles.languageOptionText,
-                      selectedLanguage === lang.value && styles.languageOptionTextSelected,
-                      !lang.available && styles.languageOptionTextDisabled
-                    ]}>
+                    <ThemedText
+                      style={[
+                        styles.languageOptionText,
+                        selectedLanguage === lang.value &&
+                          styles.languageOptionTextSelected,
+                        !lang.available && styles.languageOptionTextDisabled,
+                      ]}
+                    >
                       {lang.label}
                     </ThemedText>
                     {!lang.available && (
-                      <ThemedText style={styles.comingSoonBadge}>Coming Soon</ThemedText>
+                      <ThemedText style={styles.comingSoonBadge}>
+                        Coming Soon
+                      </ThemedText>
                     )}
                     {selectedLanguage === lang.value && lang.available && (
-                      <IconSymbol name="checkmark.circle.fill" size={24} color="#4CAF50" />
+                      <IconSymbol
+                        name="checkmark.circle.fill"
+                        size={24}
+                        color="#4CAF50"
+                      />
                     )}
                   </View>
                 </TouchableOpacity>
@@ -917,7 +1029,7 @@ export default function SignDetectionScreen() {
           style={[
             styles.controlButton,
             styles.detectButton,
-            isDetecting && styles.detectButtonActive
+            isDetecting && styles.detectButtonActive,
           ]}
           onPress={handleDetectSign}
           disabled={isDetecting || isRealTimeMode}
@@ -933,17 +1045,22 @@ export default function SignDetectionScreen() {
           style={[
             styles.controlButton,
             styles.realTimeButton,
-            isRealTimeMode && styles.realTimeButtonActive
+            isRealTimeMode && styles.realTimeButtonActive,
           ]}
           onPress={toggleRealTimeMode}
         >
-          <Image source={isRealTimeMode ? stopIcon : playIcon} style={styles.controlIcon} />
+          <Image
+            source={isRealTimeMode ? stopIcon : playIcon}
+            style={styles.controlIcon}
+          />
         </TouchableOpacity>
 
         <TouchableOpacity
           style={[styles.controlButton, styles.clearButton]}
           onPress={clearText}
-          disabled={!translatedText && !currentSentence && signSequence.length === 0}
+          disabled={
+            !translatedText && !currentSentence && signSequence.length === 0
+          }
         >
           <Image source={closeIcon} style={styles.controlIcon} />
         </TouchableOpacity>
@@ -953,34 +1070,44 @@ export default function SignDetectionScreen() {
       {isRealTimeMode && (
         <ThemedView style={styles.feedbackContainer}>
           {/* Language-specific feedback indicator */}
-          {selectedLanguage === 'sinhala' ? (
+          {selectedLanguage === "sinhala" ? (
             // Sinhala: Hold steady indicator
             isHoldingSteady ? (
               <View style={styles.holdSteadyIndicator}>
-                <ThemedText style={styles.holdSteadyText}>✅ Hold Steady!</ThemedText>
+                <ThemedText style={styles.holdSteadyText}>
+                  ✅ Hold Steady!
+                </ThemedText>
                 <View style={styles.progressBar}>
-                  <View style={[styles.progressBarFill, { width: '100%' }]} />
+                  <View style={[styles.progressBarFill, { width: "100%" }]} />
                 </View>
               </View>
             ) : holdSteadyCount > 0 ? (
               <View style={styles.holdSteadyIndicator}>
                 <ThemedText style={styles.holdSteadyText}>
-                  📸 Hold steady... {holdSteadyCount}/{DETECTION_CONFIG.REQUIRED_CONSECUTIVE_FRAMES}
+                  📸 Hold steady... {holdSteadyCount}/
+                  {DETECTION_CONFIG.REQUIRED_CONSECUTIVE_FRAMES}
                 </ThemedText>
                 <View style={styles.progressBar}>
-                  <View style={[styles.progressBarFill, {
-                    width: `${(holdSteadyCount / DETECTION_CONFIG.REQUIRED_CONSECUTIVE_FRAMES) * 100}%`
-                  }]} />
+                  <View
+                    style={[
+                      styles.progressBarFill,
+                      {
+                        width: `${(holdSteadyCount / DETECTION_CONFIG.REQUIRED_CONSECUTIVE_FRAMES) * 100}%`,
+                      },
+                    ]}
+                  />
                 </View>
               </View>
             ) : null
-          ) : selectedLanguage === 'asl' ? (
+          ) : selectedLanguage === "asl" ? (
             // ASL: Motion capture indicator (backend handles sequence buffering)
             isHoldingSteady ? (
               <View style={styles.holdSteadyIndicator}>
-                <ThemedText style={styles.holdSteadyText}>✅ Motion Captured!</ThemedText>
+                <ThemedText style={styles.holdSteadyText}>
+                  ✅ Motion Captured!
+                </ThemedText>
                 <View style={styles.progressBar}>
-                  <View style={[styles.progressBarFill, { width: '100%' }]} />
+                  <View style={[styles.progressBarFill, { width: "100%" }]} />
                 </View>
               </View>
             ) : holdSteadyCount > 0 ? (
@@ -989,7 +1116,7 @@ export default function SignDetectionScreen() {
                   📹 Capturing motion...
                 </ThemedText>
                 <View style={styles.progressBar}>
-                  <View style={[styles.progressBarFill, { width: '50%' }]} />
+                  <View style={[styles.progressBarFill, { width: "50%" }]} />
                 </View>
               </View>
             ) : null
@@ -997,14 +1124,20 @@ export default function SignDetectionScreen() {
 
           {/* Detection Feedback */}
           {detectionFeedback ? (
-            <ThemedText style={styles.detectionFeedbackText}>{detectionFeedback}</ThemedText>
+            <ThemedText style={styles.detectionFeedbackText}>
+              {detectionFeedback}
+            </ThemedText>
           ) : null}
 
           {/* Current Sentence Being Built */}
           {currentSentence ? (
             <View style={styles.currentSentenceContainer}>
-              <ThemedText style={styles.currentSentenceLabel}>Building sentence:</ThemedText>
-              <ThemedText style={styles.currentSentenceText}>{currentSentence}</ThemedText>
+              <ThemedText style={styles.currentSentenceLabel}>
+                Building sentence:
+              </ThemedText>
+              <ThemedText style={styles.currentSentenceText}>
+                {currentSentence}
+              </ThemedText>
               <View style={styles.signSequenceContainer}>
                 {signSequence.map((sign, index) => (
                   <View key={index} style={styles.signChip}>
@@ -1017,19 +1150,22 @@ export default function SignDetectionScreen() {
         </ThemedView>
       )}
 
-
       {/* Finalized Sentence Display */}
       {translatedText ? (
         <ThemedView style={styles.textContainer}>
-          <ThemedText style={styles.sectionTitle}>Translated Sentence</ThemedText>
+          <ThemedText style={styles.sectionTitle}>
+            Translated Sentence
+          </ThemedText>
           <ThemedView style={styles.textBox}>
-            <ThemedText style={styles.translatedText}>{translatedText}</ThemedText>
+            <ThemedText style={styles.translatedText}>
+              {translatedText}
+            </ThemedText>
           </ThemedView>
           <View style={styles.speechButtonContainer}>
             <TouchableOpacity
               style={[
                 styles.speechButton,
-                isSpeaking && styles.speechButtonActive
+                isSpeaking && styles.speechButtonActive,
               ]}
               onPress={handleTextToSpeech}
             >
@@ -1039,7 +1175,7 @@ export default function SignDetectionScreen() {
                 color="#fff"
               />
               <ThemedText style={styles.speechButtonText}>
-                {isSpeaking ? 'Stop Speaking' : 'Speak Now '}
+                {isSpeaking ? "Stop Speaking" : "Speak Now "}
               </ThemedText>
             </TouchableOpacity>
           </View>
@@ -1061,7 +1197,7 @@ export default function SignDetectionScreen() {
         <ThemedView style={styles.placeholderContainer}>
           <IconSymbol name="hand.wave" size={48} color="#9CA3AF" />
           <ThemedText style={styles.placeholderText}>
-             Show your sign to start translating!
+            Show your sign to start translating!
           </ThemedText>
         </ThemedView>
       ) : null}
@@ -1072,28 +1208,28 @@ export default function SignDetectionScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#E8F4F8',
+    backgroundColor: "#E8F4F8",
     paddingHorizontal: 16,
     paddingTop: 24,
   },
   header: {
     marginBottom: 16,
-    backgroundColor: 'transparent',
+    backgroundColor: "transparent",
   },
   title: {
     fontSize: 24,
-    fontWeight: '700',
-    color: '#1F2937',
+    fontWeight: "700",
+    color: "#1F2937",
     marginBottom: 4,
   },
   subtitle: {
     fontSize: 16,
-    color: '#4B5563',
+    color: "#4B5563",
     marginBottom: 12,
   },
   connectionStatusContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     marginBottom: 12,
   },
   connectionDot: {
@@ -1101,35 +1237,35 @@ const styles = StyleSheet.create({
     height: 10,
     borderRadius: 5,
     marginRight: 8,
-    backgroundColor: '#D1D5DB',
+    backgroundColor: "#D1D5DB",
   },
   connectionDotConnected: {
-    backgroundColor: '#10B981',
+    backgroundColor: "#10B981",
   },
   connectionDotDisconnected: {
-    backgroundColor: '#EF4444',
+    backgroundColor: "#EF4444",
   },
   connectionDotChecking: {
-    backgroundColor: '#F59E0B',
+    backgroundColor: "#F59E0B",
   },
   connectionStatusText: {
     fontSize: 14,
-    color: '#374151',
+    color: "#374151",
     flex: 1,
   },
   refreshButton: {
     padding: 6,
   },
   languageButton: {
-    backgroundColor: '#E5E7EB',
+    backgroundColor: "#E5E7EB",
     borderRadius: 8,
     padding: 10,
     marginBottom: 12,
   },
   languageButtonContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
   },
   languageEmoji: {
     fontSize: 20,
@@ -1143,7 +1279,7 @@ const styles = StyleSheet.create({
   },
   languageButtonText: {
     fontSize: 16,
-    color: '#1F2937',
+    color: "#1F2937",
     flex: 1,
   },
   apiButton: {
@@ -1151,78 +1287,78 @@ const styles = StyleSheet.create({
   },
   apiButtonText: {
     fontSize: 16,
-    color: '#3B82F6',
+    color: "#3B82F6",
   },
   apiInputContainer: {
-    backgroundColor: '#F3F4F6',
+    backgroundColor: "#F3F4F6",
     borderRadius: 8,
     padding: 12,
     marginBottom: 16,
   },
   apiInput: {
     borderWidth: 1,
-    borderColor: '#D1D5DB',
+    borderColor: "#D1D5DB",
     borderRadius: 6,
     padding: 10,
     fontSize: 14,
-    color: '#111827',
+    color: "#111827",
     marginBottom: 10,
   },
   testButton: {
-    backgroundColor: '#3B82F6',
+    backgroundColor: "#3B82F6",
     borderRadius: 6,
     paddingVertical: 10,
-    alignItems: 'center',
+    alignItems: "center",
   },
   testButtonText: {
-    color: '#FFFFFF',
+    color: "#FFFFFF",
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   textContainer: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: "#FFFFFF",
     borderRadius: 16,
     padding: 15,
     marginBottom: 16,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
   },
   textBox: {
-    backgroundColor: '#F8FAFC',
+    backgroundColor: "#F8FAFC",
     borderRadius: 12,
     padding: 16,
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: "#E2E8F0",
   },
   translatedText: {
     fontSize: 22, // Increased from 16
-    fontWeight: '500',
-    color: '#1E293B',
+    fontWeight: "500",
+    color: "#1E293B",
     lineHeight: 28,
   },
 
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: "rgba(0,0,0,0.4)",
+    justifyContent: "center",
+    alignItems: "center",
   },
   modalContent: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: "#FFFFFF",
     borderRadius: 12,
     padding: 20,
-    width: '90%',
-    maxHeight: '80%',
+    width: "90%",
+    maxHeight: "80%",
   },
   modalTitle: {
     fontSize: 20,
-    fontWeight: '700',
+    fontWeight: "700",
     marginBottom: 12,
-    color: '#111827',
+    color: "#111827",
   },
   languageList: {
     marginBottom: 16,
@@ -1232,18 +1368,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     borderRadius: 8,
     marginBottom: 8,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: "#F9FAFB",
   },
   languageOptionSelected: {
-    backgroundColor: '#D1FAE5',
+    backgroundColor: "#D1FAE5",
   },
   languageOptionDisabled: {
-    backgroundColor: '#F3F4F6',
+    backgroundColor: "#F3F4F6",
   },
   languageOptionContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
   },
   languageOptionEmoji: {
     fontSize: 18,
@@ -1251,35 +1387,35 @@ const styles = StyleSheet.create({
   },
   languageOptionText: {
     fontSize: 16,
-    color: '#1F2937',
+    color: "#1F2937",
     flex: 1,
   },
   languageOptionTextSelected: {
-    fontWeight: '600',
-    color: '#065F46',
+    fontWeight: "600",
+    color: "#065F46",
   },
   languageOptionTextDisabled: {
-    color: '#9CA3AF',
+    color: "#9CA3AF",
   },
   comingSoonBadge: {
     fontSize: 12,
-    color: '#F59E0B',
+    color: "#F59E0B",
     marginRight: 8,
   },
   closeButton: {
-    backgroundColor: '#EF4444',
+    backgroundColor: "#EF4444",
     borderRadius: 6,
     paddingVertical: 10,
-    alignItems: 'center',
+    alignItems: "center",
   },
   closeButtonText: {
     fontSize: 14,
-    color: '#FFFFFF',
+    color: "#FFFFFF",
   },
   cameraContainer: {
     height: 400, // Fixed height to prevent shrinking
     borderRadius: 12,
-    overflow: 'hidden',
+    overflow: "hidden",
     marginBottom: 16,
   },
   camera: {
@@ -1287,87 +1423,85 @@ const styles = StyleSheet.create({
   },
   cameraOverlay: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   detectionBox: {
     width: 200,
     height: 200,
     borderWidth: 2,
-    borderColor: '#3B82F6',
+    borderColor: "#3B82F6",
     borderRadius: 12,
   },
   realTimeIndicator: {
-    position: 'absolute',
+    position: "absolute",
     top: 10,
     right: 10,
-    backgroundColor: '#EF4444',
+    backgroundColor: "#EF4444",
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 6,
   },
   realTimeText: {
-    color: '#FFFFFF',
+    color: "#FFFFFF",
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   controlsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
+    flexDirection: "row",
+    justifyContent: "space-around",
     marginBottom: 16,
-    backgroundColor: 'transparent', // transparent background
+    backgroundColor: "transparent", // transparent background
   },
 
   controlButton: {
     width: 60,
     height: 60,
     borderRadius: 30,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     marginHorizontal: 6,
-    backgroundColor: '#3B82F6',
+    backgroundColor: "#3B82F6",
   },
 
   flipButton: {
-    backgroundColor: '#0A7EA4',
+    backgroundColor: "#0A7EA4",
   },
   detectButton: {
-    backgroundColor: '#5452E6',
+    backgroundColor: "#5452E6",
   },
   detectButtonActive: {
-    backgroundColor: '#059669',
+    backgroundColor: "#059669",
   },
   realTimeButton: {
-    backgroundColor: '#F59E0B',
+    backgroundColor: "#F59E0B",
   },
   realTimeButtonActive: {
-    backgroundColor: '#D97706',
+    backgroundColor: "#D97706",
   },
   clearButton: {
-    backgroundColor: '#EF4444',
+    backgroundColor: "#EF4444",
   },
 
   controlIcon: {
     width: 24,
     height: 24,
-    resizeMode: 'contain',
+    resizeMode: "contain",
   },
   controlIconLarge: {
     width: 32,
     height: 32,
-    tintColor: '#fff',
-    resizeMode: 'contain',
+    tintColor: "#fff",
+    resizeMode: "contain",
   },
-
-
 
   feedbackContainer: {
     padding: 16,
     borderRadius: 12,
     marginBottom: 16,
-    backgroundColor: '#FFF7ED', // warm peach background
+    backgroundColor: "#FFF7ED", // warm peach background
     borderWidth: 2,
-    borderColor: '#FDBA74', // orange border
+    borderColor: "#FDBA74", // orange border
   },
 
   holdSteadyIndicator: {
@@ -1375,22 +1509,22 @@ const styles = StyleSheet.create({
   },
   holdSteadyText: {
     fontSize: 14,
-    color: '#1F2937',
+    color: "#1F2937",
     marginBottom: 4,
   },
   progressBar: {
     height: 6,
-    backgroundColor: '#D1D5DB',
+    backgroundColor: "#D1D5DB",
     borderRadius: 3,
-    overflow: 'hidden',
+    overflow: "hidden",
   },
   progressBarFill: {
     height: 6,
-    backgroundColor: '#10B981',
+    backgroundColor: "#10B981",
   },
   detectionFeedbackText: {
     fontSize: 14,
-    color: '#374151',
+    color: "#374151",
     marginBottom: 8,
   },
   currentSentenceContainer: {
@@ -1398,52 +1532,52 @@ const styles = StyleSheet.create({
   },
   currentSentenceLabel: {
     fontSize: 14,
-    color: '#6B7280',
+    color: "#6B7280",
   },
   currentSentenceText: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#111827',
+    fontWeight: "600",
+    color: "#111827",
     marginTop: 4,
   },
   sectionTitle: {
     fontSize: 18,
-    fontWeight: '600',
-    color: '#374151',
+    fontWeight: "600",
+    color: "#374151",
     marginBottom: 12,
   },
   speechButtonContainer: {
-    alignItems: 'center', // Center the button
+    alignItems: "center", // Center the button
     marginBottom: 16,
   },
   signSequenceContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexDirection: "row",
+    flexWrap: "wrap",
     marginTop: 8,
   },
   speechButton: {
-    backgroundColor: '#3B82F6',
+    backgroundColor: "#3B82F6",
     borderRadius: 12,
     paddingVertical: 14,
     paddingHorizontal: 24,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     minWidth: 200, // Ensures proper button sizing
   },
 
   speechButtonActive: {
-    backgroundColor: '#2563EB',
+    backgroundColor: "#2563EB",
   },
 
   speechButtonText: {
-    color: '#FFFFFF',
+    color: "#FFFFFF",
     fontSize: 18,
-    fontWeight: '600',
+    fontWeight: "600",
     marginLeft: 8,
   },
   signChip: {
-    backgroundColor: '#E0F2FE',
+    backgroundColor: "#E0F2FE",
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 16,
@@ -1452,81 +1586,80 @@ const styles = StyleSheet.create({
   },
   signChipText: {
     fontSize: 14,
-    color: '#0369A1',
+    color: "#0369A1",
   },
   loadingText: {
     fontSize: 16,
-    color: '#6B7280',
+    color: "#6B7280",
     marginTop: 12,
   },
   message: {
     fontSize: 14,
-    color: '#4B5563',
+    color: "#4B5563",
     marginBottom: 12,
   },
   button: {
-    backgroundColor: '#3B82F6',
+    backgroundColor: "#3B82F6",
     borderRadius: 6,
     paddingVertical: 10,
     paddingHorizontal: 16,
-    alignItems: 'center',
+    alignItems: "center",
   },
   buttonText: {
-    color: '#FFFFFF',
+    color: "#FFFFFF",
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: "600",
   },
 
   confidenceContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F1F5F9',
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F1F5F9",
     borderRadius: 8,
     padding: 12,
   },
 
   confidenceLabel: {
     fontSize: 14,
-    color: '#64748B',
+    color: "#64748B",
     marginRight: 12,
   },
 
   confidenceBar: {
     flex: 1,
     height: 8,
-    backgroundColor: '#E2E8F0',
+    backgroundColor: "#E2E8F0",
     borderRadius: 4,
-    overflow: 'hidden',
+    overflow: "hidden",
     marginRight: 12,
   },
 
   confidenceBarFill: {
     height: 8,
-    backgroundColor: '#10B981',
+    backgroundColor: "#10B981",
     borderRadius: 4,
   },
 
   confidencePercentage: {
     fontSize: 14,
-    fontWeight: '600',
-    color: '#047857',
+    fontWeight: "600",
+    color: "#047857",
     minWidth: 40,
   },
 
   placeholderContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     padding: 40,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: "#F8FAFC",
     borderRadius: 16,
     marginBottom: 16,
   },
 
   placeholderText: {
     fontSize: 18,
-    color: '#64748B',
+    color: "#64748B",
     marginTop: 12,
-    textAlign: 'center',
+    textAlign: "center",
   },
 });
-

@@ -4,7 +4,6 @@ module.exports = function (api) {
     presets: ["babel-preset-expo"],
     plugins: [
       "nativewind/babel",
-      "react-native-reanimated/plugin", // Must be last
       [
         "module-resolver",
         {
@@ -14,6 +13,7 @@ module.exports = function (api) {
           },
         },
       ],
+      "react-native-reanimated/plugin", // Must be last
     ],
   };
 };

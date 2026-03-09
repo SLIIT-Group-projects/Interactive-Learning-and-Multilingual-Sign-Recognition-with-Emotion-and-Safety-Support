@@ -54,9 +54,9 @@ class ApiService {
       let helpMessage = 'No response from server. ';
       
       if (platform === 'android') {
-        helpMessage += 'For Android emulator, ensure backend is running and using http://10.0.2.2:3000. ';
+        helpMessage += 'For Android emulator, ensure backend is running and using http://10.0.2.2:5000. ';
       } else if (platform === 'ios') {
-        helpMessage += 'For iOS simulator, ensure backend is running on http://localhost:3000. ';
+        helpMessage += 'For iOS simulator, ensure backend is running on http://localhost:5000. ';
       }
       
       helpMessage += 'Please check: 1) Backend server is running (cd backend && npm run dev), 2) Correct URL in config.ts, 3) Firewall settings.';

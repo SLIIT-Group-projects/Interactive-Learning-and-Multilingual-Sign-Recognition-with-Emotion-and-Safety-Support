@@ -4,10 +4,10 @@ import * as FileSystem from "expo-file-system/legacy";
 
 /**
  * Get the base URL for API calls based on the platform
- * - Android emulator: http://10.0.2.2:3000
- * - iOS simulator: http://localhost:3000
- * - Real device: http://<your-laptop-ip>:3000 (set via EXPO_PUBLIC_API_URL or default)
- * - Web: http://localhost:3000
+ * - Android emulator: http://10.0.2.2:5000
+ * - iOS simulator: http://localhost:5000
+ * - Real device: http://<your-laptop-ip>:5000 (set via EXPO_PUBLIC_API_URL or default)
+ * - Web: http://localhost:5000
  */
 export function getBaseUrl(): string {
   // Check if custom URL is set via environment variable (highest priority)
@@ -30,7 +30,7 @@ export function getBaseUrl(): string {
     // Find your IP: Windows: ipconfig | Mac/Linux: ifconfig
     // Look for IPv4 Address (Windows) or inet (Mac/Linux) - should start with 192.168. or 10.
     if (isExpoGo) {
-      const deviceUrl = process.env.EXPO_PUBLIC_API_URL || "http://192.168.1.6:3000"; // ✅ Updated to match backend port 3000
+      const deviceUrl = process.env.EXPO_PUBLIC_API_URL || "http://192.168.1.9:5000"; // ✅ Updated to match backend port 5000
       console.log(`[API] Expo Go detected (real device). Using: ${deviceUrl}`);
       console.log(`[API] ⚠️ If connection fails, create .env file in frontend/ with:`);
       console.log(`[API] EXPO_PUBLIC_API_URL=http://YOUR_COMPUTER_IP:5000`);
@@ -49,19 +49,19 @@ export function getBaseUrl(): string {
         // Default fallback - user should set EXPO_PUBLIC_API_URL
         console.warn(
           "⚠️ Real Android device detected but EXPO_PUBLIC_API_URL not set. " +
-          "Create a .env file with: EXPO_PUBLIC_API_URL=http://<your-laptop-ip>:3000"
+          "Create a .env file with: EXPO_PUBLIC_API_URL=http://<your-laptop-ip>:5000"
         );
         // Try common IPs (update if your IP is different)
-        // ✅ Updated to your IP: 192.168.1.6
-        const possibleIPs = ["192.168.1.6", "192.168.1.10"]; // ✅ Your IP: 192.168.1.6
+        // ✅ Updated to your IP: 192.168.1.9
+        const possibleIPs = ["192.168.1.9", "192.168.1.10"]; // ✅ Your IP: 192.168.1.9
         const selectedIP = possibleIPs[0];
         console.warn(`[API] Real Android device detected. Using laptop IP: ${selectedIP}`);
         console.warn(`[API] If connection fails, update EXPO_PUBLIC_API_URL in .env file`);
-        return `http://${selectedIP}:3000`;
+        return `http://${selectedIP}:5000`;
       } else {
         // Android emulator uses special IP to access host machine
         console.log(`[API] Android emulator detected. Using 10.0.2.2`);
-        return "http://10.0.2.2:3000";
+        return "http://10.0.2.2:5000";
       }
     } else if (Platform.OS === "ios") {
       const isRealDevice = isDevice || isExpoGo;
@@ -74,12 +74,12 @@ export function getBaseUrl(): string {
         }
         console.warn(
           "⚠️ Real iOS device detected but EXPO_PUBLIC_API_URL not set. " +
-          "Create a .env file with: EXPO_PUBLIC_API_URL=http://<your-laptop-ip>:3000"
+          "Create a .env file with: EXPO_PUBLIC_API_URL=http://<your-laptop-ip>:5000"
         );
-        return "http://192.168.1.6:3000"; // ✅ Updated to match backend port 3000
+        return "http://192.168.1.9:5000"; // ✅ Updated to match backend port 5000
       } else {
         // iOS simulator can use localhost
-        return "http://localhost:3000";
+        return "http://localhost:5000";
       }
     } else {
       // Web or other platforms
@@ -87,18 +87,18 @@ export function getBaseUrl(): string {
     }
   } else {
     // Production mode - use your production API URL
-    return process.env.EXPO_PUBLIC_API_URL || "http://localhost:3000";
+    return process.env.EXPO_PUBLIC_API_URL || "http://localhost:5000";
   }
 }
 
 /**
  * For real devices, you need to use your laptop's IP address
- * Example: http://192.168.1.6:3000
+ * Example: http://192.168.1.9:5000
  * Set this via environment variable or modify the function above
  */
 export function getBaseUrlForRealDevice(ipAddress?: string): string {
   if (ipAddress) {
-    return `http://${ipAddress}:3000`;
+    return `http://${ipAddress}:5000`;
   }
   // Fallback to default
   return getBaseUrl();
@@ -194,7 +194,7 @@ export async function apiCall(
         `   - Windows: Open CMD and type "ipconfig"\n` +
         `   - Mac/Linux: Open Terminal and type "ifconfig"\n` +
         `3. Create .env file in frontend/ directory with:\n` +
-        `   EXPO_PUBLIC_API_URL=http://YOUR_IP:3000\n` +
+        `   EXPO_PUBLIC_API_URL=http://YOUR_IP:5000\n` +
         `   (Replace YOUR_IP with the IP from step 2)\n` +
         `4. Restart Expo: npx expo start --clear\n` +
         `5. Make sure phone and computer are on the SAME WiFi network\n` +

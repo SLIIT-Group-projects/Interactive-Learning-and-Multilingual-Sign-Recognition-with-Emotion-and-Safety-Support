@@ -4,27 +4,40 @@
  */
 
 import { Platform } from "react-native";
+import Constants from "expo-constants";
 
 // ============================================
 // CONFIGURATION: Update this for your setup
 // ============================================
-// Set to true if testing on a PHYSICAL DEVICE (not emulator/simulator)
-const USE_PHYSICAL_DEVICE = true; // Set to true for Expo Go on physical device
-
-// Your computer's IP address (for physical device testing)
-// Find it with: Windows: ipconfig | Mac/Linux: ifconfig
-const COMPUTER_IP = "192.168.1.6"; // Your current machine IP
-
-// Backend server port
-const BACKEND_PORT = 3000;
+const ENV_API_URL = process.env.EXPO_PUBLIC_API_URL?.trim();
+const ENV_USE_PHYSICAL_DEVICE = process.env.EXPO_PUBLIC_USE_PHYSICAL_DEVICE === "true";
+const ENV_COMPUTER_IP = process.env.EXPO_PUBLIC_COMPUTER_IP?.trim();
+const BACKEND_PORT = Number(process.env.EXPO_PUBLIC_BACKEND_PORT || "5000");
+const EXTRA_API_URL = (Constants?.expoConfig?.extra?.apiUrl || "").trim();
+const DEFAULT_LAN_IP = "192.168.1.9";
 
 // ============================================
 
 const getApiBaseUrl = () => {
+  if (ENV_API_URL) {
+    // Allow explicit override from .env for all platforms.
+    return ENV_API_URL.replace(/\/+$/, "");
+  }
+
+  if (EXTRA_API_URL) {
+    // Keep app.config.js as a secondary source of truth.
+    return EXTRA_API_URL.replace(/\/+$/, "");
+  }
+
   if (__DEV__) {
-    // If using physical device, use computer's IP address
-    if (USE_PHYSICAL_DEVICE) {
-      return `http://${COMPUTER_IP}:${BACKEND_PORT}`;
+    const isPhysicalDevice =
+      Boolean(Constants?.isDevice) ||
+      Constants?.executionEnvironment === "storeClient" ||
+      ENV_USE_PHYSICAL_DEVICE;
+    const deviceIp = ENV_COMPUTER_IP || DEFAULT_LAN_IP;
+
+    if (isPhysicalDevice) {
+      return `http://${deviceIp}:${BACKEND_PORT}`;
     }
 
     // For emulators/simulators - auto-detect platform
@@ -32,8 +45,7 @@ const getApiBaseUrl = () => {
       // Android emulator uses 10.0.2.2 to access host machine's localhost
       return `http://10.0.2.2:${BACKEND_PORT}`;
     } else if (Platform.OS === "ios") {
-      // iOS simulator on Windows - try localhost first, then 127.0.0.1
-      // If neither works, set USE_PHYSICAL_DEVICE=true and use your computer's IP
+      // iOS simulator can access localhost on the host machine.
       return `http://localhost:${BACKEND_PORT}`;
     } else {
       // Web or other platforms

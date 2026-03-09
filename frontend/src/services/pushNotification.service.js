@@ -59,9 +59,13 @@ export async function registerPushToken(userId) {
 
     // Get Expo push token (projectId must be an Expo EAS UUID, not Firebase project ID)
     const projectId = resolveExpoProjectId();
-    const tokenData = projectId
-      ? await Notifications.getExpoPushTokenAsync({ projectId })
-      : await Notifications.getExpoPushTokenAsync();
+    if (!projectId) {
+      console.warn(
+        '⚠️ Expo projectId missing. Skipping push token registration. Set EXPO_PUBLIC_EXPO_PROJECT_ID or expo.extra.eas.projectId.'
+      );
+      return null;
+    }
+    const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
 
     const expoPushToken = tokenData.data;
     console.log('📱 Expo Push Token:', expoPushToken);

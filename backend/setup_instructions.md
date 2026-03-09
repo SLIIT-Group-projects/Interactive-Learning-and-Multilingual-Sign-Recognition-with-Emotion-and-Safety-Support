@@ -12,6 +12,7 @@ pip install -r requirements.txt
 Open `app.py` and update the `CLASS_LABELS` list with your actual sign language class labels. These should match the order of classes your model was trained on.
 
 Example:
+
 ```python
 CLASS_LABELS = [
     'අ', 'ආ', 'ඇ', 'ඈ', 'ඉ', 'ඊ', 'උ', 'ඌ', 'ඍ', 'ඎ',
@@ -37,15 +38,16 @@ The server will start on `http://localhost:5000`
 ## Step 5: Configure Frontend API URL
 
 ### For Local Development (Emulator/Simulator):
+
 - Use `http://localhost:5000` (already set as default)
 
 ### For Physical Device Testing:
+
 1. Find your computer's IP address:
    - **Windows**: Open Command Prompt and run `ipconfig` (look for IPv4 Address)
    - **Mac/Linux**: Run `ifconfig` or `ip addr` in terminal
-   
 2. In the app, tap "Configure API" and enter: `http://YOUR_IP:5000`
-   - Example: `http://192.168.1.100:5000`
+   - Example: `http://192.168.1.9:5000`
 
 3. Make sure your phone and computer are on the same Wi-Fi network
 
@@ -61,24 +63,24 @@ The server will start on `http://localhost:5000`
 ## Troubleshooting
 
 ### Model Loading Error
+
 - Check that the model file path is correct: `model/sinhala-model/sinhala_sign_model_final.keras`
 - Verify the model file exists and is not corrupted
 
 ### API Connection Error
+
 - Make sure the backend server is running
 - Check firewall settings (allow port 5000)
 - Verify IP address is correct for device testing
 - Try the "Test Connection" button in the app
 
 ### Low Accuracy
+
 - Verify `CLASS_LABELS` order matches training
 - Check if input image size matches model expectations
 - Ensure good lighting and clear hand positioning
 
 ### Real-time Mode Issues
+
 - Adjust the detection interval in `sign-detection.js` (currently 1000ms)
 - Lower the confidence threshold if needed (currently 0.5)
-
-
-
-

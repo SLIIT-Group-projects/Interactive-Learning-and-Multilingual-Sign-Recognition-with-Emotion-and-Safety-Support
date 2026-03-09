@@ -1,4 +1,5 @@
 <<<<<<< HEAD
+
 # Hazard Sound Detection Backend API
 
 Backend API for the Interactive Learning and Multilingual Sign Recognition system, specifically handling hazard sound detection for hearing-impaired children.
@@ -18,16 +19,19 @@ Backend API for the Interactive Learning and Multilingual Sign Recognition syste
 ## Installation
 
 1. Navigate to the backend directory:
+
 ```bash
 cd backend
 ```
 
 2. Install dependencies:
+
 ```bash
 npm install
 ```
 
 3. Create a `.env` file from the example:
+
 ```bash
 cp .env.example .env
 ```
@@ -37,17 +41,19 @@ cp .env.example .env
 ## Running the Server
 
 ### Development Mode (with auto-reload):
+
 ```bash
 npm run dev
 ```
 
 ### Production Mode:
+
 ```bash
 npm start
 ```
 
-The server will start on `http://localhost:3000` (or the PORT specified in `.env`).
-=======
+# The server will start on `http://localhost:3000` (or the PORT specified in `.env`).
+
 # Sign Language Detection Backend
 
 Python Flask server for running Keras sign language detection model.
@@ -55,6 +61,7 @@ Python Flask server for running Keras sign language detection model.
 ## Setup
 
 1. Install Python dependencies:
+
 ```bash
 pip install -r requirements.txt
 ```
@@ -65,20 +72,25 @@ pip install -r requirements.txt
 3. Update `CLASS_LABELS` in `app.py` with your actual class labels (the signs your model was trained to recognize).
 
 4. Start the server:
+
 ```bash
 python app.py
 ```
 
 The server will run on `http://localhost:5000`
->>>>>>> frontend-sign-translation
+
+> > > > > > > frontend-sign-translation
 
 ## API Endpoints
 
 ### Health Check
+
 <<<<<<< HEAD
+
 - **GET** `/health` - Check API health status
 
 ### Audio Processing
+
 - **POST** `/api/audio/process` - Process audio file and convert to spectrogram
   - Body: `multipart/form-data` with `audio` file
   - Returns: Spectrogram metadata and shape
@@ -93,6 +105,7 @@ The server will run on `http://localhost:5000`
   - Returns: Normalized spectrogram data ready for model input
 
 ### Hazard Detection
+
 - **POST** `/api/hazard/detect` - Detect hazardous sounds from audio
   - Body: `multipart/form-data` with `audio` file and optional `context` JSON
   - Returns: Detected hazards with prioritization
@@ -117,6 +130,7 @@ The system implements a complete audio processing pipeline:
 ### Configuration
 
 Key parameters (configurable via `.env`):
+
 - `AUDIO_SAMPLE_RATE`: Target sample rate (default: 16000 Hz)
 - `N_FFT`: FFT window size (default: 2048)
 - `HOP_LENGTH`: Hop length for STFT (default: 512)
@@ -130,8 +144,9 @@ The backend is designed to work with a separately trained CNN model. To integrat
 1. Place your trained model file in the `models/` directory
 2. Update `mockModelInference()` function in `src/routes/hazard.routes.js` with actual model loading and inference code
 3. Example integration (if using TensorFlow.js):
+
 ```javascript
-import * as tf from '@tensorflow/tfjs-node';
+import * as tf from "@tensorflow/tfjs-node";
 
 const model = await tf.loadLayersModel(process.env.MODEL_PATH);
 const input = tf.tensor4d([spectrogramData], [1, 224, 224, 1]);
@@ -186,9 +201,10 @@ curl -X POST http://localhost:3000/api/hazard/detect \
 
 MIT
 
-
 # option1
+
 ## Emotion detection - hand movement
+
 cd path\to\your\project\backend
 
 py -m venv .venv-hand
@@ -198,28 +214,36 @@ python -m pip install --upgrade pip
 pip install opencv-python mediapipe numpy
 
 # option2
+
 # 1. Go to backend folder
+
 cd path\to\project\backend
 
 # 2. Create virtual environment
+
 py -m venv .venv-hand
 
 # 3. Activate virtual environment
+
 .\.venv-hand\Scripts\Activate.ps1
 
 # 4. Upgrade pip
+
 python -m pip install --upgrade pip
 
 # 5. Install exact dependencies
+
 python -m pip install --upgrade pip
 
 # Run
-python models/hand_speed_demo.py                    
-=======
+
+# python models/hand_speed_demo.py
+
 - **GET** `/health`
 - Returns server and model status
 
 ### Predict Sign
+
 - **POST** `/predict`
 - Accepts image file or base64 encoded image
 - Returns prediction with confidence scores
@@ -233,11 +257,8 @@ When testing on a physical device or emulator, you'll need to:
    - Mac/Linux: `ifconfig` or `ip addr`
 
 2. Update the API URL in the frontend to use your IP:
-   - Example: `http://192.168.1.100:5000/predict`
+   - Example: `http://192.168.1.9:5000/predict`
 
 3. Make sure your phone/emulator and computer are on the same network.
 
-
->>>>>>> frontend-sign-translation
-
-
+> > > > > > > frontend-sign-translation

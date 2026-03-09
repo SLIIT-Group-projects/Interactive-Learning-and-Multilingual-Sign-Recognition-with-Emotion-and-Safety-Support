@@ -15,7 +15,7 @@ Should show: `TCP    0.0.0.0:5000           0.0.0.0:0              LISTENING`
 
 ```powershell
 # Test health endpoint
-curl http://192.168.1.6:5000/health
+curl http://192.168.1.9:5000/health
 ```
 
 Or use the test script:
@@ -45,7 +45,7 @@ New-NetFirewallRule -DisplayName "ASL API Server" -Direction Inbound -LocalPort 
 **On Your Phone:**
 
 1. Open a browser
-2. Go to: `http://192.168.1.6:5000/health`
+2. Go to: `http://192.168.1.9:5000/health`
 3. You should see: `{"status":"healthy","model_loaded":true}`
 
 If this doesn't work, the phone can't reach your laptop.
@@ -63,11 +63,11 @@ Look for "IPv4 Address" under your active network adapter.
 **Make sure:**
 
 - Phone and laptop are on the **same WiFi network**
-- IP address matches in `PlayGame.js` (currently set to `192.168.1.6`)
+- IP address matches in `PlayGame.js` (currently set to `192.168.1.9`)
 
 ### 6. Test from Phone Browser
 
-If you can access `http://192.168.1.6:5000/health` from your phone's browser, the network is fine and the issue is in the app.
+If you can access `http://192.168.1.9:5000/health` from your phone's browser, the network is fine and the issue is in the app.
 
 ## Common Issues
 
@@ -115,12 +115,12 @@ If you can access `http://192.168.1.6:5000/health` from your phone's browser, th
 2. **Test from Computer:**
 
    ```powershell
-   curl http://192.168.1.6:5000/health
+   curl http://192.168.1.9:5000/health
    ```
 
 3. **Test from Phone Browser:**
    - Open browser on phone
-   - Go to: `http://192.168.1.6:5000/health`
+   - Go to: `http://192.168.1.9:5000/health`
    - Should see JSON response
 
 4. **If phone browser works but app doesn't:**

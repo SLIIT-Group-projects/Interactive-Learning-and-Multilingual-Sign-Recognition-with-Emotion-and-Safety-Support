@@ -116,7 +116,7 @@ npx expo install react-dom
 1. Find your computer's IP address:
    - **Windows**: Run `ipconfig` in Command Prompt/PowerShell
    - **Mac/Linux**: Run `ifconfig` or `ip addr`
-   - Look for your Wi-Fi adapter's IPv4 address (e.g., `192.168.1.6`)
+   - Look for your Wi-Fi adapter's IPv4 address (e.g., `192.168.1.9`)
 
 2. Update the API URL in `frontend/screens/PlayGame.js`:
 
