@@ -246,6 +246,30 @@ const ParentDashboard = ({ navigation }) => {
               <MaterialIcons name="chevron-right" size={28} color="#ffffff" />
             </View>
           </TouchableOpacity>
+
+          {/* Emotion Dashboard */}
+          <TouchableOpacity
+            onPress={() => navigation.navigate('EmotionDashboard')}
+            className="bg-pink-500 rounded-2xl p-5 mb-6 shadow-lg"
+            activeOpacity={0.8}
+          >
+            <View className="flex-row items-center justify-between">
+              <View className="flex-row items-center flex-1">
+                <View className="bg-white rounded-full p-3 mr-4">
+                  <MaterialIcons name="favorite" size={32} color="#ec4899" />
+                </View>
+                <View className="flex-1">
+                  <Text className="text-xl font-bold text-white mb-1">
+                    Emotion & Behavior Analysis
+                  </Text>
+                  <Text className="text-sm text-pink-100">
+                    Track emotions, engagement, and get insights
+                  </Text>
+                </View>
+              </View>
+              <MaterialIcons name="chevron-right" size={28} color="#ffffff" />
+            </View>
+          </TouchableOpacity>
           
           {/* Sign Detection Button */}
           <TouchableOpacity

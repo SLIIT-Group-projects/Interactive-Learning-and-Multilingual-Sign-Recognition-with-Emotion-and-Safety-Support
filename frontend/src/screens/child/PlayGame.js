@@ -24,7 +24,15 @@ import {
   addXP,
   incrementGamesPlayed,
 } from "../../services/firestore/childProgressService";
+import { saveGameEmotionSession } from "../../services/firestore/emotionService";
 import XPProgressBar from "../../components/XPProgressBar";
+import {
+  API_ENDPOINTS,
+  uploadFile,
+  uploadFiles,
+  apiCall,
+  BASE_URL,
+} from "../../../config/api";
 
 import {
   ALPHABET,
@@ -65,14 +73,26 @@ const PlayGame = ({ navigation, route }) => {
     refreshChildProgress,
   } = useAuth();
 
+  // Emotion detection states - simplified: use same image as hand sign detection
+  const [emotionSessionId, setEmotionSessionId] = useState(null);
+  const emotionResultsRef = useRef([]); // Store emotion predictions during game
+  const capturedFramesRef = useRef([]); // Store captured image URIs for hand analysis
+  const confusionLettersRef = useRef([]); // Track letters child got wrong
+  const gameSessionIdRef = useRef(null); // Store game session ID for emotion linking
+  const pendingHandAnalysisRef = useRef(null); // Track pending hand analysis request
+  
+  // Emotion results for display
+  const [emotionResults, setEmotionResults] = useState(null);
+  const [showResultsModal, setShowResultsModal] = useState(false);
+
   // Get child and parent IDs from authenticated user
   const childId = userData?.uid || null;
   const parentId = userData?.parentId || null;
 
-  // API endpoint - update this to your server IP/URL
+  // API endpoint for hand detection - update this to your server IP/URL
   const API_URL = __DEV__
-    ? "http://192.168.1.9:5000" // Your laptop's IP address with port
-    : "http://192.168.1.9:5000"; // For production (same IP)
+    ? "http://192.168.1.6:5000" // Your laptop's IP address with port for hand detection
+    : "http://192.168.1.6:5000"; // For production (same IP)
 
   // Stable camera ref callback - must be at top level (Rules of Hooks)
   const handleCameraRef = useCallback(
@@ -117,12 +137,340 @@ const PlayGame = ({ navigation, route }) => {
     load();
   }, [childId, contextProgress]);
 
-  // Initialize first question
+  // Start emotion detection session (same pattern as story reading)
+  // MUST be defined before useEffect that calls it
+  const startEmotionSession = async () => {
+    try {
+      // Use same session ID format as story reading
+      const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      setEmotionSessionId(sessionId);
+      
+      // Initialize refs
+      emotionResultsRef.current = [];
+      capturedFramesRef.current = [];
+      confusionLettersRef.current = [];
+
+      console.log(`[Session] Starting emotion session ${sessionId} with backend API`);
+      
+      // Start session on backend (same as story reading)
+      const response = await apiCall(
+        API_ENDPOINTS.START_SESSION,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sessionId }),
+        },
+        3, // retries
+        0  // 0 = no timeout
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: "Unknown error" }));
+        console.error('❌ Failed to start emotion session:', errorData.error || "Unknown error");
+        console.error('❌ Response status:', response.status, response.statusText);
+        // Set session ID anyway - backend might still accept emotion predictions
+        console.warn('⚠️ Continuing with session ID even though start failed');
+      } else {
+        const startData = await response.json();
+        console.log('✅ Emotion session started successfully:', startData);
+        console.log('✅ Session ID confirmed:', sessionId);
+      }
+    } catch (error) {
+      console.error('❌ Error starting emotion session:', error?.message || String(error));
+      if (error?.stack) {
+        console.error('❌ Error stack:', error.stack);
+      }
+      // Set session ID anyway - backend might still accept emotion predictions
+      console.warn('⚠️ Continuing with session ID even though start failed');
+    }
+  };
+
+  // Initialize first question and start emotion session
   useEffect(() => {
     setGameStartTime(Date.now());
     generateNewQuestion();
     testAPIConnection();
+    
+    // Start emotion session when game starts
+    startEmotionSession();
+    
+    // Cleanup on unmount
+    return () => {
+      if (emotionSessionId) {
+        // Don't finalize on unmount - just clear
+        setEmotionSessionId(null);
+        emotionResultsRef.current = [];
+        capturedFramesRef.current = [];
+      }
+    };
   }, []);
+
+  // Send emotion prediction using the same image as hand sign detection
+  const sendEmotionPrediction = async (imageUri) => {
+    if (!emotionSessionId || !imageUri) {
+      return;
+    }
+
+    try {
+      console.log(`[Emotion] Sending emotion prediction for session ${emotionSessionId}`);
+      
+      // Store frame for hand analysis (keep last 20 frames)
+      if (!capturedFramesRef.current) {
+        capturedFramesRef.current = [];
+      }
+      capturedFramesRef.current.push({
+        uri: imageUri,
+        type: "image/jpeg",
+        name: `hand_${Date.now()}_${String(capturedFramesRef.current.length).padStart(4, '0')}.jpg`,
+        timestamp: Date.now(),
+      });
+      
+      // Keep only last 20 frames to avoid memory issues
+      if (capturedFramesRef.current.length > 20) {
+        capturedFramesRef.current.shift();
+      }
+      
+      const result = await uploadFile(
+        API_ENDPOINTS.PREDICT_EMOTION,
+        {
+          uri: imageUri,
+          type: "image/jpeg",
+          name: `emotion_${Date.now()}.jpg`,
+        },
+        { sessionId: emotionSessionId }
+      );
+
+      console.log(`[Emotion] ✅ Backend response:`, result);
+      
+      // Store emotion result
+      if (result && result.predicted) {
+        if (!emotionResultsRef.current) {
+          emotionResultsRef.current = [];
+        }
+        emotionResultsRef.current.push({
+          predicted: result.predicted,
+          confidence: result.confidence || 0,
+          face_detected: result.face_detected !== false,
+          timestamp: Date.now(),
+        });
+        console.log(`[Emotion] Predicted: ${result.predicted}, Confidence: ${result.confidence}, Face detected: ${result.face_detected !== false}`);
+      }
+      
+      // If we have 10+ frames, send them for hand analysis (non-blocking)
+      if (capturedFramesRef.current.length >= 10 && !pendingHandAnalysisRef.current) {
+        sendHandAnalysisFromFrames().catch(err => {
+          console.warn("[Hand] Failed to analyze hand movement:", err);
+        });
+      }
+    } catch (err) {
+      const errorMsg = err?.message || String(err);
+      // Only log if it's not a network error (those are expected sometimes)
+      if (!errorMsg.includes("Network request failed") && !errorMsg.includes("timeout")) {
+        console.warn("[Emotion] ⚠️ Emotion prediction error (non-blocking):", errorMsg.substring(0, 100));
+      }
+    }
+  };
+
+  // Send hand analysis using collected emotion frames
+  const sendHandAnalysisFromFrames = async () => {
+    if (!emotionSessionId || !capturedFramesRef.current || capturedFramesRef.current.length < 5) {
+      return;
+    }
+
+    // Prevent multiple simultaneous requests
+    if (pendingHandAnalysisRef.current) {
+      console.log('[Hand] Hand analysis already in progress, skipping...');
+      return;
+    }
+
+    try {
+      // Use last 10-15 frames for hand analysis
+      const framesToUse = capturedFramesRef.current.slice(-15);
+      console.log(`[Hand] Sending ${framesToUse.length} collected frames for hand analysis`);
+      
+      pendingHandAnalysisRef.current = uploadFiles(
+        API_ENDPOINTS.ANALYZE_HAND,
+        framesToUse,
+        { sessionId: emotionSessionId, fps: 2 }, // Lower FPS since frames weren't captured at regular intervals
+        3,
+        0 // No timeout
+      );
+      
+      const result = await pendingHandAnalysisRef.current;
+      console.log(`[Hand] ✅ Hand analysis result:`, result);
+      
+      // Clear used frames (keep last 5 for next analysis)
+      capturedFramesRef.current = capturedFramesRef.current.slice(-5);
+    } catch (err) {
+      const errorMsg = err?.message || String(err);
+      console.warn("[Hand] ⚠️ Hand analysis error (non-blocking):", errorMsg.substring(0, 100));
+    } finally {
+      pendingHandAnalysisRef.current = null;
+    }
+  };
+
+  // End emotion session and get results
+  const endEmotionSession = async () => {
+    if (!emotionSessionId) {
+      console.warn('[Session] No emotion session ID to finalize');
+      // Set default results
+      setEmotionResults({
+        behavior: 'Cannot detect',
+        behaviorConfidence: 0,
+        finalEmotion: 'neutral',
+        engagementLevel: 'LOW',
+        handSummary: {},
+        emotionDistribution: {},
+      });
+      return;
+    }
+
+    try {
+      console.log(`[Session] Finalizing emotion session: ${emotionSessionId}`);
+      console.log(`[Session] Emotion results collected: ${emotionResultsRef.current?.length || 0} predictions`);
+      console.log(`[Session] Captured frames for hand analysis: ${capturedFramesRef.current?.length || 0} frames`);
+
+      // Send final hand analysis if we have enough frames
+      if (capturedFramesRef.current && capturedFramesRef.current.length >= 5) {
+        console.log(`[Session] Sending final hand analysis with ${capturedFramesRef.current.length} frames...`);
+        try {
+          await sendHandAnalysisFromFrames();
+          console.log(`[Session] ✅ Final hand analysis completed`);
+          // Wait a bit for backend to process
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        } catch (err) {
+          console.warn(`[Session] ⚠️ Final hand analysis failed (non-blocking):`, err);
+        }
+      } else {
+        console.warn(`[Session] ⚠️ Not enough frames for hand analysis (${capturedFramesRef.current?.length || 0} frames, need 5+)`);
+      }
+
+      // Finalize session on backend (same as story reading)
+      const response = await apiCall(
+        API_ENDPOINTS.FINALIZE_SESSION,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sessionId: emotionSessionId }),
+        },
+        3, // retries
+        0  // 0 = no timeout
+      );
+
+      if (response.ok) {
+        const emotionResult = await response.json();
+        console.log('✅ Emotion session finalized:', emotionResult);
+
+        // Store results for display in modal
+        setEmotionResults({
+          behavior: emotionResult.behavior || 'Cannot detect',
+          behaviorConfidence: emotionResult.behaviorConfidence || 0,
+          finalEmotion: emotionResult.finalEmotion || 'neutral',
+          engagementLevel: emotionResult.engagementLevel || 'LOW',
+          handSummary: emotionResult.handSummary || {},
+          emotionDistribution: emotionResult.emotionDistribution || {},
+        });
+
+        // Save to Firebase - use gameSessionId if available, otherwise use emotionSessionId
+        if (childId && parentId) {
+          try {
+            const gameSessionIdToUse = gameSessionIdRef.current || emotionSessionId;
+            
+            const emotionDataToSave = {
+              gameSessionId: gameSessionIdToUse,
+              childId,
+              parentId,
+              behavior: emotionResult.behavior || 'Cannot detect',
+              behaviorConfidence: emotionResult.behaviorConfidence || 0,
+              finalEmotion: emotionResult.finalEmotion || 'neutral',
+              engagementLevel: emotionResult.engagementLevel || 'LOW',
+              emotionDistribution: emotionResult.emotionDistribution || {},
+              handSummary: emotionResult.handSummary || {},
+              duration: emotionResult.duration || 0,
+              confusionLetters: confusionLettersRef.current || [],
+              totalQuestions: TOTAL_QUESTIONS,
+              correctAnswers: score,
+            };
+            
+            console.log('💾 Saving emotion data to Firebase:', {
+              gameSessionId: gameSessionIdToUse,
+              finalEmotion: emotionDataToSave.finalEmotion,
+              behavior: emotionDataToSave.behavior,
+              engagementLevel: emotionDataToSave.engagementLevel,
+              emotionDistribution: emotionDataToSave.emotionDistribution,
+              confusionLetters: emotionDataToSave.confusionLetters,
+              totalQuestions: emotionDataToSave.totalQuestions,
+              correctAnswers: emotionDataToSave.correctAnswers,
+            });
+            
+            const savedEmotionSessionId = await saveGameEmotionSession(emotionDataToSave);
+            console.log('✅ Emotion session saved to Firebase successfully');
+            console.log('✅ Saved emotion session ID:', savedEmotionSessionId);
+          } catch (error) {
+            console.error('❌ Failed to save emotion session:', error);
+            console.error('❌ Error details:', error.message, error.stack);
+            // Don't throw - just log the error
+          }
+        } else {
+          console.warn('⚠️ Cannot save emotion session - missing childId or parentId');
+          console.warn('⚠️ childId:', childId, 'parentId:', parentId);
+        }
+      } else {
+        const errorData = await response.json().catch(() => ({ error: "Unknown error" }));
+        console.error('❌ Failed to finalize session:', errorData.error || "Unknown error");
+        console.error('❌ Session ID used:', emotionSessionId);
+        console.error('❌ Response status:', response.status);
+        
+        // Try to compute results from collected emotion data if session not found
+        if (response.status === 404 && emotionResultsRef.current && emotionResultsRef.current.length > 0) {
+          console.warn('⚠️ Session not found on backend, computing results from collected data...');
+          const collectedEmotions = emotionResultsRef.current;
+          
+          // Calculate dominant emotion
+          const emotionCounts = {};
+          let totalConfidence = 0;
+          collectedEmotions.forEach(e => {
+            const emotion = e.predicted || 'neutral';
+            emotionCounts[emotion] = (emotionCounts[emotion] || 0) + 1;
+            totalConfidence += e.confidence || 0;
+          });
+          
+          let finalEmotion = 'neutral';
+          let maxCount = 0;
+          for (const [emotion, count] of Object.entries(emotionCounts)) {
+            if (count > maxCount) {
+              maxCount = count;
+              finalEmotion = emotion;
+            }
+          }
+          
+          const avgConfidence = collectedEmotions.length > 0 ? totalConfidence / collectedEmotions.length : 0;
+          
+          setEmotionResults({
+            behavior: finalEmotion === 'happy' ? 'Happy' : finalEmotion === 'sad' ? 'Sad' : finalEmotion === 'angry' ? 'Angry' : 'Neutral',
+            behaviorConfidence: avgConfidence,
+            finalEmotion: finalEmotion,
+            engagementLevel: avgConfidence > 0.7 ? 'HIGH' : avgConfidence > 0.4 ? 'MEDIUM' : 'LOW',
+            handSummary: {},
+            emotionDistribution: emotionCounts,
+          });
+          console.log('✅ Computed results from collected emotion data');
+        } else {
+          // Set default results even on error
+          setEmotionResults({
+            behavior: 'Cannot detect',
+            behaviorConfidence: 0,
+            finalEmotion: 'neutral',
+            engagementLevel: 'LOW',
+            handSummary: {},
+            emotionDistribution: {},
+          });
+        }
+      }
+    } catch (error) {
+      console.warn('⚠️ Error ending emotion session:', error);
+    }
+  };
 
   // Test API connection
   const testAPIConnection = async () => {
@@ -447,7 +795,15 @@ const PlayGame = ({ navigation, route }) => {
         );
       }
 
-      // Send to API for prediction
+      // Send same image to emotion detection API (non-blocking)
+      const imageUri = `data:image/jpeg;base64,${base64Data}`;
+      if (emotionSessionId) {
+        sendEmotionPrediction(imageUri).catch(err => {
+          console.warn("[Emotion] Failed to send emotion prediction:", err);
+        });
+      }
+
+      // Send to API for hand sign prediction
       console.log(`Sending request to: ${API_URL}/check`);
       const response = await fetch(`${API_URL}/check`, {
         method: "POST",
@@ -455,7 +811,7 @@ const PlayGame = ({ navigation, route }) => {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          image: `data:image/jpeg;base64,${base64Data}`,
+          image: imageUri,
           targetLetter: targetLetter,
         }),
         timeout: 30000, // 30 second timeout
@@ -479,6 +835,7 @@ const PlayGame = ({ navigation, route }) => {
 
       if (!result.success) {
         Alert.alert("Error", result.error || "Failed to process gesture");
+        setIsCapturing(false); // Reset so user can try again
         return;
       }
 
@@ -514,6 +871,10 @@ const PlayGame = ({ navigation, route }) => {
         setScore(score + 1);
       } else {
         setFeedback("incorrect");
+        // Track confusion - add letter to confusion list
+        if (targetLetter && !confusionLettersRef.current.includes(targetLetter)) {
+          confusionLettersRef.current.push(targetLetter);
+        }
       }
 
       // XP system: correct +20, wrong +0; 5 in a row +50 bonus
@@ -631,9 +992,11 @@ const PlayGame = ({ navigation, route }) => {
         }
       }
 
+      // Save game session first to get gameSessionId
+      let savedGameSessionId = null;
       if (childId && parentId) {
         try {
-          await saveGameSession({
+          savedGameSessionId = await saveGameSession({
             childId,
             parentId,
             gameMode: gameMode,
@@ -642,21 +1005,22 @@ const PlayGame = ({ navigation, route }) => {
             timeTaken: totalTime,
             difficultyLevel: "medium",
           });
+          
+          // Store game session ID for emotion linking
+          if (savedGameSessionId) {
+            gameSessionIdRef.current = savedGameSessionId;
+            console.log('✅ Game session saved, ID:', savedGameSessionId);
+          }
         } catch (error) {
           console.warn("⚠️ Failed to save game session:", error);
         }
       }
 
-      Alert.alert(
-        "Game Complete!",
-        `Great job! You got ${score} correct. Keep playing to earn more XP and level up!`,
-        [{ text: "OK", onPress: () => {} }],
-      );
+      // End emotion session when game completes (will use gameSessionId)
+      await endEmotionSession();
 
-      setCurrentQuestion(0);
-      setScore(0);
-      setGameStartTime(Date.now());
-      generateNewQuestion();
+      // Show results modal with emotion detection details
+      setShowResultsModal(true);
       if (childId) {
         try {
           const p =
@@ -667,7 +1031,12 @@ const PlayGame = ({ navigation, route }) => {
     }
   };
 
-  const handleBack = () => {
+  const handleBack = async () => {
+    // End emotion session before going back
+    if (emotionSessionId) {
+      await endEmotionSession();
+    }
+    
     if (navigation && navigation.goBack) {
       navigation.goBack();
     } else {
@@ -749,6 +1118,7 @@ const PlayGame = ({ navigation, route }) => {
                   </View>
                 </View>
               )}
+
             </CameraView>
           )}
         </View>
@@ -910,6 +1280,88 @@ const PlayGame = ({ navigation, route }) => {
                 className="bg-violet-500 rounded-xl px-8 py-3 mt-6"
               >
                 <Text className="text-white font-bold text-lg">Awesome!</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Game Results Modal with Emotion Detection Details */}
+        <Modal
+          visible={showResultsModal}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={() => {
+            setShowResultsModal(false);
+            if (navigation && navigation.goBack) {
+              navigation.goBack();
+            }
+          }}
+        >
+          <View className="flex-1 bg-black/50 justify-center items-center px-4">
+            <View className="bg-white rounded-3xl p-6 w-full max-w-md shadow-2xl">
+              <View className="items-center mb-4">
+                <MaterialIcons
+                  name="emoji-events"
+                  size={64}
+                  color="#f59e0b"
+                  style={{ marginBottom: 16 }}
+                />
+                <Text className="text-3xl font-bold text-gray-800 text-center">
+                  Game Complete!
+                </Text>
+                <Text className="text-xl font-semibold text-violet-600 mt-2">
+                  Score: {score} / {TOTAL_QUESTIONS}
+                </Text>
+              </View>
+
+              {/* Emotion Detection Details */}
+              {emotionResults && (
+                <View className="mt-4 border-t border-gray-200 pt-4">
+                  <Text className="text-lg font-bold text-gray-800 mb-3">
+                    Emotion Detection Results
+                  </Text>
+                  
+                  <View className="mb-3">
+                    <Text className="text-sm text-gray-600">Behavior:</Text>
+                    <Text className="text-base font-semibold text-gray-800">
+                      {emotionResults.behavior}
+                      {emotionResults.behaviorConfidence > 0 && (
+                        <Text className="text-gray-500">
+                          {" "}({(emotionResults.behaviorConfidence * 100).toFixed(1)}%)
+                        </Text>
+                      )}
+                    </Text>
+                  </View>
+
+                  <View className="mb-3">
+                    <Text className="text-sm text-gray-600">Final Emotion:</Text>
+                    <Text className="text-base font-semibold text-gray-800 capitalize">
+                      {emotionResults.finalEmotion}
+                    </Text>
+                  </View>
+
+                  <View className="mb-3">
+                    <Text className="text-sm text-gray-600">Engagement Level:</Text>
+                    <Text className="text-base font-semibold text-gray-800">
+                      {emotionResults.engagementLevel}
+                    </Text>
+                  </View>
+
+                </View>
+              )}
+
+              <TouchableOpacity
+                onPress={() => {
+                  setShowResultsModal(false);
+                  if (navigation && navigation.goBack) {
+                    navigation.goBack();
+                  }
+                }}
+                className="bg-violet-500 rounded-xl px-8 py-4 mt-6"
+              >
+                <Text className="text-white font-bold text-lg text-center">
+                  Back to Dashboard
+                </Text>
               </TouchableOpacity>
             </View>
           </View>

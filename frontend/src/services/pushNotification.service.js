@@ -83,7 +83,13 @@ export async function registerPushToken(userId) {
       return null;
     }
   } catch (error) {
-    console.error('❌ Error getting push token:', error);
+    // Don't log as error if it's just missing projectId - that's expected in some setups
+    if (error.message?.includes('projectId')) {
+      console.warn('⚠️ Push notifications require Expo projectId. Skipping push token registration.');
+      console.warn('💡 This is normal if you haven\'t configured Expo EAS project. Push notifications will not work until projectId is set.');
+    } else {
+      console.error('❌ Error getting push token:', error);
+    }
     return null;
   }
 }
