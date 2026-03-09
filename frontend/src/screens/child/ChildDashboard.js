@@ -117,6 +117,14 @@ const ChildDashboard = ({ navigation }) => {
     }
   };
 
+  const handleReadStories = () => {
+    if (navigation && navigation.navigate) {
+      navigation.navigate('StoriesList');
+    } else {
+      console.log('Navigate to Stories List screen');
+    }
+  };
+
   const handleLogout = async () => {
     Alert.alert(
       'Logout',
@@ -275,6 +283,21 @@ const ChildDashboard = ({ navigation }) => {
             </View>
           </TouchableOpacity>
 
+          {/* Read Stories Button */}
+          <TouchableOpacity
+            onPress={handleReadStories}
+            className="rounded-3xl p-6 mb-4 shadow-lg"
+            activeOpacity={0.8}
+            style={styles.storiesButton}
+          >
+            <View className="flex-row items-center justify-center">
+              <MaterialIcons name="auto-stories" size={40} color="#ffffff" style={{ marginRight: 16 }} />
+              <Text className="text-2xl font-bold text-white">
+                Read Stories
+              </Text>
+            </View>
+          </TouchableOpacity>
+
           {/* Hazard Detection Button */}
           <TouchableOpacity
             onPress={() => navigation.navigate('HazardDetection')}
@@ -322,6 +345,9 @@ const styles = StyleSheet.create({
   },
   gameButton: {
     backgroundColor: '#a855f7', // purple-500
+  },
+  storiesButton: {
+    backgroundColor: '#0A7EA4', // teal/cyan for stories
   },
   hazardButton: {
     backgroundColor: '#ef4444', // red-500

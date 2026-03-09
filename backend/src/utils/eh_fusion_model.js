@@ -134,12 +134,17 @@ export function computeFusion(session) {
     && avgConfidence > 0;
   
   // Check if hands were detected
-  // Use most recent hand from ALL hands (not just validHands) to check for speed
+  // Hands are detected if:
+  // 1. We have valid hand samples (hands with speed > 0 or hands_detected === true), OR
+  // 2. Most recent hand has speed > 0 (even if hands_detected flag is false)
+  // This ensures that if speed is calculated, hands are considered detected regardless of the flag
   const mostRecentHandAll = hands.length > 0 ? hands[hands.length - 1] : null;
-  const handsDetected = handsActuallyDetected && (
-    (mostRecentHand && mostRecentHand.hands_detected !== false) ||
-    (mostRecentHandAll && (mostRecentHandAll.hand_speed || 0) > 0)
-  );
+  const hasHandSpeed = mostRecentHandAll && (mostRecentHandAll.hand_speed || 0) > 0;
+  const hasHandsDetectedFlag = mostRecentHandAll && mostRecentHandAll.hands_detected === true;
+  
+  // Hands are detected if we have valid samples OR if most recent hand has speed > 0
+  // This is more lenient - if speed is calculated, consider hands detected
+  const handsDetected = handsActuallyDetected || hasHandSpeed || hasHandsDetectedFlag;
   
   let behavior = "Cannot detect";
   let behaviorConfidence = 0.0;
@@ -180,8 +185,13 @@ export function computeFusion(session) {
   summary += `Dominant emotion: ${finalEmotion} (${(avgConfidence * 100).toFixed(1)}% avg confidence). `;
   
   // Only show hand movement if hands were actually detected
-  if (handsActuallyDetected && avgHandSpeed > 0) {
-    summary += `Hand movement: ${avgHandSpeed.toFixed(1)} px/s average, ${handIntensities[handIntensities.length - 1] || "LOW"} intensity. `;
+  // Use handsDetected (which includes speed > 0) instead of just handsActuallyDetected
+  if (handsDetected && avgHandSpeed > 0) {
+    const lastIntensity = handIntensities.length > 0 ? handIntensities[handIntensities.length - 1] : "LOW";
+    summary += `Hand movement: ${avgHandSpeed.toFixed(1)} px/s average, ${lastIntensity} intensity. `;
+  } else if (hasHandSpeed && mostRecentHandAll) {
+    // If we have speed but no validHands (edge case), use most recent hand data
+    summary += `Hand movement: ${mostRecentHandAll.hand_speed.toFixed(1)} px/s, ${mostRecentHandAll.intensity || "LOW"} intensity. `;
   } else {
     summary += `Hand movement: No hands detected. `;
   }

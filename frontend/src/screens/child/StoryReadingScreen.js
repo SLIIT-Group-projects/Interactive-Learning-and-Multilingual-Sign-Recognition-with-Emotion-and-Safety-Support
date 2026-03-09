@@ -1,4 +1,5 @@
-// app/story/[id].tsx
+// React Navigation version of StoryReaderScreen
+// This is a copy of app/story/[id].tsx but adapted for React Navigation
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
@@ -11,7 +12,7 @@ import {
   ActivityIndicator,
   Platform,
 } from "react-native";
-import { useRouter, useLocalSearchParams } from "expo-router";
+import { useRoute, useNavigation } from "@react-navigation/native";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { Image } from "expo-image";
 import * as FileSystem from "expo-file-system";
@@ -22,69 +23,71 @@ import {
   uploadFiles,
   apiCall,
   BASE_URL,
-} from "../../config/api";
+} from "../../../config/api";
 
-// ✅ Change this import path if your STORIES file is elsewhere
-import { STORIES } from "../../data/stories";
+// Import stories data
+import { STORIES } from "../../../data/stories";
 
-function formatSeconds(total: number) {
+function formatSeconds(total) {
   const hh = Math.floor(total / 3600);
   const ss = total % 60;
   return `${hh}h ${String(ss).padStart(2, "0")}s`;
 }
 
 // Generate unique session ID
-function generateSessionId(): string {
+function generateSessionId() {
   return `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 }
 
 export default function StoryReaderScreen() {
-  const router = useRouter();
-  const params = useLocalSearchParams<{ id?: string }>();
+  const route = useRoute();
+  const navigation = useNavigation();
+  // Get storyId from React Navigation route params instead of Expo Router
+  const storyId = route.params?.storyId || route.params?.id;
 
   const story = useMemo(() => {
-    const sid = params?.id ? String(params.id) : "";
-    return STORIES.find((s: any) => String(s.id) === sid) ?? STORIES?.[0];
-  }, [params?.id]);
+    const sid = storyId ? String(storyId) : "";
+    return STORIES.find((s) => String(s.id) === sid) ?? STORIES?.[0];
+  }, [storyId]);
 
   // Session management
-  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [sessionId, setSessionId] = useState(null);
   const [sessionActive, setSessionActive] = useState(false);
   const [seconds, setSeconds] = useState(0);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const timerRef = useRef(null);
   const isStartingSessionRef = useRef(false);
   // Use refs to access current values in intervals (avoids stale closure issues)
-  const sessionIdRef = useRef<string | null>(null);
+  const sessionIdRef = useRef(null);
   const sessionActiveRef = useRef(false);
 
   // Camera
   const [permission, requestPermission] = useCameraPermissions();
   const [cameraOn, setCameraOn] = useState(true);
-  const cameraRef = useRef<CameraView>(null);
+  const cameraRef = useRef(null);
 
   // Frame capture state
-  const emotionCaptureIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const handCaptureIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const frameBufferRef = useRef<Array<{ uri: string; timestamp: number }>>([]);
+  const emotionCaptureIntervalRef = useRef(null);
+  const handCaptureIntervalRef = useRef(null);
+  const frameBufferRef = useRef([]);
   const isCapturingRef = useRef(false);
   // Track pending hand analysis requests to wait for them before finalizing
-  const pendingHandRequestsRef = useRef<Set<Promise<any>>>(new Set());
+  const pendingHandRequestsRef = useRef(new Set());
 
   // Results
-  const [finalEmotion, setFinalEmotion] = useState<string | null>(null);
-  const [engagementLevel, setEngagementLevel] = useState<string | null>(null);
-  const [behavior, setBehavior] = useState<string | null>(null); // PRIMARY OUTPUT
-  const [behaviorConfidence, setBehaviorConfidence] = useState<number | null>(null);
-  const [summary, setSummary] = useState<string | null>(null);
+  const [finalEmotion, setFinalEmotion] = useState(null);
+  const [engagementLevel, setEngagementLevel] = useState(null);
+  const [behavior, setBehavior] = useState(null); // PRIMARY OUTPUT
+  const [behaviorConfidence, setBehaviorConfidence] = useState(null);
+  const [summary, setSummary] = useState(null);
   const [summaryVisible, setSummaryVisible] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState(null);
   
   // Hand speed results
-  const [handSpeed, setHandSpeed] = useState<number | null>(null);
-  const [handIntensity, setHandIntensity] = useState<string | null>(null);
-  const [handsDetected, setHandsDetected] = useState<boolean | null>(null);
-  const [handMessage, setHandMessage] = useState<string | null>(null);
+  const [handSpeed, setHandSpeed] = useState(null);
+  const [handIntensity, setHandIntensity] = useState(null);
+  const [handsDetected, setHandsDetected] = useState(null);
+  const [handMessage, setHandMessage] = useState(null);
 
   // Keep refs in sync with state
   useEffect(() => {
@@ -122,8 +125,7 @@ export default function StoryReaderScreen() {
   }, [seconds, sessionActive]);
 
   // Capture frame from camera silently (no shutter sound)
-  // Using video mode frame capture which doesn't trigger shutter sounds
-  const captureFrame = async (): Promise<string | null> => {
+  const captureFrame = async () => {
     // Check all prerequisites before attempting capture
     if (!cameraRef.current) {
       console.warn("[Capture] Camera ref not available");
@@ -148,7 +150,7 @@ export default function StoryReaderScreen() {
 
     try {
       isCapturingRef.current = true;
-      const camera = cameraRef.current as any;
+      const camera = cameraRef.current;
       
       if (!camera || typeof camera.takePictureAsync !== 'function') {
         console.warn("Camera takePictureAsync not available");
@@ -156,30 +158,26 @@ export default function StoryReaderScreen() {
       }
 
       // SILENT CAPTURE: Disable shutter sound and minimize visual disruption
-      // Only captures the camera preview, not the entire screen
-      // Using shutterSound: false to mute the camera sound completely
       const photoPromise = camera.takePictureAsync({
-        quality: 0.7, // Good quality for emotion/hand detection
-        base64: true, // Base64 output for efficient processing
-        skipProcessing: true, // Skip processing to minimize flash duration
-        shutterSound: false, // CRITICAL: Disable shutter sound completely
-        // This only captures the camera view, not the whole screen
-        // skipProcessing: true reduces capture time, minimizing visual flash
+        quality: 0.7,
+        base64: true,
+        skipProcessing: true,
+        shutterSound: false,
       });
 
       const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error("Camera capture timeout")), 2000) // Fast timeout
+        setTimeout(() => reject(new Error("Camera capture timeout")), 2000)
       );
 
-      const photo = await Promise.race([photoPromise, timeoutPromise]) as any;
+      const photo = await Promise.race([photoPromise, timeoutPromise]);
 
       if (!photo) {
         console.warn("[Capture] Photo capture returned null");
         return null;
       }
 
-      // Convert base64 to data URI for silent upload (no file system access)
-      let uri: string;
+      // Convert base64 to data URI
+      let uri;
       if (photo.base64) {
         uri = `data:image/jpeg;base64,${photo.base64}`;
       } else if (photo.uri) {
@@ -189,16 +187,12 @@ export default function StoryReaderScreen() {
         return null;
       }
 
-      // Silent capture completed - no sound, no screen flash
-      // Only the camera preview frame is captured, not the entire screen
       console.log(`[Capture] ✅ Frame captured silently (no sound/flash): ${uri.substring(0, 50)}...`);
       return uri;
-    } catch (err: any) {
+    } catch (err) {
       console.error("Frame capture error:", err);
-      // Don't throw - just return null to prevent crashes
       return null;
     } finally {
-      // Always reset capturing flag, even on error
       isCapturingRef.current = false;
     }
   };
@@ -215,30 +209,14 @@ export default function StoryReaderScreen() {
 
     try {
       console.log(`[Emotion] ⏰ Starting emotion prediction for session ${currentSessionId}`);
-      console.log(`[Emotion] Camera state:`, {
-        cameraRef: !!cameraRef.current,
-        permission: permission?.granted,
-        cameraOn,
-        sessionActive: sessionActiveRef.current
-      });
       
-      // Capture frame from camera
-      console.log(`[Emotion] Attempting to capture frame...`);
       const frameUri = await captureFrame();
       if (!frameUri) {
-        // Don't log as error - this is normal if camera is temporarily unavailable
         console.warn("[Emotion] ⚠️ Frame capture skipped - camera may be busy or unavailable. Will retry on next interval.");
         return;
       }
 
       console.log(`[Emotion] Frame captured: ${frameUri.substring(0, 50)}... (${frameUri.length} chars)`);
-
-      // Send to backend API
-      console.log(`[Emotion] Calling uploadFile with:`, {
-        endpoint: API_ENDPOINTS.PREDICT_EMOTION,
-        fileName: `emotion_${Date.now()}.jpg`,
-        sessionId: currentSessionId
-      });
       
       const result = await uploadFile(
         API_ENDPOINTS.PREDICT_EMOTION,
@@ -252,27 +230,19 @@ export default function StoryReaderScreen() {
 
       console.log(`[Emotion] ✅ Backend response:`, result);
       
-      // Check if result has error field (Python crash fallback) - this is OK, data is still stored
       if (result?.error) {
         console.warn(`[Emotion] ⚠️ Backend returned result with error (Python crash fallback):`, result.error?.substring(0, 100));
-        // Result is still valid - backend stored a fallback (e.g., "neutral" emotion)
-        // Session continues normally - don't log as error
       }
-     } catch (err: any) {
-       // Handle errors gracefully - don't show to user, just log as warning
-       const errorMsg = err?.message || String(err);
-       
-       // Python crashes (exit code 3221226505) are expected sometimes - just log as warning
-       // The backend should have returned a stored fallback, but if it didn't, that's OK too
-       if (errorMsg.includes("Python script failed") || errorMsg.includes("3221226505")) {
-         console.warn("[Emotion] ⚠️ Python script crashed (non-blocking, session continues):", errorMsg.substring(0, 100));
-       } else if (errorMsg.includes("Network request failed") || errorMsg.includes("timeout")) {
-         console.warn("[Emotion] ⚠️ Network error (non-blocking, session continues):", errorMsg.substring(0, 100));
-       } else {
-         console.warn("[Emotion] ⚠️ Emotion prediction error (non-blocking):", err?.message?.substring(0, 100) || String(err).substring(0, 100));
-       }
-       // Don't block the session on individual frame errors - system will retry on next interval
-     }
+    } catch (err) {
+      const errorMsg = err?.message || String(err);
+      if (errorMsg.includes("Python script failed") || errorMsg.includes("3221226505")) {
+        console.warn("[Emotion] ⚠️ Python script crashed (non-blocking, session continues):", errorMsg.substring(0, 100));
+      } else if (errorMsg.includes("Network request failed") || errorMsg.includes("timeout")) {
+        console.warn("[Emotion] ⚠️ Network error (non-blocking, session continues):", errorMsg.substring(0, 100));
+      } else {
+        console.warn("[Emotion] ⚠️ Emotion prediction error (non-blocking):", err?.message?.substring(0, 100) || String(err).substring(0, 100));
+      }
+    }
   };
 
   // Send hand analysis to backend
@@ -285,29 +255,25 @@ export default function StoryReaderScreen() {
       return;
     }
 
-    // Create a promise for this request to track it
-    let requestPromise: Promise<any> | null = null;
+    let requestPromise = null;
 
     try {
       console.log(`[Hand] Capturing frames for hand analysis for session ${currentSessionId}`);
       
-      // Capture multiple frames for hand speed analysis (need at least 2 frames)
-      const frames: Array<{ uri: string; type: string; name: string }> = [];
-      const frameCount = 15; // Capture 15 frames for better hand movement detection
-      const fps = 5; // 5 fps = 200ms between frames - gives more time for hand movement
+      const frames = [];
+      const frameCount = 15;
+      const fps = 5;
       const baseTimestamp = Date.now();
       
       for (let i = 0; i < frameCount; i++) {
         const frameUri = await captureFrame();
         if (frameUri) {
-          // Use sequential numbering with timestamp to ensure proper ordering
           frames.push({
             uri: frameUri,
             type: "image/jpeg",
             name: `hand_${baseTimestamp}_${String(i).padStart(4, '0')}.jpg`,
           });
         }
-        // Delay between captures to allow hand movement
         if (i < frameCount - 1) {
           await new Promise((resolve) => setTimeout(resolve, 1000 / fps));
         }
@@ -320,46 +286,35 @@ export default function StoryReaderScreen() {
 
       console.log(`[Hand] Sending ${frames.length} frames to backend`);
       
-      // Create the request promise and track it IMMEDIATELY
-      // Use more retries (3) and longer timeout (120s) for hand analysis
-      // Hand analysis is critical and can be slow, especially on mobile
       requestPromise = uploadFiles(
         API_ENDPOINTS.ANALYZE_HAND,
         frames,
         { sessionId: currentSessionId, fps: fps },
-        3, // 3 retries (was 2) - more resilient for network issues
-        120000 // 120 seconds timeout (was 90s) - hand analysis can be very slow
+        3,
+        120000
       );
       
-      // Add to pending requests IMMEDIATELY (before await) so it's tracked even if session stops
       pendingHandRequestsRef.current.add(requestPromise);
       console.log(`[Hand] Added request to pending (${pendingHandRequestsRef.current.size} total pending)`);
       
-      // Send to backend API with better error handling
       const result = await requestPromise;
 
       console.log(`[Hand] ✅ Backend response:`, result);
       
-      // Update hand speed state with results
       if (result) {
         setHandSpeed(result.hand_speed ?? null);
         setHandIntensity(result.intensity ?? null);
         setHandsDetected(result.hands_detected ?? null);
         setHandMessage(result.message || result.note || null);
       }
-    } catch (err: any) {
-      // Log as warning instead of error - don't break the session
+    } catch (err) {
       const errorMsg = err?.message || String(err);
       if (errorMsg.includes("Network request failed") || errorMsg.includes("timeout")) {
         console.warn("[Hand] ⚠️ Hand analysis network error (non-blocking):", errorMsg.substring(0, 100));
       } else {
         console.warn("[Hand] ⚠️ Hand analysis error (non-blocking):", err);
       }
-      // Don't set error state - allow session to continue
-      // Don't block the session on individual analysis errors
     } finally {
-      // Remove from pending requests when done (success or error)
-      // This is important so finalize doesn't wait forever
       if (requestPromise) {
         const removed = pendingHandRequestsRef.current.delete(requestPromise);
         if (removed) {
@@ -371,7 +326,6 @@ export default function StoryReaderScreen() {
 
   // Start session with backend API
   const startSession = async () => {
-    // Prevent multiple simultaneous calls
     if (isStartingSessionRef.current || sessionActive) {
       console.log("Session already starting or active, ignoring request");
       return;
@@ -380,7 +334,6 @@ export default function StoryReaderScreen() {
     try {
       isStartingSessionRef.current = true;
 
-      // Request camera permission
       if (!permission?.granted) {
         const ok = await ensureCameraPermission();
         if (!ok) {
@@ -396,20 +349,17 @@ export default function StoryReaderScreen() {
       setFinalEmotion(null);
       setEngagementLevel(null);
       setSummary(null);
-      // Reset hand speed state
       setHandSpeed(null);
       setHandIntensity(null);
       setHandsDetected(null);
       setHandMessage(null);
 
-      // Generate session ID
       const newSessionId = generateSessionId();
       setSessionId(newSessionId);
-      sessionIdRef.current = newSessionId; // Update ref immediately
+      sessionIdRef.current = newSessionId;
 
       console.log(`[Session] Starting session ${newSessionId} with backend API`);
       
-      // Call backend to start session
       // Use longer timeout (60s) and more retries (3) for start session
       // Backend might be slow to respond, especially on mobile devices
       const startResponse = await apiCall(
@@ -434,16 +384,14 @@ export default function StoryReaderScreen() {
       console.log(`[Session] ✅ Session started:`, startData);
       
       setSessionActive(true);
-      sessionActiveRef.current = true; // Update ref immediately
+      sessionActiveRef.current = true;
       isStartingSessionRef.current = false;
       setLoading(false);
 
-      // Wait a bit before starting captures
       await new Promise((resolve) => setTimeout(resolve, 500));
 
       console.log(`[Session] Starting capture intervals for session ${newSessionId}`);
       
-      // Start emotion capture (every 2 seconds)
       emotionCaptureIntervalRef.current = setInterval(() => {
         try {
           sendEmotionPrediction();
@@ -452,7 +400,6 @@ export default function StoryReaderScreen() {
         }
       }, 2000);
 
-      // Start hand capture (every 8 seconds)
       handCaptureIntervalRef.current = setInterval(() => {
         try {
           sendHandAnalysis();
@@ -461,18 +408,16 @@ export default function StoryReaderScreen() {
         }
       }, 8000);
       
-      // Trigger first captures
       setTimeout(() => {
         sendEmotionPrediction();
         sendHandAnalysis();
       }, 1000);
-    } catch (err: any) {
+    } catch (err) {
       console.error("Start session error:", err);
       setError(err.message || "Failed to start session");
       setSessionActive(false);
       sessionActiveRef.current = false;
       sessionIdRef.current = null;
-      // Clear any intervals that might have been set
       if (emotionCaptureIntervalRef.current) {
         clearInterval(emotionCaptureIntervalRef.current);
         emotionCaptureIntervalRef.current = null;
@@ -496,11 +441,10 @@ export default function StoryReaderScreen() {
 
     setLoading(true);
     setSessionActive(false);
-    sessionActiveRef.current = false; // Update ref immediately
+    sessionActiveRef.current = false;
 
     console.log(`[Session] Stopping capture intervals for session ${currentSessionId}`);
     
-    // Stop capture intervals
     if (emotionCaptureIntervalRef.current) {
       clearInterval(emotionCaptureIntervalRef.current);
       emotionCaptureIntervalRef.current = null;
@@ -511,30 +455,24 @@ export default function StoryReaderScreen() {
     }
 
     try {
-      // CRITICAL: Get pending requests BEFORE clearing anything
-      // Wait for pending hand requests to complete before finalizing
-      // This ensures all in-flight requests are included in the final summary
       const pendingRequests = Array.from(pendingHandRequestsRef.current);
       console.log(`[Session] Found ${pendingRequests.length} pending hand analysis request(s)`);
       
       if (pendingRequests.length > 0) {
         console.log(`[Session] Waiting for ${pendingRequests.length} pending hand analysis request(s) to complete...`);
         try {
-          // Wait for all pending requests with a maximum timeout
-          // Use Promise.allSettled to wait for all, even if some fail
           await Promise.allSettled(
             pendingRequests.map(p => 
               Promise.race([
                 p.catch(err => {
-                  // Log but don't throw - we want to wait for all requests
                   console.log(`[Session] Pending request failed:`, err?.message?.substring(0, 100));
-                  return null; // Return null on error so Promise.allSettled doesn't fail
+                  return null;
                 }),
                 new Promise((resolve) => 
                   setTimeout(() => {
                     console.log(`[Session] Pending request timeout (30s)`);
-                    resolve(null); // Resolve with null on timeout
-                  }, 30000) // 30s max wait per request
+                    resolve(null);
+                  }, 30000)
                 )
               ])
             )
@@ -543,23 +481,18 @@ export default function StoryReaderScreen() {
         } catch (err) {
           console.warn(`[Session] ⚠️ Error waiting for pending requests:`, err);
         }
-        // Additional delay to ensure backend has processed and stored all data
         console.log(`[Session] Waiting 5 seconds for backend to process and store all hand data...`);
-        await new Promise(resolve => setTimeout(resolve, 5000)); // 5 second buffer for backend processing
+        await new Promise(resolve => setTimeout(resolve, 5000));
       } else {
-        // No pending requests, but still wait a bit for any requests that just started
         console.log(`[Session] No pending hand requests tracked, waiting 8 seconds for any in-flight requests to complete...`);
-        await new Promise(resolve => setTimeout(resolve, 8000)); // 8 second delay for safety
+        await new Promise(resolve => setTimeout(resolve, 8000));
       }
       
-      // Clear pending requests after waiting (they should be done by now)
       console.log(`[Session] Clearing ${pendingHandRequestsRef.current.size} remaining pending hand request(s)`);
       pendingHandRequestsRef.current.clear();
       
       console.log(`[Session] Finalizing session ${currentSessionId} with backend API...`);
       
-      // Call backend to finalize session and get results
-      // Use longer timeout (60s) since finalize needs to process all session data
       const finalizeResponse = await apiCall(
         API_ENDPOINTS.FINALIZE_SESSION,
         {
@@ -569,8 +502,8 @@ export default function StoryReaderScreen() {
           },
           body: JSON.stringify({ sessionId: currentSessionId }),
         },
-        2, // retries
-        60000 // 60 second timeout for finalize (processes all session data)
+        2,
+        60000
       );
 
       if (!finalizeResponse.ok) {
@@ -581,7 +514,6 @@ export default function StoryReaderScreen() {
       const result = await finalizeResponse.json();
       console.log(`[Session] ✅ Final results from backend:`, result);
       
-      // Extract results from backend response - NO FALLBACKS, only use backend data
       if (!result.finalEmotion && !result.predicted) {
         throw new Error("Backend did not return emotion data");
       }
@@ -592,14 +524,12 @@ export default function StoryReaderScreen() {
         throw new Error("Backend did not return summary");
       }
       
-      // Use ONLY backend data - no hardcoded fallbacks
       const finalEmotion = result.finalEmotion || result.predicted;
       const engagementLevel = result.engagementLevel;
-      const behavior = result.behavior || "Neutral"; // PRIMARY OUTPUT
+      const behavior = result.behavior || "Neutral";
       const behaviorConfidence = result.behaviorConfidence || 0.0;
       const summary = result.summary;
       
-      // Set results from backend - Behavior is PRIMARY
       setBehavior(behavior);
       setBehaviorConfidence(behaviorConfidence);
       setFinalEmotion(finalEmotion);
@@ -608,10 +538,9 @@ export default function StoryReaderScreen() {
       setSummaryVisible(true);
       
       console.log(`[Session] Results from backend: Behavior=${behavior}, Emotion=${finalEmotion}, Engagement=${engagementLevel}`);
-    } catch (err: any) {
+    } catch (err) {
       console.error("Finalize session error:", err);
       setError(err.message || "Failed to get session results from backend");
-      // NO FALLBACK DATA - show error instead
       setBehavior(null);
       setBehaviorConfidence(null);
       setFinalEmotion(null);
@@ -652,11 +581,11 @@ export default function StoryReaderScreen() {
     return (
       <SafeAreaView style={styles.safe}>
         <View style={{ padding: 16 }}>
-          <Text style={{ fontSize: 18, fontWeight: "700" }}>No stories found.</Text>
+          <Text style={{ fontSize: 18, fontWeight: "700" }}>Story not found.</Text>
           <Text style={{ marginTop: 8, color: "#666" }}>
-            Check your STORIES import path and data file.
+            Story ID: {storyId}
           </Text>
-          <TouchableOpacity style={styles.startSessionBtn} onPress={() => router.back()}>
+          <TouchableOpacity style={styles.startSessionBtn} onPress={() => navigation.goBack()}>
             <Text style={styles.startSessionBtnText}>Go Back</Text>
           </TouchableOpacity>
         </View>
@@ -668,7 +597,7 @@ export default function StoryReaderScreen() {
     <SafeAreaView style={styles.safe}>
       {/* Header */}
       <View style={styles.headerRow}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
           <MaterialIcons name="chevron-left" size={28} color="#212121" />
         </TouchableOpacity>
         <Text style={styles.headerTitleText}>Story page</Text>
@@ -695,17 +624,14 @@ export default function StoryReaderScreen() {
                 <Text style={styles.heroEmoji}>{story.emoji}</Text>
               </View>
             )}
-            {/* Difficulty Tag on Image */}
             <View style={styles.difficultyTag}>
               <Text style={styles.difficultyText}>{story.level}</Text>
             </View>
-            {/* Hide/Show Cam Button Overlay */}
             <TouchableOpacity onPress={onToggleCamera} style={styles.hideCamBtnOverlay}>
               <Text style={styles.hideCamBtnText}>{cameraOn ? "Hide cam" : "Show cam"}</Text>
             </TouchableOpacity>
           </View>
 
-          {/* Story Title and Metadata */}
           <Text style={styles.storyTitle}>{story.title}</Text>
           <View style={styles.metadataRow}>
             <View style={styles.timeBadge}>
@@ -717,19 +643,16 @@ export default function StoryReaderScreen() {
           </View>
         </View>
 
-        {/* Show Camera Button - when camera is hidden */}
         {!cameraOn && (
           <TouchableOpacity onPress={onToggleCamera} style={styles.showCamBtn}>
             <Text style={styles.showCamBtnText}>Show Camera</Text>
           </TouchableOpacity>
         )}
 
-        {/* Story Text Box */}
         <View style={styles.storyTextBox}>
           <Text style={styles.storyText}>{story.storyText}</Text>
         </View>
 
-        {/* Error Display */}
         {error && (
           <View style={styles.errorBox}>
             <Text style={styles.errorText} numberOfLines={10}>
@@ -738,7 +661,6 @@ export default function StoryReaderScreen() {
           </View>
         )}
 
-        {/* Session Controls */}
         <View style={styles.sessionRow}>
           <TouchableOpacity
             onPress={sessionActive ? finishSession : startSession}
@@ -761,13 +683,11 @@ export default function StoryReaderScreen() {
           </View>
         </View>
 
-        {/* Session Output Card */}
         <View style={styles.outputCard}>
           <Text style={styles.outputCardTitle}>Session Output</Text>
           
           {behavior || finalEmotion || engagementLevel ? (
             <>
-              {/* BEHAVIOR - PRIMARY OUTPUT - BIG AND PROMINENT */}
               {behavior && (
                 <View style={styles.behaviorContainerCard}>
                   <Text style={styles.behaviorLabelCard}>Behavior</Text>
@@ -794,7 +714,6 @@ export default function StoryReaderScreen() {
           )}
         </View>
 
-        {/* Hand Speed Detection Card */}
         <View style={styles.outputCard}>
           <Text style={styles.outputCardTitle}>Hand Movement Speed</Text>
           
@@ -841,11 +760,9 @@ export default function StoryReaderScreen() {
           )}
         </View>
 
-        {/* Spacer for camera overlay */}
         {cameraOn && <View style={{ height: 180 }} />}
       </ScrollView>
 
-      {/* Camera Overlay */}
       {cameraOn && (
         <View style={styles.camBox}>
           <CamStatus />
@@ -863,9 +780,6 @@ export default function StoryReaderScreen() {
                 style={{ flex: 1 }}
                 facing="front"
                 mode="picture"
-                // Using picture mode with shutterSound: false in takePictureAsync
-                // This prevents sound, and the preview should remain stable
-                // Flash is controlled via takePictureAsync options, not component props
               />
             </View>
           )}
@@ -875,7 +789,6 @@ export default function StoryReaderScreen() {
         </View>
       )}
 
-      {/* Summary Modal */}
       <Modal visible={summaryVisible} animationType="slide" transparent>
         <View style={styles.modalBackground}>
           <View style={styles.modalCard}>
@@ -888,7 +801,6 @@ export default function StoryReaderScreen() {
               </Text>
             ) : (
               <>
-                {/* BEHAVIOR - PRIMARY OUTPUT - BIG AND PROMINENT */}
                 {behavior && (
                   <View style={styles.behaviorContainer}>
                     <Text style={styles.behaviorLabel}>Behavior</Text>
@@ -920,10 +832,9 @@ export default function StoryReaderScreen() {
   );
 }
 
+// Copy styles from app/story/[id].tsx
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#F0F8FF" }, // Light blue background
-
-  // Header
+  safe: { flex: 1, backgroundColor: "#F0F8FF" },
   headerRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -957,18 +868,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  profileIconText: {
-    fontSize: 18,
-    color: "#FFFFFF",
-  },
-
-  // Content
   content: {
     padding: 16,
     paddingBottom: 200,
   },
-
-  // Hero Section
   heroSection: {
     marginBottom: 20,
   },
@@ -1062,8 +965,6 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#0A7EA4",
   },
-
-  // Story Text Box
   storyTextBox: {
     backgroundColor: "#FFFFFF",
     borderWidth: 2,
@@ -1077,15 +978,13 @@ const styles = StyleSheet.create({
     lineHeight: 28,
     color: "#212121",
     fontFamily: Platform.select({
-      ios: "Georgia", // Elegant serif font perfect for stories on iOS
-      android: "serif", // Elegant serif on Android (Roboto Serif or Noto Serif)
+      ios: "Georgia",
+      android: "serif",
       default: "Georgia, serif",
     }),
     letterSpacing: 0.3,
     textAlign: "left",
   },
-
-  // Error
   errorBox: {
     marginTop: 12,
     marginBottom: 12,
@@ -1099,8 +998,6 @@ const styles = StyleSheet.create({
     color: "#C62828",
     fontWeight: "600",
   },
-
-  // Session Controls
   sessionRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -1122,7 +1019,7 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
   statusBtn: {
-    backgroundColor: "#FFD700", // Yellow
+    backgroundColor: "#FFD700",
     paddingVertical: 14,
     paddingHorizontal: 20,
     borderRadius: 12,
@@ -1131,15 +1028,13 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   statusBtnActive: {
-    backgroundColor: "#FFD700", // Yellow when active
+    backgroundColor: "#FFD700",
   },
   statusBtnText: {
     color: "#212121",
     fontSize: 14,
     fontWeight: "800",
   },
-
-  // Session Output Card
   outputCard: {
     backgroundColor: "#FFFFFF",
     borderRadius: 16,
@@ -1186,13 +1081,13 @@ const styles = StyleSheet.create({
     fontWeight: "900",
   },
   outputValueHigh: {
-    color: "#DC3545", // Red for high intensity
+    color: "#DC3545",
   },
   outputValueMedium: {
-    color: "#FFC107", // Yellow/Orange for medium intensity
+    color: "#FFC107",
   },
   outputValueLow: {
-    color: "#28A745", // Green for low intensity
+    color: "#28A745",
   },
   handStatusContainer: {
     marginTop: 4,
@@ -1203,8 +1098,6 @@ const styles = StyleSheet.create({
     marginTop: 4,
     fontStyle: "italic",
   },
-
-  // Camera Overlay
   camBox: {
     position: "absolute",
     left: 16,
@@ -1261,7 +1154,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "700",
   },
-
   modalBackground: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.45)",
@@ -1279,8 +1171,6 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     alignSelf: "flex-end",
   },
-  
-  // Behavior Display - PRIMARY OUTPUT - BIG AND PROMINENT
   behaviorContainer: {
     backgroundColor: "#E3F2FD",
     borderRadius: 16,
@@ -1312,14 +1202,6 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     letterSpacing: 0.5,
   },
-  behaviorConfidence: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#666",
-    fontStyle: "italic",
-  },
-  
-  // Behavior Display in Card
   behaviorContainerCard: {
     backgroundColor: "#E3F2FD",
     borderRadius: 16,
@@ -1349,11 +1231,5 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginBottom: 6,
     letterSpacing: 0.5,
-  },
-  behaviorConfidenceCard: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#666",
-    fontStyle: "italic",
   },
 });

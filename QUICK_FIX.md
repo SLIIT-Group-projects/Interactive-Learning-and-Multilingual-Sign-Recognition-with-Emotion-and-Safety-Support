@@ -2,7 +2,7 @@
 
 ## Problem
 
-Phone browser can't open `http://192.168.13.67:5000/health`
+Phone browser can't open `http://192.168.1.6:5000/health`
 
 ## Solution 1: Fix Windows Firewall (Recommended)
 
@@ -37,7 +37,7 @@ Your IP might have changed. Check it:
 ipconfig
 ```
 
-Look for "IPv4 Address" under your WiFi adapter. It might be different from `192.168.13.67`.
+Look for "IPv4 Address" under your WiFi adapter. It might be different from `192.168.1.6`.
 
 **Update `PlayGame.js`** with the correct IP:
 
@@ -96,7 +96,7 @@ Starting server on http://localhost:5000
 After fixing firewall:
 
 1. **From laptop browser:** `http://localhost:5000/health` ✅ Should work
-2. **From phone browser:** `http://192.168.13.67:5000/health` ✅ Should work
+2. **From phone browser:** `http://192.168.1.6:5000/health` ✅ Should work
 3. **From app:** Should now connect ✅
 
 ## Still Not Working?

@@ -9,6 +9,8 @@ import LearningProgressScreen from '../screens/parent/LearningProgressScreen';
 import { ChildDashboard, LearnSigns, PlayGame } from '../screens/child';
 import GameSelectScreen from '../screens/child/GameSelectScreen';
 import PlayGameTimed from '../screens/child/PlayGameTimed';
+import StoriesListScreen from '../screens/child/StoriesListScreen';
+import StoryReadingScreen from '../screens/child/StoryReadingScreen';
 import { HazardDetectionScreen } from '../screens/common';
 import PlacesScreen from '../screens/parent/PlacesScreen';
 import HazardHistoryScreen from '../screens/parent/HazardHistoryScreen';
@@ -241,6 +243,8 @@ export default function AppNavigator({ navigationRef }) {
             <Stack.Screen name="LearnSigns" component={LearnSigns} />
             <Stack.Screen name="PlayGame" component={PlayGame} />
             <Stack.Screen name="PlayGameTimed" component={PlayGameTimed} />
+            <Stack.Screen name="StoriesList" component={StoriesListScreen} />
+            <Stack.Screen name="StoryReading" component={StoryReadingScreen} />
             <Stack.Screen name="HazardDetection" component={HazardDetectionScreen} />
           </>
         ) : (

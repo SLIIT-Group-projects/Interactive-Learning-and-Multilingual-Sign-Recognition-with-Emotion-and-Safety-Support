@@ -71,8 +71,8 @@ const PlayGame = ({ navigation, route }) => {
 
   // API endpoint - update this to your server IP/URL
   const API_URL = __DEV__
-    ? "http://192.168.13.67:5000" // Your laptop's IP address with port
-    : "http://192.168.13.67:5000"; // For production (same IP)
+    ? "http://192.168.1.6:5000" // Your laptop's IP address with port
+    : "http://192.168.1.6:5000"; // For production (same IP)
 
   // Stable camera ref callback - must be at top level (Rules of Hooks)
   const handleCameraRef = useCallback(

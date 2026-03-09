@@ -68,8 +68,8 @@ const PlayGameTimed = ({ navigation, route }) => {
   const parentId = userData?.parentId || null;
 
   const API_URL = __DEV__
-    ? "http://192.168.13.67:5000"
-    : "http://192.168.13.67:5000";
+    ? "http://192.168.1.6:5000"
+    : "http://192.168.1.6:5000";
 
   // Initialize game (but don't start timer until user clicks Start)
   useEffect(() => {
