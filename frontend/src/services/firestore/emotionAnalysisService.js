@@ -2,6 +2,7 @@ import {
   getDailyEmotionStats,
   getWeeklyEmotionStats,
   getChildEmotionSessions,
+  getChildStoryEmotionSessions,
 } from './emotionService';
 import {
   collection,
@@ -24,12 +25,14 @@ export const analyzeEmotionPatterns = async (childId, parentId) => {
 
     // Get weekly stats
     const weeklyStats = await getWeeklyEmotionStats(childId, 2); // Last 2 weeks
-    const recentSessions = await getChildEmotionSessions(childId, 20);
+    const recentGameSessions = await getChildEmotionSessions(childId, 20);
+    const recentStorySessions = await getChildStoryEmotionSessions(childId, 20);
+    const recentSessions = [...recentGameSessions, ...recentStorySessions];
 
     if (weeklyStats.length === 0 && recentSessions.length === 0) {
       return {
         hasData: false,
-        message: 'Not enough data yet. Keep playing games to see insights!',
+        message: 'Not enough data yet. Keep playing games and reading stories to see insights!',
       };
     }
 
@@ -40,6 +43,7 @@ export const analyzeEmotionPatterns = async (childId, parentId) => {
       engagementTrend: calculateEngagementTrend(weeklyStats),
       confusionPatterns: analyzeConfusionPatterns(recentSessions),
       behaviorPatterns: analyzeBehaviorPatterns(recentSessions),
+      sessionBreakdown: analyzeSessionBreakdown(recentGameSessions, recentStorySessions),
       recommendations: [],
       warnings: [],
       progress: calculateProgress(weeklyStats),
@@ -362,6 +366,55 @@ const generateWarnings = (insights) => {
   }
 
   return warnings;
+};
+
+/**
+ * Analyze session breakdown (games vs stories)
+ */
+const analyzeSessionBreakdown = (gameSessions, storySessions) => {
+  const totalSessions = gameSessions.length + storySessions.length;
+  
+  if (totalSessions === 0) {
+    return {
+      gameCount: 0,
+      storyCount: 0,
+      gamePercentage: 0,
+      storyPercentage: 0,
+      gameAvgEngagement: 'LOW',
+      storyAvgEngagement: 'LOW',
+    };
+  }
+
+  // Calculate average engagement for games
+  const gameEngagements = gameSessions.map(s => s.engagementLevel || 'LOW');
+  const gameEngagementCounts = { HIGH: 0, MEDIUM: 0, LOW: 0 };
+  gameEngagements.forEach(e => {
+    if (e === 'HIGH' || e === 'MEDIUM' || e === 'LOW') {
+      gameEngagementCounts[e] = (gameEngagementCounts[e] || 0) + 1;
+    }
+  });
+  const gameAvgEngagement = gameEngagementCounts.HIGH > gameEngagementCounts.MEDIUM && gameEngagementCounts.HIGH > gameEngagementCounts.LOW ? 'HIGH' :
+    (gameEngagementCounts.MEDIUM > gameEngagementCounts.LOW ? 'MEDIUM' : 'LOW');
+
+  // Calculate average engagement for stories
+  const storyEngagements = storySessions.map(s => s.engagementLevel || 'LOW');
+  const storyEngagementCounts = { HIGH: 0, MEDIUM: 0, LOW: 0 };
+  storyEngagements.forEach(e => {
+    if (e === 'HIGH' || e === 'MEDIUM' || e === 'LOW') {
+      storyEngagementCounts[e] = (storyEngagementCounts[e] || 0) + 1;
+    }
+  });
+  const storyAvgEngagement = storyEngagementCounts.HIGH > storyEngagementCounts.MEDIUM && storyEngagementCounts.HIGH > storyEngagementCounts.LOW ? 'HIGH' :
+    (storyEngagementCounts.MEDIUM > storyEngagementCounts.LOW ? 'MEDIUM' : 'LOW');
+
+  return {
+    gameCount: gameSessions.length,
+    storyCount: storySessions.length,
+    gamePercentage: Math.round((gameSessions.length / totalSessions) * 100),
+    storyPercentage: Math.round((storySessions.length / totalSessions) * 100),
+    gameAvgEngagement,
+    storyAvgEngagement,
+  };
 };
 
 /**

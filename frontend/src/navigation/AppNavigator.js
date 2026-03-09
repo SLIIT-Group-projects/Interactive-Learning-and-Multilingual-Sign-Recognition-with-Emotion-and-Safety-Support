@@ -81,7 +81,11 @@ export default function AppNavigator({ navigationRef }) {
     if (!isAuthenticated || !isParent || !userData?.uid) return undefined;
 
     registerPushToken(userData.uid).catch((error) => {
-      console.error('Error registering push token:', error);
+      // Only log as error if it's not the expected projectId missing error
+      if (!error?.message?.includes('projectId')) {
+        console.error('Error registering push token:', error);
+      }
+      // Otherwise, the pushNotification service already logged a warning
     });
 
     checkForCriticalNotifications({ initializeOnly: true });

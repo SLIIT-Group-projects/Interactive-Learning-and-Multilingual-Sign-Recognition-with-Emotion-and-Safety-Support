@@ -38,12 +38,29 @@ service cloud.firestore {
     match /gameSessions/{sessionId} {
       allow read, write: if true;
     }
-    match /letterPerformance/{docId} {
-      allow read, write: if true;
-    }
+ match /letterPerformance/{docId} {
+   allow read, write: if true;
+ }
+ match /gameEmotionSessions/{sessionId} {
+   allow read, write: if true;
+ }
+ match /storyEmotionSessions/{sessionId} {
+   allow read, write: if true;
+ }
+ match /emotionDailyStats/{docId} {
+   allow read, write: if true;
+ }
+ match /emotionInsights/{docId} {
+   allow read, write: if true;
+ }
     
     // NEW: Game Emotion Sessions collection (for emotion detection integration)
     match /gameEmotionSessions/{emotionSessionId} {
+      allow read, write: if true;
+    }
+    
+    // NEW: Story Emotion Sessions collection (for story reading emotion detection)
+    match /storyEmotionSessions/{emotionSessionId} {
       allow read, write: if true;
     }
     
@@ -153,6 +170,23 @@ service cloud.firestore {
         resource.data.parentId == request.auth.uid;
       
       // Children can create emotion sessions
+      allow create: if request.auth != null && 
+        getUserData().role == 'child' && 
+        request.resource.data.childId == request.auth.uid;
+    }
+    
+    // Story Emotion Sessions collection
+    match /storyEmotionSessions/{emotionSessionId} {
+      // Children can read/write their own story emotion sessions
+      allow read, write: if request.auth != null && 
+        resource.data.childId == request.auth.uid;
+      
+      // Parents can read their children's story emotion sessions
+      allow read: if request.auth != null && 
+        getUserData().role == 'parent' && 
+        resource.data.parentId == request.auth.uid;
+      
+      // Children can create story emotion sessions
       allow create: if request.auth != null && 
         getUserData().role == 'child' && 
         request.resource.data.childId == request.auth.uid;

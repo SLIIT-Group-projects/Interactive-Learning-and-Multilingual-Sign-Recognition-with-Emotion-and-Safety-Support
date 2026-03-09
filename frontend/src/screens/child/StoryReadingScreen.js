@@ -24,6 +24,8 @@ import {
   apiCall,
   BASE_URL,
 } from "../../../config/api";
+import { useAuth } from "../../contexts/AuthContext";
+import { saveStoryEmotionSession } from "../../services/firestore/emotionService";
 
 // Import stories data
 import { STORIES } from "../../../data/stories";
@@ -49,6 +51,11 @@ export default function StoryReaderScreen() {
     const sid = storyId ? String(storyId) : "";
     return STORIES.find((s) => String(s.id) === sid) ?? STORIES?.[0];
   }, [storyId]);
+
+  // Get user data for saving emotion session
+  const { userData } = useAuth();
+  const childId = userData?.uid || null;
+  const parentId = userData?.parentId || null;
 
   // Session management
   const [sessionId, setSessionId] = useState(null);
@@ -780,6 +787,37 @@ export default function StoryReaderScreen() {
       // Removed setSummaryVisible(true) - no popup, show on page
       
       console.log(`[Session] Final results: Behavior=${behavior}, Emotion=${finalEmotion}, Engagement=${engagementLevel}, HandSpeed=${latestHandSpeed}`);
+
+      // Save emotion session to Firebase
+      if (childId && parentId && currentSessionId) {
+        try {
+          const handSummary = {
+            handsDetected: latestHandsDetected || result.handSummary?.handsDetected || false,
+            avgSpeed: latestHandSpeed || result.handSummary?.avgSpeed || 0,
+            intensity: latestHandIntensity || result.handSummary?.intensity || 'LOW',
+            avgLevel: latestHandIntensity === "HIGH" ? 3 : (latestHandIntensity === "MEDIUM" ? 2 : 1),
+          };
+
+          await saveStoryEmotionSession({
+            sessionId: currentSessionId,
+            storyId: story?.id || null,
+            storyTitle: story?.title || 'Unknown Story',
+            childId,
+            parentId,
+            behavior,
+            behaviorConfidence,
+            finalEmotion,
+            engagementLevel,
+            emotionDistribution: result.emotionDistribution || {},
+            handSummary,
+            duration: seconds, // Session duration in seconds
+          });
+          console.log('✅ Story emotion session saved to Firebase');
+        } catch (saveError) {
+          console.warn('⚠️ Failed to save story emotion session to Firebase:', saveError);
+          // Don't throw - this is non-critical
+        }
+      }
     } catch (err) {
       console.error("Finalize session error:", err);
       setError(err.message || "Failed to get session results from backend");

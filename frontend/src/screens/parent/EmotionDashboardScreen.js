@@ -16,6 +16,8 @@ import {
   getDailyEmotionStats,
   getWeeklyEmotionStats,
   getChildEmotionSessions,
+  getChildStoryEmotionSessions,
+  getAllParentEmotionSessions,
 } from '../../services/firestore/emotionService';
 import {
   analyzeEmotionPatterns,
@@ -32,6 +34,7 @@ const EmotionDashboardScreen = ({ navigation }) => {
   const [weeklyStats, setWeeklyStats] = useState([]);
   const [insights, setInsights] = useState(null);
   const [analyzing, setAnalyzing] = useState(false);
+  const [recentSessions, setRecentSessions] = useState({ gameSessions: [], storySessions: [] });
 
   useEffect(() => {
     loadChildren();
@@ -74,6 +77,13 @@ const EmotionDashboardScreen = ({ navigation }) => {
         setDailyStats(null);
       }
 
+      // Load recent sessions
+      const [gameSessions, storySessions] = await Promise.all([
+        getChildEmotionSessions(selectedChild.uid, 10),
+        getChildStoryEmotionSessions(selectedChild.uid, 10),
+      ]);
+      setRecentSessions({ gameSessions, storySessions });
+
       // Load and analyze insights
       setAnalyzing(true);
       const analysis = await analyzeEmotionPatterns(selectedChild.uid, userData.uid);
@@ -107,6 +117,25 @@ const EmotionDashboardScreen = ({ navigation }) => {
     if (lower.includes('angry') || lower.includes('agitated') || lower.includes('distressed')) return '#ef4444'; // red
     if (lower.includes('sad') || lower.includes('fear')) return '#f59e0b'; // amber
     return '#6b7280'; // gray
+  };
+
+  const getEmotionColor = (emotion) => {
+    const colorMap = {
+      happy: '#10b981',
+      sad: '#3b82f6',
+      angry: '#ef4444',
+      fear: '#f59e0b',
+      surprise: '#8b5cf6',
+      disgust: '#ec4899',
+      neutral: '#6b7280',
+    };
+    return colorMap[emotion?.toLowerCase()] || '#6b7280';
+  };
+
+  const getEngagementColor = (engagement) => {
+    if (engagement === 'HIGH') return { backgroundColor: '#10b981' };
+    if (engagement === 'MEDIUM') return { backgroundColor: '#f59e0b' };
+    return { backgroundColor: '#6b7280' };
   };
 
   if (loading && !selectedChild) {
@@ -203,12 +232,83 @@ const EmotionDashboardScreen = ({ navigation }) => {
         </View>
       ) : (
         <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+          {/* Session Breakdown - Games vs Stories */}
+          {insights && insights.sessionBreakdown && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}> Activity Breakdown</Text>
+              <View style={styles.card}>
+                <View style={styles.breakdownContainer}>
+                  <View style={styles.breakdownItem}>
+                    <View style={[styles.breakdownIcon, { backgroundColor: '#3b82f6' }]}>
+                      <MaterialIcons name="videogame-asset" size={24} color="#fff" />
+                    </View>
+                    <View style={styles.breakdownContent}>
+                      <Text style={styles.breakdownLabel}>Games</Text>
+                      <Text style={styles.breakdownValue}>{insights.sessionBreakdown.gameCount}</Text>
+                      <Text style={styles.breakdownPercentage}>
+                        {insights.sessionBreakdown.gamePercentage}%
+                      </Text>
+                    </View>
+                  </View>
+                  <View style={styles.breakdownItem}>
+                    <View style={[styles.breakdownIcon, { backgroundColor: '#10b981' }]}>
+                      <MaterialIcons name="menu-book" size={24} color="#fff" />
+                    </View>
+                    <View style={styles.breakdownContent}>
+                      <Text style={styles.breakdownLabel}>Stories</Text>
+                      <Text style={styles.breakdownValue}>{insights.sessionBreakdown.storyCount}</Text>
+                      <Text style={styles.breakdownPercentage}>
+                        {insights.sessionBreakdown.storyPercentage}%
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+                {/* Visual Bar */}
+                <View style={styles.progressBarContainer}>
+                  <View
+                    style={[
+                      styles.progressBar,
+                      {
+                        width: `${insights.sessionBreakdown.gamePercentage}%`,
+                        backgroundColor: '#3b82f6',
+                      },
+                    ]}
+                  />
+                  <View
+                    style={[
+                      styles.progressBar,
+                      {
+                        width: `${insights.sessionBreakdown.storyPercentage}%`,
+                        backgroundColor: '#10b981',
+                      },
+                    ]}
+                  />
+                </View>
+                {/* Engagement Comparison */}
+                <View style={styles.engagementComparison}>
+                  <View style={styles.engagementItem}>
+                    <Text style={styles.engagementLabel}>Games Engagement</Text>
+                    <View style={[styles.engagementBadge, getEngagementColor(insights.sessionBreakdown.gameAvgEngagement)]}>
+                      <Text style={styles.engagementText}>{insights.sessionBreakdown.gameAvgEngagement}</Text>
+                    </View>
+                  </View>
+                  <View style={styles.engagementItem}>
+                    <Text style={styles.engagementLabel}>Stories Engagement</Text>
+                    <View style={[styles.engagementBadge, getEngagementColor(insights.sessionBreakdown.storyAvgEngagement)]}>
+                      <Text style={styles.engagementText}>{insights.sessionBreakdown.storyAvgEngagement}</Text>
+                    </View>
+                  </View>
+                </View>
+              </View>
+            </View>
+          )}
+
           {/* Insights Section */}
           {insights && insights.hasData && (
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>📊 Insights & Analysis</Text>
+              <Text style={styles.sectionTitle}> Insights & Analysis</Text>
 
-              {/* Overall Mood */}
+              {/* Overall Mood with Emotion Distribution */}
               {insights.overallMood && (
                 <View style={styles.card}>
                   <Text style={styles.cardTitle}>Overall Mood</Text>
@@ -216,14 +316,46 @@ const EmotionDashboardScreen = ({ navigation }) => {
                     <Text style={styles.moodEmoji}>
                       {getEmotionEmoji(insights.overallMood.dominant)}
                     </Text>
-                    <Text style={styles.moodText}>
-                      {insights.overallMood.dominant.charAt(0).toUpperCase() +
-                        insights.overallMood.dominant.slice(1)}
-                    </Text>
+                    <View style={styles.moodTextContainer}>
+                      <Text style={styles.moodText}>
+                        {insights.overallMood.dominant.charAt(0).toUpperCase() +
+                          insights.overallMood.dominant.slice(1)}
+                      </Text>
+                      <Text style={styles.cardSubtext}>
+                        Based on {insights.overallMood.totalSessions} sessions
+                      </Text>
+                    </View>
                   </View>
-                  <Text style={styles.cardSubtext}>
-                    Based on {insights.overallMood.totalSessions} sessions
-                  </Text>
+                  {/* Emotion Distribution Chart */}
+                  {insights.overallMood.percentages && (
+                    <View style={styles.emotionChart}>
+                      {Object.entries(insights.overallMood.percentages)
+                        .sort((a, b) => b[1] - a[1])
+                        .slice(0, 5)
+                        .map(([emotion, percentage]) => (
+                          <View key={emotion} style={styles.emotionBarItem}>
+                            <View style={styles.emotionBarLabel}>
+                              <Text style={styles.emotionEmoji}>{getEmotionEmoji(emotion)}</Text>
+                              <Text style={styles.emotionName}>
+                                {emotion.charAt(0).toUpperCase() + emotion.slice(1)}
+                              </Text>
+                            </View>
+                            <View style={styles.emotionBarContainer}>
+                              <View
+                                style={[
+                                  styles.emotionBar,
+                                  {
+                                    width: `${percentage}%`,
+                                    backgroundColor: getEmotionColor(emotion),
+                                  },
+                                ]}
+                              />
+                              <Text style={styles.emotionPercentage}>{percentage}%</Text>
+                            </View>
+                          </View>
+                        ))}
+                    </View>
+                  )}
                 </View>
               )}
 
@@ -369,11 +501,110 @@ const EmotionDashboardScreen = ({ navigation }) => {
             </View>
           )}
 
+          {/* Recent Sessions */}
+          {(recentSessions.gameSessions.length > 0 || recentSessions.storySessions.length > 0) && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>📝 Recent Sessions</Text>
+              
+              {/* Game Sessions */}
+              {recentSessions.gameSessions.slice(0, 5).map((session, index) => (
+                <View key={session.id || index} style={[styles.card, styles.sessionCard]}>
+                  <View style={styles.sessionHeader}>
+                    <View style={[styles.sessionIcon, { backgroundColor: '#3b82f6' }]}>
+                      <MaterialIcons name="videogame-asset" size={20} color="#fff" />
+                    </View>
+                    <View style={styles.sessionInfo}>
+                      <Text style={styles.sessionTitle}>Letter Practice Game</Text>
+                      <Text style={styles.sessionDate}>
+                        {session.createdAt?.toDate
+                          ? session.createdAt.toDate().toLocaleDateString()
+                          : 'Recent'}
+                      </Text>
+                    </View>
+                    <View style={styles.sessionEmotion}>
+                      <Text style={styles.sessionEmotionEmoji}>
+                        {getEmotionEmoji(session.finalEmotion)}
+                      </Text>
+                    </View>
+                  </View>
+                  <View style={styles.sessionDetails}>
+                    <View style={styles.sessionDetailItem}>
+                      <Text style={styles.sessionDetailLabel}>Behavior</Text>
+                      <Text style={[styles.sessionDetailValue, { color: getBehaviorColor(session.behavior) }]}>
+                        {session.behavior || 'N/A'}
+                      </Text>
+                    </View>
+                    <View style={styles.sessionDetailItem}>
+                      <Text style={styles.sessionDetailLabel}>Engagement</Text>
+                      <View style={[styles.engagementBadgeSmall, getEngagementColor(session.engagementLevel)]}>
+                        <Text style={styles.engagementTextSmall}>{session.engagementLevel || 'LOW'}</Text>
+                      </View>
+                    </View>
+                    {session.accuracy !== undefined && (
+                      <View style={styles.sessionDetailItem}>
+                        <Text style={styles.sessionDetailLabel}>Accuracy</Text>
+                        <Text style={styles.sessionDetailValue}>{session.accuracy.toFixed(0)}%</Text>
+                      </View>
+                    )}
+                  </View>
+                </View>
+              ))}
+
+              {/* Story Sessions */}
+              {recentSessions.storySessions.slice(0, 5).map((session, index) => (
+                <View key={session.id || index} style={[styles.card, styles.sessionCard]}>
+                  <View style={styles.sessionHeader}>
+                    <View style={[styles.sessionIcon, { backgroundColor: '#10b981' }]}>
+                      <MaterialIcons name="menu-book" size={20} color="#fff" />
+                    </View>
+                    <View style={styles.sessionInfo}>
+                      <Text style={styles.sessionTitle} numberOfLines={1}>
+                        {session.storyTitle || 'Story Reading'}
+                      </Text>
+                      <Text style={styles.sessionDate}>
+                        {session.createdAt?.toDate
+                          ? session.createdAt.toDate().toLocaleDateString()
+                          : 'Recent'}
+                      </Text>
+                    </View>
+                    <View style={styles.sessionEmotion}>
+                      <Text style={styles.sessionEmotionEmoji}>
+                        {getEmotionEmoji(session.finalEmotion)}
+                      </Text>
+                    </View>
+                  </View>
+                  <View style={styles.sessionDetails}>
+                    <View style={styles.sessionDetailItem}>
+                      <Text style={styles.sessionDetailLabel}>Behavior</Text>
+                      <Text style={[styles.sessionDetailValue, { color: getBehaviorColor(session.behavior) }]}>
+                        {session.behavior || 'N/A'}
+                      </Text>
+                    </View>
+                    <View style={styles.sessionDetailItem}>
+                      <Text style={styles.sessionDetailLabel}>Engagement</Text>
+                      <View style={[styles.engagementBadgeSmall, getEngagementColor(session.engagementLevel)]}>
+                        <Text style={styles.engagementTextSmall}>{session.engagementLevel || 'LOW'}</Text>
+                      </View>
+                    </View>
+                    {session.duration > 0 && (
+                      <View style={styles.sessionDetailItem}>
+                        <Text style={styles.sessionDetailLabel}>Duration</Text>
+                        <Text style={styles.sessionDetailValue}>
+                          {Math.floor(session.duration / 60)}m {session.duration % 60}s
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                </View>
+              ))}
+            </View>
+          )}
+
           {/* No Data Message */}
           {(!insights || !insights.hasData) && !dailyStats && weeklyStats.length === 0 && (
             <View style={styles.centerContent}>
               <Text style={styles.noDataText}>
-                No emotion data available yet.{'\n'}Play some games to see insights!
+                No emotion data available yet.{'\n'}Play some games and read stories to see insights!
               </Text>
             </View>
           )}
@@ -616,6 +847,184 @@ const styles = StyleSheet.create({
     color: '#6b7280',
     textAlign: 'center',
     lineHeight: 24,
+  },
+  // Session Breakdown Styles
+  breakdownContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginBottom: 16,
+  },
+  breakdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  breakdownIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  breakdownContent: {
+    flex: 1,
+  },
+  breakdownLabel: {
+    fontSize: 12,
+    color: '#6b7280',
+    marginBottom: 4,
+  },
+  breakdownValue: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#1f2937',
+    marginBottom: 2,
+  },
+  breakdownPercentage: {
+    fontSize: 14,
+    color: '#6b7280',
+  },
+  progressBarContainer: {
+    flexDirection: 'row',
+    height: 8,
+    backgroundColor: '#e5e7eb',
+    borderRadius: 4,
+    overflow: 'hidden',
+    marginBottom: 16,
+  },
+  progressBar: {
+    height: '100%',
+  },
+  engagementComparison: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginTop: 8,
+  },
+  engagementItem: {
+    alignItems: 'center',
+  },
+  engagementLabel: {
+    fontSize: 12,
+    color: '#6b7280',
+    marginBottom: 4,
+  },
+  engagementBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  engagementText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  engagementBadgeSmall: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  engagementTextSmall: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  // Emotion Chart Styles
+  emotionChart: {
+    marginTop: 16,
+  },
+  emotionBarItem: {
+    marginBottom: 12,
+  },
+  emotionBarLabel: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  emotionEmoji: {
+    fontSize: 16,
+    marginRight: 6,
+  },
+  emotionName: {
+    fontSize: 12,
+    color: '#6b7280',
+    fontWeight: '500',
+  },
+  emotionBarContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  emotionBar: {
+    height: 20,
+    borderRadius: 10,
+    marginRight: 8,
+    minWidth: 4,
+  },
+  emotionPercentage: {
+    fontSize: 12,
+    color: '#6b7280',
+    fontWeight: '600',
+  },
+  moodTextContainer: {
+    flex: 1,
+  },
+  // Session Card Styles
+  sessionCard: {
+    marginBottom: 12,
+  },
+  sessionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  sessionIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  sessionInfo: {
+    flex: 1,
+  },
+  sessionTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1f2937',
+    marginBottom: 2,
+  },
+  sessionDate: {
+    fontSize: 12,
+    color: '#6b7280',
+  },
+  sessionEmotion: {
+    marginLeft: 8,
+  },
+  sessionEmotionEmoji: {
+    fontSize: 24,
+  },
+  sessionDetails: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: 8,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#e5e7eb',
+  },
+  sessionDetailItem: {
+    marginRight: 16,
+    marginBottom: 8,
+  },
+  sessionDetailLabel: {
+    fontSize: 11,
+    color: '#6b7280',
+    marginBottom: 2,
+  },
+  sessionDetailValue: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#1f2937',
   },
 });
 

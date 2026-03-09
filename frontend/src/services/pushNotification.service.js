@@ -59,9 +59,38 @@ export async function registerPushToken(userId) {
 
     // Get Expo push token (projectId must be an Expo EAS UUID, not Firebase project ID)
     const projectId = resolveExpoProjectId();
-    const tokenData = projectId
-      ? await Notifications.getExpoPushTokenAsync({ projectId })
-      : await Notifications.getExpoPushTokenAsync();
+    
+    let tokenData;
+    try {
+      if (projectId) {
+        tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
+      } else {
+        // Try without projectId first (works in Expo Go)
+        try {
+          tokenData = await Notifications.getExpoPushTokenAsync();
+        } catch (noProjectIdError) {
+          // If projectId is required but missing, log warning and skip
+          if (noProjectIdError.message?.includes('projectId')) {
+            console.warn('⚠️ Expo projectId not configured. Push notifications will not work. To fix: set EXPO_PUBLIC_EXPO_PROJECT_ID in your .env file or configure it in app.json');
+            return null;
+          }
+          throw noProjectIdError;
+        }
+      }
+    } catch (tokenError) {
+      // Handle any other errors getting the token
+      if (tokenError.message?.includes('projectId')) {
+        console.warn('⚠️ Expo projectId required but not found. Push notifications disabled.');
+        console.warn('💡 To enable push notifications, add EXPO_PUBLIC_EXPO_PROJECT_ID to your .env file');
+        return null;
+      }
+      throw tokenError;
+    }
+
+    if (!tokenData || !tokenData.data) {
+      console.warn('⚠️ Failed to get push token data');
+      return null;
+    }
 
     const expoPushToken = tokenData.data;
     console.log('📱 Expo Push Token:', expoPushToken);
@@ -79,7 +108,13 @@ export async function registerPushToken(userId) {
       return null;
     }
   } catch (error) {
-    console.error('❌ Error getting push token:', error);
+    // Don't log as error if it's just missing projectId - that's expected in some setups
+    if (error.message?.includes('projectId')) {
+      console.warn('⚠️ Push notifications require Expo projectId. Skipping push token registration.');
+      console.warn('💡 This is normal if you haven\'t configured Expo EAS project. Push notifications will not work until projectId is set.');
+    } else {
+      console.error('❌ Error getting push token:', error);
+    }
     return null;
   }
 }

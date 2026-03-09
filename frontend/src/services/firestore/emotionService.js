@@ -321,3 +321,176 @@ export const getChildEmotionSessions = async (childId, limitCount = 50) => {
     return [];
   }
 };
+
+/**
+ * Save story reading emotion session data
+ * @param {Object} emotionData - Emotion session data from story reading
+ * @param {string} emotionData.sessionId - Story reading session ID
+ * @param {string} emotionData.storyId - Story ID
+ * @param {string} emotionData.storyTitle - Story title
+ * @param {string} emotionData.childId - Child UID
+ * @param {string} emotionData.parentId - Parent UID
+ * @param {string} emotionData.behavior - Final behavior prediction
+ * @param {number} emotionData.behaviorConfidence - Behavior confidence
+ * @param {string} emotionData.finalEmotion - Dominant emotion
+ * @param {string} emotionData.engagementLevel - Engagement level (LOW/MEDIUM/HIGH)
+ * @param {Object} emotionData.emotionDistribution - Emotion distribution
+ * @param {Object} emotionData.handSummary - Hand movement summary
+ * @param {number} emotionData.duration - Session duration in seconds
+ * @returns {Promise<string>} Emotion session ID
+ */
+export const saveStoryEmotionSession = async (emotionData) => {
+  try {
+    if (!db) {
+      console.warn('⚠️ Firestore not initialized - skipping saveStoryEmotionSession');
+      return null;
+    }
+
+    const {
+      sessionId,
+      storyId,
+      storyTitle,
+      childId,
+      parentId,
+      behavior,
+      behaviorConfidence,
+      finalEmotion,
+      engagementLevel,
+      emotionDistribution,
+      handSummary,
+      duration,
+    } = emotionData;
+
+    // Validate required fields
+    if (!sessionId || !childId || !parentId) {
+      throw new Error('Missing required story emotion session data fields');
+    }
+
+    // Generate emotion session ID
+    const emotionSessionId = `story_emotion_${sessionId}`;
+
+    const emotionDoc = {
+      emotionSessionId,
+      sessionId,
+      storyId: storyId || null,
+      storyTitle: storyTitle || 'Unknown Story',
+      sessionType: 'story_reading', // Distinguish from game sessions
+      childId,
+      parentId,
+      behavior: behavior || 'Cannot detect',
+      behaviorConfidence: behaviorConfidence || 0,
+      finalEmotion: finalEmotion || 'neutral',
+      engagementLevel: engagementLevel || 'LOW',
+      emotionDistribution: emotionDistribution || {},
+      handSummary: handSummary || {},
+      duration: duration || 0,
+      createdAt: serverTimestamp(),
+    };
+
+    const emotionRef = doc(db, 'storyEmotionSessions', emotionSessionId);
+    await setDoc(emotionRef, emotionDoc);
+
+    console.log('✅ Story emotion session saved:', emotionSessionId);
+
+    // Also update daily stats (reuse same function, it handles both types)
+    await updateDailyEmotionStats(childId, parentId, {
+      ...emotionDoc,
+      confusionLetters: [], // Stories don't have confusion letters
+      totalQuestions: 0,
+      correctAnswers: 0,
+    });
+
+    return emotionSessionId;
+  } catch (error) {
+    console.error('❌ Error saving story emotion session:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get story emotion sessions for a specific child
+ * @param {string} childId - Child UID
+ * @param {number} limitCount - Maximum number of sessions
+ * @returns {Promise<Array>} Array of story emotion sessions
+ */
+export const getChildStoryEmotionSessions = async (childId, limitCount = 50) => {
+  try {
+    if (!db) return [];
+
+    // Query without orderBy to avoid requiring composite index
+    // We'll sort in memory instead
+    const sessionsQuery = query(
+      collection(db, 'storyEmotionSessions'),
+      where('childId', '==', childId),
+      limit(limitCount * 2) // Get more to account for sorting
+    );
+
+    const sessionsSnapshot = await getDocs(sessionsQuery);
+    const sessions = [];
+
+    sessionsSnapshot.forEach((doc) => {
+      sessions.push({ id: doc.id, ...doc.data() });
+    });
+
+    // Sort by createdAt descending in memory
+    sessions.sort((a, b) => {
+      const aTime = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : (a.createdAt || 0);
+      const bTime = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : (b.createdAt || 0);
+      return bTime - aTime;
+    });
+
+    // Return only the requested limit after sorting
+    return sessions.slice(0, limitCount);
+  } catch (error) {
+    console.error('❌ Error getting child story emotion sessions:', error);
+    return [];
+  }
+};
+
+/**
+ * Get all emotion sessions (both game and story) for a parent's children
+ * @param {string} parentId - Parent UID
+ * @param {number} limitCount - Maximum number of sessions per type
+ * @returns {Promise<Object>} Object with gameSessions and storySessions arrays
+ */
+export const getAllParentEmotionSessions = async (parentId, limitCount = 50) => {
+  try {
+    if (!db) return { gameSessions: [], storySessions: [] };
+
+    // Get game sessions
+    const gameSessionsQuery = query(
+      collection(db, 'gameEmotionSessions'),
+      where('parentId', '==', parentId),
+      orderBy('createdAt', 'desc'),
+      limit(limitCount)
+    );
+
+    // Get story sessions
+    const storySessionsQuery = query(
+      collection(db, 'storyEmotionSessions'),
+      where('parentId', '==', parentId),
+      orderBy('createdAt', 'desc'),
+      limit(limitCount)
+    );
+
+    const [gameSnapshot, storySnapshot] = await Promise.all([
+      getDocs(gameSessionsQuery),
+      getDocs(storySessionsQuery),
+    ]);
+
+    const gameSessions = [];
+    gameSnapshot.forEach((doc) => {
+      gameSessions.push({ id: doc.id, ...doc.data() });
+    });
+
+    const storySessions = [];
+    storySnapshot.forEach((doc) => {
+      storySessions.push({ id: doc.id, ...doc.data() });
+    });
+
+    return { gameSessions, storySessions };
+  } catch (error) {
+    console.error('❌ Error getting all parent emotion sessions:', error);
+    return { gameSessions: [], storySessions: [] };
+  }
+};
