@@ -76,8 +76,10 @@ const PlayGame = ({ navigation, route }) => {
   // Emotion detection states - simplified: use same image as hand sign detection
   const [emotionSessionId, setEmotionSessionId] = useState(null);
   const emotionResultsRef = useRef([]); // Store emotion predictions during game
+  const capturedFramesRef = useRef([]); // Store captured image URIs for hand analysis
   const confusionLettersRef = useRef([]); // Track letters child got wrong
   const gameSessionIdRef = useRef(null); // Store game session ID for emotion linking
+  const pendingHandAnalysisRef = useRef(null); // Track pending hand analysis request
   
   // Emotion results for display
   const [emotionResults, setEmotionResults] = useState(null);
@@ -145,6 +147,7 @@ const PlayGame = ({ navigation, route }) => {
       
       // Initialize refs
       emotionResultsRef.current = [];
+      capturedFramesRef.current = [];
       confusionLettersRef.current = [];
 
       console.log(`[Session] Starting emotion session ${sessionId} with backend API`);
@@ -197,6 +200,7 @@ const PlayGame = ({ navigation, route }) => {
         // Don't finalize on unmount - just clear
         setEmotionSessionId(null);
         emotionResultsRef.current = [];
+        capturedFramesRef.current = [];
       }
     };
   }, []);
@@ -209,6 +213,22 @@ const PlayGame = ({ navigation, route }) => {
 
     try {
       console.log(`[Emotion] Sending emotion prediction for session ${emotionSessionId}`);
+      
+      // Store frame for hand analysis (keep last 20 frames)
+      if (!capturedFramesRef.current) {
+        capturedFramesRef.current = [];
+      }
+      capturedFramesRef.current.push({
+        uri: imageUri,
+        type: "image/jpeg",
+        name: `hand_${Date.now()}_${String(capturedFramesRef.current.length).padStart(4, '0')}.jpg`,
+        timestamp: Date.now(),
+      });
+      
+      // Keep only last 20 frames to avoid memory issues
+      if (capturedFramesRef.current.length > 20) {
+        capturedFramesRef.current.shift();
+      }
       
       const result = await uploadFile(
         API_ENDPOINTS.PREDICT_EMOTION,
@@ -235,12 +255,57 @@ const PlayGame = ({ navigation, route }) => {
         });
         console.log(`[Emotion] Predicted: ${result.predicted}, Confidence: ${result.confidence}, Face detected: ${result.face_detected !== false}`);
       }
+      
+      // If we have 10+ frames, send them for hand analysis (non-blocking)
+      if (capturedFramesRef.current.length >= 10 && !pendingHandAnalysisRef.current) {
+        sendHandAnalysisFromFrames().catch(err => {
+          console.warn("[Hand] Failed to analyze hand movement:", err);
+        });
+      }
     } catch (err) {
       const errorMsg = err?.message || String(err);
       // Only log if it's not a network error (those are expected sometimes)
       if (!errorMsg.includes("Network request failed") && !errorMsg.includes("timeout")) {
         console.warn("[Emotion] ⚠️ Emotion prediction error (non-blocking):", errorMsg.substring(0, 100));
       }
+    }
+  };
+
+  // Send hand analysis using collected emotion frames
+  const sendHandAnalysisFromFrames = async () => {
+    if (!emotionSessionId || !capturedFramesRef.current || capturedFramesRef.current.length < 5) {
+      return;
+    }
+
+    // Prevent multiple simultaneous requests
+    if (pendingHandAnalysisRef.current) {
+      console.log('[Hand] Hand analysis already in progress, skipping...');
+      return;
+    }
+
+    try {
+      // Use last 10-15 frames for hand analysis
+      const framesToUse = capturedFramesRef.current.slice(-15);
+      console.log(`[Hand] Sending ${framesToUse.length} collected frames for hand analysis`);
+      
+      pendingHandAnalysisRef.current = uploadFiles(
+        API_ENDPOINTS.ANALYZE_HAND,
+        framesToUse,
+        { sessionId: emotionSessionId, fps: 2 }, // Lower FPS since frames weren't captured at regular intervals
+        3,
+        0 // No timeout
+      );
+      
+      const result = await pendingHandAnalysisRef.current;
+      console.log(`[Hand] ✅ Hand analysis result:`, result);
+      
+      // Clear used frames (keep last 5 for next analysis)
+      capturedFramesRef.current = capturedFramesRef.current.slice(-5);
+    } catch (err) {
+      const errorMsg = err?.message || String(err);
+      console.warn("[Hand] ⚠️ Hand analysis error (non-blocking):", errorMsg.substring(0, 100));
+    } finally {
+      pendingHandAnalysisRef.current = null;
     }
   };
 
@@ -263,6 +328,22 @@ const PlayGame = ({ navigation, route }) => {
     try {
       console.log(`[Session] Finalizing emotion session: ${emotionSessionId}`);
       console.log(`[Session] Emotion results collected: ${emotionResultsRef.current?.length || 0} predictions`);
+      console.log(`[Session] Captured frames for hand analysis: ${capturedFramesRef.current?.length || 0} frames`);
+
+      // Send final hand analysis if we have enough frames
+      if (capturedFramesRef.current && capturedFramesRef.current.length >= 5) {
+        console.log(`[Session] Sending final hand analysis with ${capturedFramesRef.current.length} frames...`);
+        try {
+          await sendHandAnalysisFromFrames();
+          console.log(`[Session] ✅ Final hand analysis completed`);
+          // Wait a bit for backend to process
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        } catch (err) {
+          console.warn(`[Session] ⚠️ Final hand analysis failed (non-blocking):`, err);
+        }
+      } else {
+        console.warn(`[Session] ⚠️ Not enough frames for hand analysis (${capturedFramesRef.current?.length || 0} frames, need 5+)`);
+      }
 
       // Finalize session on backend (same as story reading)
       const response = await apiCall(
