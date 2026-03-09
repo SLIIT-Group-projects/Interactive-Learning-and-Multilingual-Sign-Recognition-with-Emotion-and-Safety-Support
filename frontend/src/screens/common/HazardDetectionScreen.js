@@ -13,6 +13,7 @@ import {
   Vibration
 } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
+import { MaterialIcons } from '@expo/vector-icons';
 import { Audio } from 'expo-av';
 import * as Haptics from 'expo-haptics';
 import * as Location from 'expo-location';
@@ -24,6 +25,60 @@ import hazardAlertService from '../../../services/hazardAlert.service';
 const PURPLE_GRADIENT = ['#5452e6ff', '#7C3AED']; // Purple gradient
 const GREEN_BUTTON = '#10B981'; // Bright green
 const ORANGE_ACCENT = '#F59E0B'; // Orange for accents
+const SAFETY_CHECK_STEPS = [
+  {
+    question: 'Are you safe now?',
+    shortPrompt: 'SAFE NOW?',
+    emoji: '🙂',
+    icon: 'health-and-safety',
+  },
+  {
+    question: 'Is there still danger around you?',
+    shortPrompt: 'DANGER NEARBY?',
+    emoji: '👀',
+    icon: 'warning-amber',
+  },
+  {
+    question: 'Do you need help right now?',
+    shortPrompt: 'NEED HELP?',
+    emoji: '🆘',
+    icon: 'support-agent',
+  },
+];
+
+const getCriticalVibrationProfile = (hazardType = '') => {
+  const normalized = String(hazardType).toLowerCase();
+
+  if (normalized.includes('gun') || normalized.includes('siren')) {
+    return {
+      initialPattern: [0, 450, 45, 450, 45, 450, 90, 1000],
+      repeatPattern: [0, 340, 40, 340, 70],
+      intervalMs: 240,
+    };
+  }
+
+  if (normalized.includes('fire') || normalized.includes('smoke')) {
+    return {
+      initialPattern: [0, 1400, 60, 1400, 60, 1400],
+      repeatPattern: [0, 520, 50, 520],
+      intervalMs: 260,
+    };
+  }
+
+  if (normalized.includes('dog') || normalized.includes('car') || normalized.includes('horn')) {
+    return {
+      initialPattern: [0, 900, 60, 900, 60, 900],
+      repeatPattern: [0, 420, 50, 420],
+      intervalMs: 260,
+    };
+  }
+
+  return {
+    initialPattern: [0, 1200, 60, 1200, 60, 1200],
+    repeatPattern: [0, 450, 50, 450],
+    intervalMs: 260,
+  };
+};
 
 export default function HazardDetectionScreen() {
   const { userData } = useAuth();
@@ -36,6 +91,11 @@ export default function HazardDetectionScreen() {
   const [error, setError] = useState(null);
   const [currentLocation, setCurrentLocation] = useState(null);
   const [isCriticalAlert, setIsCriticalAlert] = useState(false);
+  const [showSafetyCheckModal, setShowSafetyCheckModal] = useState(false);
+  const [safetyQuestionIndex, setSafetyQuestionIndex] = useState(0);
+  const [safetyResponses, setSafetyResponses] = useState([]);
+  const [isSubmittingSafetyCheck, setIsSubmittingSafetyCheck] = useState(false);
+  const [isIconOnlyMode, setIsIconOnlyMode] = useState(true);
   const processingIntervalRef = useRef(null);
   const recordingRef = useRef(null);
   const isListeningRef = useRef(false);
@@ -43,6 +103,8 @@ export default function HazardDetectionScreen() {
   const restartPromiseRef = useRef(null);
   const isProcessingRef = useRef(false);
   const vibrationIntervalRef = useRef(null);
+  const hapticPulseIntervalRef = useRef(null);
+  const rapidVibrationIntervalRef = useRef(null);
   const flashAnimation = useRef(new Animated.Value(0)).current;
   const pulseAnimation = useRef(new Animated.Value(1)).current;
   const circleAnimation1 = useRef(new Animated.Value(0)).current;
@@ -71,7 +133,6 @@ export default function HazardDetectionScreen() {
   const criticalHazardTypeRef = useRef(null);
   const safetyCheckTimeoutRef = useRef(null);
   const LOCATION_FETCH_COOLDOWN_MS = 60 * 1000;
-  const SAFETY_CHECK_DELAY_MS = 15000;
 
   const getAlertColor = (urgency) => {
     switch (urgency) {
@@ -164,39 +225,13 @@ export default function HazardDetectionScreen() {
     }
   };
 
-  const askYesNoQuestion = (title, message) => {
-    return new Promise((resolve) => {
-      Alert.alert(
-        title,
-        message,
-        [
-          { text: 'No', onPress: () => resolve(false) },
-          { text: 'Yes', onPress: () => resolve(true) },
-        ],
-        { cancelable: false }
-      );
-    });
-  };
-
-  const runPostCriticalSafetyCheck = async () => {
+  const submitPostCriticalSafetyCheck = async (responses) => {
     const userId = userData?.uid;
     if (!userId) {
       return;
     }
 
-    const safetyQuestions = [
-      'Are you safe now?',
-      'Is there still fire or danger around you?',
-      'Do you need help right now?',
-    ];
-
     try {
-      const responses = [];
-      for (const question of safetyQuestions) {
-        const answer = await askYesNoQuestion('Safety Check', question);
-        responses.push({ question, answer });
-      }
-
       const childConfirmedSafe =
         responses[0]?.answer === true &&
         responses[1]?.answer === false &&
@@ -222,16 +257,106 @@ export default function HazardDetectionScreen() {
     }
   };
 
-  const schedulePostCriticalSafetyCheck = () => {
+  const handleSafetyResponse = async (answer) => {
+    if (isSubmittingSafetyCheck) return;
+
+    const currentStep = SAFETY_CHECK_STEPS[safetyQuestionIndex];
+    const nextResponses = [...safetyResponses, { question: currentStep.question, answer }];
+
+    if (safetyQuestionIndex < SAFETY_CHECK_STEPS.length - 1) {
+      setSafetyResponses(nextResponses);
+      setSafetyQuestionIndex((prev) => prev + 1);
+      return;
+    }
+
+    setIsSubmittingSafetyCheck(true);
+    await submitPostCriticalSafetyCheck(nextResponses);
+    setIsSubmittingSafetyCheck(false);
+    setShowSafetyCheckModal(false);
+    setSafetyQuestionIndex(0);
+    setSafetyResponses([]);
+  };
+
+  const stopCriticalTactileFeedback = () => {
+    if (vibrationIntervalRef.current) {
+      clearInterval(vibrationIntervalRef.current);
+      vibrationIntervalRef.current = null;
+    }
+    if (hapticPulseIntervalRef.current) {
+      clearInterval(hapticPulseIntervalRef.current);
+      hapticPulseIntervalRef.current = null;
+    }
+    if (rapidVibrationIntervalRef.current) {
+      clearInterval(rapidVibrationIntervalRef.current);
+      rapidVibrationIntervalRef.current = null;
+    }
+    try {
+      Vibration.cancel();
+    } catch (cancelError) {
+      console.warn('⚠️ Error canceling vibration:', cancelError);
+    }
+  };
+
+  const startCriticalTactileFeedback = async (hazardType) => {
+    stopCriticalTactileFeedback();
+    const vibrationProfile = getCriticalVibrationProfile(hazardType);
+    console.log('🚨 CRITICAL ALERT - Starting enhanced vibration pattern');
+
+    try {
+      // Start with a long repeating pattern to maximize tactile awareness.
+      Vibration.vibrate(vibrationProfile.initialPattern, true);
+      // Add extra short "tap burst" pulses frequently for stronger feel.
+      vibrationIntervalRef.current = setInterval(() => {
+        try {
+          Vibration.cancel();
+          Vibration.vibrate(vibrationProfile.repeatPattern, false);
+          setTimeout(() => {
+            Vibration.vibrate([0, 220, 30, 220, 30, 220], false);
+          }, 70);
+        } catch (vibError) {
+          console.error('❌ Continuous vibration error:', vibError);
+        }
+      }, Math.max(180, vibrationProfile.intervalMs - 120));
+      console.log(`🔔 Started enhanced tactile vibration loop for critical alert (${Math.max(180, vibrationProfile.intervalMs - 120)}ms)`); 
+    } catch (vibError) {
+      console.error('❌ Vibration start error:', vibError);
+      try {
+        Vibration.vibrate(1000);
+      } catch (fallbackError) {
+        console.error('❌ Fallback vibration also failed:', fallbackError);
+      }
+    }
+
+    // Haptic bursts add extra tactile emphasis where available.
+    rapidVibrationIntervalRef.current = setInterval(() => {
+      try {
+        Vibration.vibrate([0, 130], false);
+      } catch (vibError) {
+        // keep primary pattern running
+      }
+    }, 130);
+
+    hapticPulseIntervalRef.current = setInterval(async () => {
+      try {
+        const hapticsAvailable = await Haptics.isAvailableAsync();
+        if (!hapticsAvailable) return;
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        await new Promise((resolve) => setTimeout(resolve, 80));
+        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+      } catch (hapticError) {
+        // Keep vibration as the primary path.
+      }
+    }, 420);
+  };
+
+  const openPostCriticalSafetyCheckImmediately = () => {
     if (safetyCheckTimeoutRef.current) {
       clearTimeout(safetyCheckTimeoutRef.current);
       safetyCheckTimeoutRef.current = null;
     }
-
-    safetyCheckTimeoutRef.current = setTimeout(async () => {
-      safetyCheckTimeoutRef.current = null;
-      await runPostCriticalSafetyCheck();
-    }, SAFETY_CHECK_DELAY_MS);
+    setSafetyQuestionIndex(0);
+    setSafetyResponses([]);
+    setShowSafetyCheckModal(true);
   };
 
   // Make screen full size by hiding the navigation header
@@ -871,14 +996,28 @@ export default function HazardDetectionScreen() {
               alertReason = `Critical hazard with very high confidence (${(confidence * 100).toFixed(0)}%)`;
               console.log(`✅ Rule 1 matched: priority ${priority} >= 9, confidence ${(confidence * 100).toFixed(1)}% >= 80%`);
             }
-            // Rule 2: High priority hazards (siren, glass breaking) with high confidence - alert immediately
+            // Rule 2: For non-priority alerts (e.g., footsteps), require repeated confirmation.
+            // This prevents noisy one-off detections from alerting children too often.
+            else if (priority < 7 && confidence >= 0.65) {
+              const recentSameType = detectionHistoryRef.current
+                .filter(d => d.type === hazardType)
+                .slice(-5); // Last 5 detections
+
+              if (recentSameType.length >= 3) {
+                shouldAlert = true;
+                alertReason = `Non-priority sound confirmed (${recentSameType.length}/5 detections, ${(confidence * 100).toFixed(0)}% confidence)`;
+              } else {
+                console.log(`⏳ ${hazardType} is non-priority and needs 3/5 confirmations (${recentSameType.length}/3)`);
+              }
+            }
+            // Rule 3: High priority hazards (siren, glass breaking) with high confidence - alert immediately
             // Increased from 0.70 to 0.75 to reduce false positives
             else if (priority >= 7 && confidence >= 0.75) {
               shouldAlert = true;
               alertReason = `High priority hazard with high confidence (${(confidence * 100).toFixed(0)}%)`;
               console.log(`✅ Rule 2 matched: priority ${priority} >= 7, confidence ${(confidence * 100).toFixed(1)}% >= 75%`);
             }
-            // Rule 3: Medium-high confidence (0.70-0.75) - require 2 out of last 3 detections to be same type
+            // Rule 4: Medium-high confidence (0.70-0.75) - require 2 out of last 3 detections to be same type
             // Increased threshold from 0.60-0.70 to 0.70-0.75
             else if (confidence >= 0.70 && confidence < 0.75) {
               const recentSameType = detectionHistoryRef.current
@@ -892,7 +1031,7 @@ export default function HazardDetectionScreen() {
                 console.log(`⏳ ${hazardType} needs confirmation (${recentSameType.length}/2 detections, confidence: ${(confidence * 100).toFixed(0)}%)`);
               }
             }
-            // Rule 4: Medium confidence (0.65-0.70) - require 3 out of last 5 detections
+            // Rule 5: Medium confidence (0.65-0.70) - require 3 out of last 5 detections
             // Increased threshold from 0.50-0.60 to 0.65-0.70
             else if (confidence >= 0.65 && confidence < 0.70) {
               const recentSameType = detectionHistoryRef.current
@@ -906,7 +1045,7 @@ export default function HazardDetectionScreen() {
                 console.log(`⏳ ${hazardType} needs more confirmation (${recentSameType.length}/3 detections, confidence: ${(confidence * 100).toFixed(0)}%)`);
               }
             }
-            // Rule 5: Very low confidence - don't alert (increased minimum from 0.50 to 0.65)
+            // Rule 6: Very low confidence - don't alert (increased minimum from 0.50 to 0.65)
             else {
               console.log(`⏭️ Skipping ${hazardType} - confidence too low (${(confidence * 100).toFixed(0)}% < 65%)`);
             }
@@ -983,75 +1122,7 @@ export default function HazardDetectionScreen() {
                     hazard.location = criticalLocation;
                   }
 
-                  // Clear any existing vibration interval
-                  if (vibrationIntervalRef.current) {
-                    clearInterval(vibrationIntervalRef.current);
-                    vibrationIntervalRef.current = null;
-                  }
-
-                  // CRITICAL: Strong vibration for deaf users - use BOTH haptics AND vibration API
-                  console.log('🚨 CRITICAL ALERT - Starting aggressive vibration pattern');
-
-                  try {
-                    // Use React Native Vibration API for maximum reliability (works on both iOS and Android)
-                    // Strong initial pattern: vibrate 800ms, pause 100ms, vibrate 800ms, pause 100ms, vibrate 800ms
-                    Vibration.vibrate([0, 800, 100, 800, 100, 800], true); // true = repeat pattern
-                    console.log('📳 Vibration API triggered with aggressive pattern');
-
-                    // ALSO use haptics on iOS for additional tactile feedback
-                    if (Platform.OS === 'ios') {
-                      try {
-                        const hapticsAvailable = await Haptics.isAvailableAsync();
-                        if (hapticsAvailable) {
-                          // Multiple strong haptic bursts
-                          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-                          await new Promise(resolve => setTimeout(resolve, 50));
-                          await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-                          await new Promise(resolve => setTimeout(resolve, 50));
-                          await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-                          await new Promise(resolve => setTimeout(resolve, 50));
-                          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-                          console.log('📳 iOS haptics triggered');
-                        } else {
-                          console.warn('⚠️ Haptics not available, using Vibration API only');
-                        }
-                      } catch (hapticError) {
-                        console.warn('⚠️ Haptic error (falling back to Vibration API):', hapticError);
-                      }
-                    }
-                  } catch (vibError) {
-                    console.error('❌ Vibration error:', vibError);
-                    // Fallback: try simple vibration
-                    try {
-                      Vibration.vibrate(1000);
-                    } catch (fallbackError) {
-                      console.error('❌ Fallback vibration also failed:', fallbackError);
-                    }
-                  }
-
-                  // Start continuous aggressive vibration pattern (every 400ms for maximum frequency)
-                  vibrationIntervalRef.current = setInterval(async () => {
-                    try {
-                      // Use Vibration API for reliable continuous feedback
-                      // Pattern: vibrate 300ms, pause 100ms (repeats every interval)
-                      Vibration.vibrate([0, 300, 100], false); // false = don't repeat (we handle repetition with interval)
-
-                      // ALSO trigger haptics on iOS every other interval for variety
-                      if (Platform.OS === 'ios') {
-                        try {
-                          const hapticsAvailable = await Haptics.isAvailableAsync();
-                          if (hapticsAvailable) {
-                            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-                          }
-                        } catch (hapticError) {
-                          // Silently fail - Vibration API is primary
-                        }
-                      }
-                    } catch (vibError) {
-                      console.error('❌ Continuous vibration error:', vibError);
-                    }
-                  }, 400); // Very frequent: every 400ms for maximum tactile feedback
-                  console.log('🔔 Started AGGRESSIVE continuous vibration (every 400ms) for critical alert');
+                  await startCriticalTactileFeedback(hazardType);
                 }
 
                 // Update last alert time
@@ -1356,19 +1427,7 @@ export default function HazardDetectionScreen() {
         hazardAlertService.stopAlert();
       }
 
-      // Clear continuous vibration if active
-      if (vibrationIntervalRef.current) {
-        clearInterval(vibrationIntervalRef.current);
-        vibrationIntervalRef.current = null;
-        console.log('🔕 Stopped continuous vibration');
-      }
-
-      // Cancel any ongoing vibration (works on both iOS and Android)
-      try {
-        Vibration.cancel();
-      } catch (cancelError) {
-        console.warn('⚠️ Error canceling vibration:', cancelError);
-      }
+      stopCriticalTactileFeedback();
 
       setAlertMessage(null);
       setIsCriticalAlert(false);
@@ -1397,20 +1456,8 @@ export default function HazardDetectionScreen() {
       hazardAlertService.stopAlert();
     }
 
-    // Clear continuous vibration if active
-    if (vibrationIntervalRef.current) {
-      clearInterval(vibrationIntervalRef.current);
-      vibrationIntervalRef.current = null;
-      console.log('🔕 Stopped continuous vibration');
-    }
-
-    // Cancel any ongoing vibration (works on both iOS and Android)
-    try {
-      Vibration.cancel();
-      console.log('🔕 Vibration canceled');
-    } catch (cancelError) {
-      console.warn('⚠️ Error canceling vibration:', cancelError);
-    }
+    stopCriticalTactileFeedback();
+    console.log('🔕 Vibration canceled');
 
     // Stop flash animation
     flashAnimation.stopAnimation();
@@ -1446,7 +1493,7 @@ export default function HazardDetectionScreen() {
     });
 
     if (wasCritical) {
-      schedulePostCriticalSafetyCheck();
+      openPostCriticalSafetyCheckImmediately();
     }
 
     // Note: We keep detection history even after dismissing alert
@@ -1761,6 +1808,77 @@ export default function HazardDetectionScreen() {
                 <Text style={styles.criticalDismissButtonText}>I'M SAFE NOW!</Text>
               </TouchableOpacity>
             </Animated.View>
+          </View>
+        )}
+
+        {/* Child-friendly follow-up safety check */}
+        {showSafetyCheckModal && (
+          <View style={styles.safetyCheckOverlay}>
+            <View style={styles.safetyCheckCard}>
+              <TouchableOpacity
+                style={styles.safetyModeToggle}
+                onPress={() => setIsIconOnlyMode((prev) => !prev)}
+                activeOpacity={0.8}
+              >
+                <MaterialIcons
+                  name={isIconOnlyMode ? 'text-fields' : 'gesture'}
+                  size={18}
+                  color="#6D28D9"
+                />
+                <Text style={styles.safetyModeToggleText}>
+                  {isIconOnlyMode ? 'Show Text' : 'Icon Mode'}
+                </Text>
+              </TouchableOpacity>
+              <Text style={styles.safetyCheckProgress}>
+                Question {safetyQuestionIndex + 1} of {SAFETY_CHECK_STEPS.length}
+              </Text>
+              <View style={styles.safetyVisualBadge}>
+                <Text style={styles.safetyCheckEmoji}>
+                  {SAFETY_CHECK_STEPS[safetyQuestionIndex].emoji}
+                </Text>
+                <MaterialIcons
+                  name={SAFETY_CHECK_STEPS[safetyQuestionIndex].icon}
+                  size={30}
+                  color="#6D28D9"
+                />
+              </View>
+              <Text style={styles.safetyCheckTitle}>Quick Safety Check</Text>
+              {isIconOnlyMode ? (
+                <Text style={styles.safetyCheckQuestionIconOnly}>
+                  {SAFETY_CHECK_STEPS[safetyQuestionIndex].shortPrompt}
+                </Text>
+              ) : (
+                <Text style={styles.safetyCheckQuestion}>
+                  {SAFETY_CHECK_STEPS[safetyQuestionIndex].question}
+                </Text>
+              )}
+
+              {isSubmittingSafetyCheck ? (
+                <View style={styles.safetySubmittingContainer}>
+                  <ActivityIndicator size="large" color="#7C3AED" />
+                  <Text style={styles.safetySubmittingText}>Sending your answers...</Text>
+                </View>
+              ) : (
+                <View style={styles.safetyAnswerButtonsRow}>
+                  <TouchableOpacity
+                    style={[styles.safetyAnswerButton, styles.safetyAnswerNoButton]}
+                    onPress={() => handleSafetyResponse(false)}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={styles.safetyAnswerButtonEmoji}>🙅</Text>
+                    <Text style={styles.safetyAnswerButtonText}>No</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.safetyAnswerButton, styles.safetyAnswerYesButton]}
+                    onPress={() => handleSafetyResponse(true)}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={styles.safetyAnswerButtonEmoji}>👍</Text>
+                    <Text style={styles.safetyAnswerButtonText}>Yes</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </View>
           </View>
         )}
 
@@ -2316,6 +2434,132 @@ const styles = StyleSheet.create({
     fontSize: 24, // Larger button text
     fontWeight: '900',
     letterSpacing: 1.5,
+  },
+  safetyCheckOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 10020,
+    backgroundColor: 'rgba(17, 24, 39, 0.75)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+  },
+  safetyCheckCard: {
+    width: '100%',
+    maxWidth: 420,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 28,
+    paddingVertical: 28,
+    paddingHorizontal: 22,
+    alignItems: 'center',
+    borderWidth: 3,
+    borderColor: '#C4B5FD',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.25,
+    shadowRadius: 18,
+    elevation: 12,
+  },
+  safetyModeToggle: {
+    alignSelf: 'flex-end',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: '#F3E8FF',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    marginBottom: 8,
+  },
+  safetyModeToggleText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#6D28D9',
+  },
+  safetyCheckProgress: {
+    fontSize: 14,
+    color: '#6D28D9',
+    fontWeight: '700',
+    marginBottom: 10,
+  },
+  safetyVisualBadge: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F5F3FF',
+    borderRadius: 18,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    marginBottom: 10,
+    borderWidth: 2,
+    borderColor: '#DDD6FE',
+  },
+  safetyCheckEmoji: {
+    fontSize: 56,
+    marginBottom: 6,
+  },
+  safetyCheckTitle: {
+    fontSize: 26,
+    fontWeight: '900',
+    color: '#111827',
+    marginBottom: 10,
+    textAlign: 'center',
+  },
+  safetyCheckQuestion: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#1F2937',
+    textAlign: 'center',
+    lineHeight: 34,
+    marginBottom: 20,
+  },
+  safetyCheckQuestionIconOnly: {
+    fontSize: 30,
+    fontWeight: '900',
+    color: '#1F2937',
+    textAlign: 'center',
+    letterSpacing: 1,
+    marginBottom: 20,
+  },
+  safetySubmittingContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+  },
+  safetySubmittingText: {
+    marginTop: 10,
+    fontSize: 16,
+    color: '#4B5563',
+    fontWeight: '600',
+  },
+  safetyAnswerButtonsRow: {
+    width: '100%',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  safetyAnswerButton: {
+    flex: 1,
+    borderRadius: 18,
+    paddingVertical: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+  },
+  safetyAnswerNoButton: {
+    backgroundColor: '#FEE2E2',
+    borderColor: '#FCA5A5',
+  },
+  safetyAnswerYesButton: {
+    backgroundColor: '#DCFCE7',
+    borderColor: '#86EFAC',
+  },
+  safetyAnswerButtonEmoji: {
+    fontSize: 30,
+    marginBottom: 4,
+  },
+  safetyAnswerButtonText: {
+    fontSize: 22,
+    fontWeight: '900',
+    color: '#111827',
   },
   popupBackdrop: {
     ...StyleSheet.absoluteFillObject,

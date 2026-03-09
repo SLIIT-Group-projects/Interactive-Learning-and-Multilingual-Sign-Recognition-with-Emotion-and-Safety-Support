@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, ActivityIndicator, Modal, Text, TouchableOpacity, Linking, Alert } from 'react-native';
+import { View, ActivityIndicator, Modal, Text, TouchableOpacity, Linking, Alert, Animated, Easing } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useAuth } from '../contexts/AuthContext';
@@ -18,25 +18,64 @@ import { registerPushToken, setupNotificationListener } from '../services/pushNo
 
 
 const Stack = createNativeStackNavigator();
+const PARENT_ROUTE_NAMES = new Set([
+  'ParentDashboard',
+  'AddChild',
+  'LearningProgress',
+  'ParentPlaces',
+  'HazardHistory',
+  'ParentAlertDetails',
+  'HazardDetection',
+]);
+
+const getHazardVisual = (hazardType = '') => {
+  const normalizedType = String(hazardType || '').toLowerCase();
+
+  if (normalizedType.includes('fire') || normalizedType.includes('smoke')) {
+    return { emoji: '🔥', icon: 'local-fire-department', color: '#dc2626', label: 'Fire Risk' };
+  }
+  if (normalizedType.includes('glass')) {
+    return { emoji: '💥', icon: 'broken-image', color: '#f97316', label: 'Glass Breaking' };
+  }
+  if (normalizedType.includes('alarm')) {
+    return { emoji: '🚨', icon: 'sensors', color: '#ef4444', label: 'Alarm Detected' };
+  }
+  if (normalizedType.includes('horn') || normalizedType.includes('car')) {
+    return { emoji: '🚗', icon: 'directions-car', color: '#f59e0b', label: 'Traffic Hazard' };
+  }
+  if (normalizedType.includes('dog')) {
+    return { emoji: '🐕', icon: 'pets', color: '#8b5cf6', label: 'Aggressive Animal Sound' };
+  }
+
+  return { emoji: '⚠️', icon: 'warning-amber', color: '#dc2626', label: 'Critical Hazard' };
+};
 
 // Navigation component that handles role-based routing
 export default function AppNavigator({ navigationRef }) {
   const { userData, loading, isAuthenticated, isParent, isChild } = useAuth();
   const [criticalOverlayAlert, setCriticalOverlayAlert] = useState(null);
   const shownCriticalNotificationIdsRef = useRef(new Set());
+  const hazardPulseAnim = useRef(new Animated.Value(1)).current;
   const navigateToHazardHistory = useCallback((...args) => {
     if (navigationRef?.current?.isReady?.()) {
       navigationRef.current.navigate(...args);
     }
   }, [navigationRef]);
   const isCheckingNotificationsRef = useRef(false);
+  const notificationPollIntervalRef = useRef(null);
+
+  const isParentRouteActive = () => {
+    const currentRouteName = navigationRef?.current?.getCurrentRoute?.()?.name;
+    if (!currentRouteName) return true; // During initial navigation setup, allow.
+    return PARENT_ROUTE_NAMES.has(currentRouteName);
+  };
 
   const isCriticalNotification = (notification) => {
     return notification?.type === 'critical_hazard_alert' || Number(notification?.priority || 0) >= 9;
   };
 
   const checkForCriticalNotifications = async ({ initializeOnly = false } = {}) => {
-    if (!userData?.uid || isCheckingNotificationsRef.current) return;
+    if (!userData?.uid || !isParent || !isParentRouteActive() || isCheckingNotificationsRef.current) return;
 
     isCheckingNotificationsRef.current = true;
     try {
@@ -95,15 +134,51 @@ export default function AppNavigator({ navigationRef }) {
       }
     );
 
-    const pollInterval = setInterval(() => {
+    // Extra safety: never keep multiple poll loops alive.
+    if (notificationPollIntervalRef.current) {
+      clearInterval(notificationPollIntervalRef.current);
+      notificationPollIntervalRef.current = null;
+    }
+
+    notificationPollIntervalRef.current = setInterval(() => {
       checkForCriticalNotifications();
     }, 5000);
 
     return () => {
       cleanupNotificationListener?.();
-      clearInterval(pollInterval);
+      if (notificationPollIntervalRef.current) {
+        clearInterval(notificationPollIntervalRef.current);
+        notificationPollIntervalRef.current = null;
+      }
     };
   }, [isAuthenticated, isParent, userData?.uid, navigateToHazardHistory]);
+
+  useEffect(() => {
+    if (!criticalOverlayAlert) {
+      hazardPulseAnim.setValue(1);
+      return undefined;
+    }
+
+    const pulseLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(hazardPulseAnim, {
+          toValue: 1.12,
+          duration: 550,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(hazardPulseAnim, {
+          toValue: 1,
+          duration: 550,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+
+    pulseLoop.start();
+    return () => pulseLoop.stop();
+  }, [criticalOverlayAlert, hazardPulseAnim]);
 
   const handleDismissCriticalOverlay = () => {
     setCriticalOverlayAlert(null);
@@ -197,6 +272,10 @@ export default function AppNavigator({ navigationRef }) {
     );
   }
 
+  const hazardVisual = getHazardVisual(
+    criticalOverlayAlert?.hazardType || criticalOverlayAlert?.type || ''
+  );
+
   // Determine initial route based on authentication and role
   let initialRouteName = 'Login';
   if (isAuthenticated) {
@@ -258,9 +337,30 @@ export default function AppNavigator({ navigationRef }) {
         <View className="flex-1 bg-black/70 justify-center items-center px-6">
           <View className="bg-white rounded-3xl p-6 w-full max-w-md border-2 border-red-500">
             <View className="items-center">
-              <View className="bg-red-100 rounded-full p-4 mb-3">
-                <MaterialIcons name="warning-amber" size={42} color="#dc2626" />
-              </View>
+              <Animated.View
+                style={{
+                  transform: [{ scale: hazardPulseAnim }],
+                  marginBottom: 12,
+                }}
+              >
+                <View
+                  style={{
+                    backgroundColor: `${hazardVisual.color}22`,
+                    borderColor: hazardVisual.color,
+                    borderWidth: 2,
+                    borderRadius: 999,
+                    padding: 14,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <Text style={{ fontSize: 30, marginBottom: 2 }}>{hazardVisual.emoji}</Text>
+                  <MaterialIcons name={hazardVisual.icon} size={34} color={hazardVisual.color} />
+                </View>
+              </Animated.View>
+              <Text style={{ color: hazardVisual.color, fontWeight: '700', marginBottom: 6 }}>
+                {hazardVisual.label}
+              </Text>
               <Text className="text-2xl font-bold text-red-700 text-center">
                 Critical Safety Alert
               </Text>
