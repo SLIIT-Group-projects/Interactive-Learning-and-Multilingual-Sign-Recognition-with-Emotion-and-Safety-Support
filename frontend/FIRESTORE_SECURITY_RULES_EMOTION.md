@@ -1,14 +1,8 @@
-# Firestore Security Rules
+# Firestore Security Rules (Updated with Emotion Collections)
 
-This document contains the security rules for your Firestore database. These rules ensure that:
+This document contains the updated security rules including the new emotion detection collections.
 
-- Users can only read/write their own user document
-- Parents can read their children's data
-- Children cannot access parent documents
-- Game sessions can only be written by authenticated children
-- Parents can query their children's game sessions
-
-## 🔒 Security Rules
+## 🔒 Updated Security Rules
 
 Copy and paste these rules into your Firebase Console → Firestore Database → Rules:
 
@@ -102,7 +96,7 @@ service cloud.firestore {
         request.resource.data.parentId == getUserData().parentId;
     }
     
-    // Game Emotion Sessions collection (NEW - for emotion detection integration)
+    // Game Emotion Sessions collection (NEW)
     match /gameEmotionSessions/{emotionSessionId} {
       // Children can read their own emotion sessions
       allow read: if isAuthenticated() && 
@@ -123,7 +117,7 @@ service cloud.firestore {
       allow update, delete: if false;
     }
     
-    // Emotion Daily Stats collection (NEW - for daily emotion aggregation)
+    // Emotion Daily Stats collection (NEW)
     match /emotionDailyStats/{dailyDocId} {
       // Children can read their own daily stats
       allow read: if isAuthenticated() && 
@@ -134,14 +128,15 @@ service cloud.firestore {
         getUserData().role == 'parent' && 
         resource.data.parentId == request.auth.uid;
       
-      // Children can create/update their own daily stats
+      // System can create/update daily stats (when emotion session is saved)
+      // Allow children to create/update their own stats
       allow write: if isAuthenticated() && 
         getUserData().role == 'child' && 
         request.resource.data.childId == request.auth.uid &&
         request.resource.data.parentId == getUserData().parentId;
     }
     
-    // Emotion Insights collection (NEW - for emotion analysis and predictions)
+    // Emotion Insights collection (NEW)
     match /emotionInsights/{childId} {
       // Children can read their own insights
       allow read: if isAuthenticated() && 
@@ -152,7 +147,8 @@ service cloud.firestore {
         getUserData().role == 'parent' && 
         resource.data.parentId == request.auth.uid;
       
-      // Children can create/update their own insights
+      // System can create/update insights (when analysis is run)
+      // Allow children to create/update their own insights
       allow write: if isAuthenticated() && 
         getUserData().role == 'child' && 
         request.auth.uid == childId &&
@@ -171,89 +167,60 @@ service cloud.firestore {
 ## 📝 How to Apply These Rules
 
 1. **Go to Firebase Console**
-   - Navigate to your project: https://console.firebase.google.com/
+   - Navigate to: https://console.firebase.google.com/
    - Select your project: `signlanguageproject-eb8d8`
 
 2. **Open Firestore Database**
    - Click on **Build** → **Firestore Database**
    - Click on the **Rules** tab
 
-3. **Paste the Rules**
+3. **Paste the Updated Rules**
    - Delete the existing rules
    - Paste the rules from above
    - Click **Publish**
 
 4. **Verify Rules**
    - The rules should validate without errors
-   - If there are errors, check the syntax
+   - Wait a few seconds for rules to propagate
+
+## 🆕 What's New
+
+The updated rules now include permissions for:
+
+1. **`gameEmotionSessions`** - Stores emotion data linked to game sessions
+   - Children can create their own emotion sessions
+   - Parents can read their children's emotion sessions
+
+2. **`emotionDailyStats`** - Daily aggregated emotion statistics
+   - Children can create/update their own daily stats
+   - Parents can read their children's daily stats
+
+3. **`emotionInsights`** - Analysis results and predictions
+   - Children can create/update their own insights
+   - Parents can read their children's insights
 
 ## ⚠️ Important Notes
 
-### Development vs Production
-
-For **development/testing**, you might want to use more permissive rules temporarily:
-
-```javascript
-// TEMPORARY - Development only
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    match /{document=**} {
-      allow read, write: if request.auth != null;
-    }
-  }
-}
-```
-
-**⚠️ Never use this in production!**
-
-### Testing Rules
-
-You can test your rules using the Firebase Console Rules Playground:
-
-1. Go to Firestore → Rules
-2. Click "Rules Playground"
-3. Test different scenarios:
-   - Parent reading their child's data
-   - Child creating a game session
-   - Unauthenticated user trying to read data
-
-## 🔐 Security Best Practices
-
-1. **Always verify authentication** - Check `request.auth != null`
-2. **Verify user role** - Check `getUserData().role`
-3. **Verify ownership** - Check `resource.data.childId == request.auth.uid`
-4. **Limit write operations** - Only allow creates where needed
-5. **No public access** - Never allow unauthenticated reads/writes
-6. **Test thoroughly** - Use Rules Playground before deploying
+- All collections require authentication
+- Children can only write their own data
+- Parents can only read their own children's data
+- No updates or deletes allowed for emotion sessions (immutable)
+- Daily stats and insights can be updated when new data arrives
 
 ## 🐛 Troubleshooting
 
-### "Permission denied" errors
+If you still get permission errors after updating:
 
-- Check that user is authenticated
-- Verify user document exists in `users` collection
-- Check that user role matches expected role
-- Verify parentId matches for child operations
+1. **Wait a few seconds** - Rules can take 10-30 seconds to propagate
+2. **Clear app cache** - Restart your app
+3. **Check user authentication** - Make sure user is logged in
+4. **Verify user role** - Check that user document has correct `role` field
+5. **Check parentId** - Verify child's `parentId` matches parent's `uid`
 
-### Rules not updating
+## 🔐 Security Best Practices
 
-- Make sure you clicked "Publish"
-- Wait a few seconds for rules to propagate
-- Clear app cache and restart
-
-### Testing issues
-
-- Use Rules Playground in Firebase Console
-- Check Firebase Console → Firestore → Usage for rule violations
-- Review console logs for specific error messages
-
-## 📚 Additional Resources
-
-- [Firestore Security Rules Documentation](https://firebase.google.com/docs/firestore/security/get-started)
-- [Rules Playground](https://firebase.google.com/docs/firestore/security/test-rules)
-- [Common Security Rules Patterns](https://firebase.google.com/docs/firestore/security/rules-conditions)
-
-
-
-
+- All operations require authentication
+- Children can only access their own data
+- Parents can only access their children's data
+- No public access to any collections
+- Immutable emotion sessions (no updates/deletes)

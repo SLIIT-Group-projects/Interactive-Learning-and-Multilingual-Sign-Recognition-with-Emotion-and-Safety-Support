@@ -7,16 +7,19 @@ import { fuseEmotion } from "../../models/fusion.model.js";
 
 export function computeFusion(session) {
   if (!session || !session.emotions || !session.hands) {
+    console.warn(`[Fusion] Session missing data - emotions: ${session?.emotions?.length || 0}, hands: ${session?.hands?.length || 0}`);
     return {
       behavior: "Cannot detect", // PRIMARY OUTPUT - insufficient data
       behaviorConfidence: 0.0,
       engagementLevel: "LOW",
-      finalEmotion: "unknown",
+      finalEmotion: "neutral",
       summary: "Insufficient data",
       emotionDistribution: {},
       handSummary: {},
     };
   }
+  
+  console.log(`[Fusion] Processing session with ${session.emotions.length} emotion samples and ${session.hands.length} hand samples`);
 
   const now = Date.now();
   const twoMinutesAgo = now - 2 * 60 * 1000;
@@ -30,18 +33,27 @@ export function computeFusion(session) {
   const hands = recentHands.length > 0 ? recentHands : session.hands;
 
   // Compute emotion distribution
+  // Filter out invalid emotions (no_face_detected, unknown, etc.)
+  const validEmotions = emotions.filter((e) => {
+    const emotion = e.predicted || "neutral";
+    return emotion && 
+           emotion !== "no_face_detected" && 
+           emotion !== "unknown" &&
+           (e.confidence || 0) > 0; // Only include emotions with confidence > 0
+  });
+
   const emotionCounts = {};
   let totalConfidence = 0;
   let emotionSum = 0;
 
-  emotions.forEach((e) => {
+  validEmotions.forEach((e) => {
     const emotion = e.predicted || "neutral";
     emotionCounts[emotion] = (emotionCounts[emotion] || 0) + 1;
     totalConfidence += e.confidence || 0;
     emotionSum += 1;
   });
 
-  // Find dominant emotion
+  // Find dominant emotion (only from valid emotions)
   let finalEmotion = "neutral";
   let maxCount = 0;
   for (const [emotion, count] of Object.entries(emotionCounts)) {
@@ -49,6 +61,13 @@ export function computeFusion(session) {
       maxCount = count;
       finalEmotion = emotion;
     }
+  }
+
+  // If no valid emotions found, check if we have any emotion data at all
+  if (emotionSum === 0 && emotions.length > 0) {
+    // All emotions were invalid (no face detected, etc.)
+    finalEmotion = "neutral"; // Default fallback
+    console.warn(`[Fusion] No valid emotions found in ${emotions.length} samples - all were invalid (no face detected?)`);
   }
 
   const avgConfidence = emotionSum > 0 ? totalConfidence / emotionSum : 0;
@@ -127,14 +146,14 @@ export function computeFusion(session) {
   
   // Check if face/emotion was detected
   // Face is considered detected if:
-  // 1. We have emotion samples
+  // 1. We have valid emotion samples (not just any samples)
   // 2. Final emotion is a valid emotion (not "unknown", "no_face_detected", etc.)
   // 3. Average confidence is reasonable (not zero)
-  const faceDetected = emotions.length > 0 
+  const faceDetected = validEmotions.length > 0 
     && finalEmotion 
     && finalEmotion !== "unknown" 
     && finalEmotion !== "no_face_detected"
-    && avgConfidence > 0;
+    && avgConfidence > 0.1; // Require at least 10% confidence (not just > 0)
   
   // Check if hands were detected
   // Hands are detected if:
@@ -154,8 +173,8 @@ export function computeFusion(session) {
   
   // Only calculate behavior if BOTH face and hands are detected
   if (faceDetected && handsDetected) {
-    // Calculate average confidence for the dominant emotion
-    const dominantEmotionSamples = emotions.filter((e) => (e.predicted || "neutral") === finalEmotion);
+    // Calculate average confidence for the dominant emotion (only from valid emotions)
+    const dominantEmotionSamples = validEmotions.filter((e) => (e.predicted || "neutral") === finalEmotion);
     const avgConfidenceForDominant = dominantEmotionSamples.length > 0
       ? dominantEmotionSamples.reduce((sum, e) => sum + (e.confidence || 0), 0) / dominantEmotionSamples.length
       : avgConfidence;
@@ -183,7 +202,7 @@ export function computeFusion(session) {
   }
 
   // Generate summary text - Behavior is the main output, highlighted first
-  let summary = `Analyzed ${emotions.length} emotion samples and ${hands.length} hand movement samples. `;
+  let summary = `Analyzed ${emotions.length} emotion samples (${validEmotions.length} valid) and ${hands.length} hand movement samples. `;
   summary += `Behavior: ${behavior} (${(behaviorConfidence * 100).toFixed(1)}% confidence). `;
   summary += `Dominant emotion: ${finalEmotion} (${(avgConfidence * 100).toFixed(1)}% avg confidence). `;
   
