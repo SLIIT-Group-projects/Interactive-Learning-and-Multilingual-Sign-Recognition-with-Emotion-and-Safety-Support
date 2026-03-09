@@ -6,6 +6,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { LoginScreen, RegisterScreen } from '../screens/auth';
 import { ParentDashboard, AddChildScreen } from '../screens/parent';
 import LearningProgressScreen from '../screens/parent/LearningProgressScreen';
+import EmotionDashboardScreen from '../screens/parent/EmotionDashboardScreen';
 import { ChildDashboard, LearnSigns, PlayGame } from '../screens/child';
 import GameSelectScreen from '../screens/child/GameSelectScreen';
 import PlayGameTimed from '../screens/child/PlayGameTimed';
@@ -229,6 +230,7 @@ export default function AppNavigator({ navigationRef }) {
             <Stack.Screen name="ParentDashboard" component={ParentDashboard} />
             <Stack.Screen name="AddChild" component={AddChildScreen} />
             <Stack.Screen name="LearningProgress" component={LearningProgressScreen} />
+            <Stack.Screen name="EmotionDashboard" component={EmotionDashboardScreen} />
             <Stack.Screen name="ParentPlaces" component={PlacesScreen} />
             <Stack.Screen name="HazardHistory" component={HazardHistoryScreen} />
             <Stack.Screen name="ParentAlertDetails" component={ParentAlertDetailsScreen} />

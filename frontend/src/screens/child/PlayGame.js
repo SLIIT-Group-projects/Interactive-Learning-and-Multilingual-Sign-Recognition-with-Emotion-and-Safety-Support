@@ -24,7 +24,14 @@ import {
   addXP,
   incrementGamesPlayed,
 } from "../../services/firestore/childProgressService";
+import { saveGameEmotionSession } from "../../services/firestore/emotionService";
 import XPProgressBar from "../../components/XPProgressBar";
+import {
+  API_ENDPOINTS,
+  uploadFile,
+  apiCall,
+  BASE_URL,
+} from "../../../config/api";
 
 import {
   ALPHABET,
@@ -65,13 +72,20 @@ const PlayGame = ({ navigation, route }) => {
     refreshChildProgress,
   } = useAuth();
 
+  // Emotion detection states
+  const [emotionSessionId, setEmotionSessionId] = useState(null);
+  const [emotionSessionActive, setEmotionSessionActive] = useState(false);
+  const emotionCaptureIntervalRef = useRef(null);
+  const confusionLettersRef = useRef([]); // Track letters child got wrong
+  const gameSessionIdRef = useRef(null); // Store game session ID for emotion linking
+
   // Get child and parent IDs from authenticated user
   const childId = userData?.uid || null;
   const parentId = userData?.parentId || null;
 
-  // API endpoint - update this to your server IP/URL
+  // API endpoint for hand detection - update this to your server IP/URL
   const API_URL = __DEV__
-    ? "http://192.168.1.6:5000" // Your laptop's IP address with port
+    ? "http://192.168.1.6:5000" // Your laptop's IP address with port for hand detection
     : "http://192.168.1.6:5000"; // For production (same IP)
 
   // Stable camera ref callback - must be at top level (Rules of Hooks)
@@ -117,12 +131,149 @@ const PlayGame = ({ navigation, route }) => {
     load();
   }, [childId, contextProgress]);
 
-  // Initialize first question
+  // Initialize first question and start emotion session
   useEffect(() => {
     setGameStartTime(Date.now());
     generateNewQuestion();
     testAPIConnection();
+    startEmotionSession();
+    
+    // Cleanup on unmount
+    return () => {
+      if (emotionCaptureIntervalRef.current) {
+        clearInterval(emotionCaptureIntervalRef.current);
+      }
+      if (emotionSessionId) {
+        endEmotionSession();
+      }
+    };
   }, []);
+
+  // Start emotion detection session
+  const startEmotionSession = async () => {
+    try {
+      const sessionId = `game_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      setEmotionSessionId(sessionId);
+      setEmotionSessionActive(true);
+      confusionLettersRef.current = [];
+
+      // Start session on backend
+      const response = await apiCall(API_ENDPOINTS.START_SESSION, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId }),
+      });
+
+      if (response.ok) {
+        console.log('✅ Emotion session started:', sessionId);
+        
+        // Start capturing frames every 3 seconds
+        emotionCaptureIntervalRef.current = setInterval(() => {
+          captureEmotionFrame(sessionId);
+        }, 3000);
+      } else {
+        console.warn('⚠️ Failed to start emotion session');
+      }
+    } catch (error) {
+      console.warn('⚠️ Error starting emotion session:', error);
+    }
+  };
+
+  // Capture frame for emotion detection
+  const captureEmotionFrame = async (sessionId) => {
+    if (!emotionSessionActive || !cameraRef.current || !permission?.granted) {
+      return;
+    }
+
+    try {
+      const camera = cameraRef.current;
+      if (!camera || typeof camera.takePictureAsync !== 'function') {
+        return;
+      }
+
+      // Capture frame silently
+      const photo = await camera.takePictureAsync({
+        quality: 0.7,
+        base64: true,
+        skipProcessing: true,
+      });
+
+      if (!photo || !photo.base64) {
+        return;
+      }
+
+      // Convert to data URI
+      const frameUri = `data:image/jpeg;base64,${photo.base64}`;
+
+      // Send to emotion API
+      await uploadFile(
+        API_ENDPOINTS.PREDICT_EMOTION,
+        {
+          uri: frameUri,
+          type: 'image/jpeg',
+          name: `emotion_${Date.now()}.jpg`,
+        },
+        { sessionId }
+      );
+    } catch (error) {
+      // Silently fail - don't interrupt game
+      console.warn('[Emotion] Frame capture failed:', error.message);
+    }
+  };
+
+  // End emotion session and get results
+  const endEmotionSession = async () => {
+    if (!emotionSessionId || !emotionSessionActive) {
+      return;
+    }
+
+    try {
+      // Stop capturing
+      if (emotionCaptureIntervalRef.current) {
+        clearInterval(emotionCaptureIntervalRef.current);
+        emotionCaptureIntervalRef.current = null;
+      }
+
+      setEmotionSessionActive(false);
+
+      // Finalize session on backend
+      const response = await apiCall(API_ENDPOINTS.FINALIZE_SESSION, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId: emotionSessionId }),
+      });
+
+      if (response.ok) {
+        const emotionResult = await response.json();
+        console.log('✅ Emotion session finalized:', emotionResult);
+
+        // Save to Firebase if we have game session ID
+        if (gameSessionIdRef.current && childId && parentId) {
+          try {
+            await saveGameEmotionSession({
+              gameSessionId: gameSessionIdRef.current,
+              childId,
+              parentId,
+              behavior: emotionResult.behavior,
+              behaviorConfidence: emotionResult.behaviorConfidence,
+              finalEmotion: emotionResult.finalEmotion,
+              engagementLevel: emotionResult.engagementLevel,
+              emotionDistribution: emotionResult.emotionDistribution,
+              handSummary: emotionResult.handSummary,
+              duration: emotionResult.duration,
+              confusionLetters: confusionLettersRef.current,
+              totalQuestions: TOTAL_QUESTIONS,
+              correctAnswers: score,
+            });
+          } catch (error) {
+            console.warn('⚠️ Failed to save emotion session:', error);
+          }
+        }
+      }
+    } catch (error) {
+      console.warn('⚠️ Error ending emotion session:', error);
+    }
+  };
 
   // Test API connection
   const testAPIConnection = async () => {
@@ -479,6 +630,7 @@ const PlayGame = ({ navigation, route }) => {
 
       if (!result.success) {
         Alert.alert("Error", result.error || "Failed to process gesture");
+        setIsCapturing(false); // Reset so user can try again
         return;
       }
 
@@ -514,6 +666,10 @@ const PlayGame = ({ navigation, route }) => {
         setScore(score + 1);
       } else {
         setFeedback("incorrect");
+        // Track confusion - add letter to confusion list
+        if (targetLetter && !confusionLettersRef.current.includes(targetLetter)) {
+          confusionLettersRef.current.push(targetLetter);
+        }
       }
 
       // XP system: correct +20, wrong +0; 5 in a row +50 bonus
@@ -633,7 +789,7 @@ const PlayGame = ({ navigation, route }) => {
 
       if (childId && parentId) {
         try {
-          await saveGameSession({
+          const savedSessionId = await saveGameSession({
             childId,
             parentId,
             gameMode: gameMode,
@@ -642,10 +798,18 @@ const PlayGame = ({ navigation, route }) => {
             timeTaken: totalTime,
             difficultyLevel: "medium",
           });
+          
+          // Store game session ID for emotion linking
+          if (savedSessionId) {
+            gameSessionIdRef.current = savedSessionId;
+          }
         } catch (error) {
           console.warn("⚠️ Failed to save game session:", error);
         }
       }
+
+      // End emotion session when game completes
+      await endEmotionSession();
 
       Alert.alert(
         "Game Complete!",
@@ -657,6 +821,9 @@ const PlayGame = ({ navigation, route }) => {
       setScore(0);
       setGameStartTime(Date.now());
       generateNewQuestion();
+      
+      // Start new emotion session for next game
+      startEmotionSession();
       if (childId) {
         try {
           const p =
