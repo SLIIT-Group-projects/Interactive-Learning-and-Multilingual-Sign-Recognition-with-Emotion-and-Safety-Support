@@ -3,7 +3,7 @@
 ## Step 1: Install Python Dependencies
 
 ```bash
-cd sign-model-backend
+cd backend
 pip install -r requirements.txt
 ```
 

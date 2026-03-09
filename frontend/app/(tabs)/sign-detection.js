@@ -785,7 +785,7 @@ export default function SignDetectionScreen() {
                   }
                   Alert.alert(
                     '❌ Connection Failed',
-                    `${errorMsg}\n\nURL: ${apiUrl}\n\n💡 Quick Fix:\n1. Open terminal/PowerShell\n2. Go to: sign-model-backend folder\n3. Run: python app.py\n4. Make sure it shows "Server ready!"\n\n💡 Also check:\n✨ Correct IP address (not localhost)\n✨ Same Wi-Fi network\n✨ Firewall not blocking port 5000`
+                    `${errorMsg}\n\nURL: ${apiUrl}\n\n💡 Quick Fix:\n1. Open terminal/PowerShell\n2. Go to: backend folder\n3. Run: python app.py\n4. Make sure it shows "Server ready!"\n\n💡 Also check:\n✨ Correct IP address (not localhost)\n✨ Same Wi-Fi network\n✨ Firewall not blocking port 5000`
                   );
                 }
               }}

@@ -7,7 +7,7 @@
 1. **Open PowerShell or Command Prompt**
 2. **Navigate to the backend folder:**
    ```powershell
-   cd "F:\Research Project\Interactive-Learning-and-Multilingual-Sign-Recognition-with-Emotion-and-Safety-Support\frontend-sign-translation\sign-model-backend"
+   cd "F:\Research Project\Interactive-Learning-and-Multilingual-Sign-Recognition-with-Emotion-and-Safety-Support\backend"
    ```
 
 3. **Start the server:**

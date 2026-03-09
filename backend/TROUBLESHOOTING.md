@@ -9,7 +9,7 @@ This means your app cannot connect to the backend server. Follow these steps:
 1. Open a terminal/PowerShell
 2. Navigate to the backend folder:
    ```bash
-   cd "F:\Research Project\Interactive-Learning-and-Multilingual-Sign-Recognition-with-Emotion-and-Safety-Support\frontend-sign-translation\sign-model-backend"
+   cd "F:\Research Project\Interactive-Learning-and-Multilingual-Sign-Recognition-with-Emotion-and-Safety-Support\backend"
    ```
 3. Start the server:
    ```bash

@@ -4,7 +4,7 @@
 
 ### Step 1: Restart Server with Debugging
 ```bash
-cd frontend-sign-translation/sign-model-backend
+cd backend
 python app.py
 ```
 

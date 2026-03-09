@@ -12,7 +12,7 @@ Added the `expo-camera` plugin to `app.json` which is required for the camera to
 After adding the camera plugin, you need to clear the cache and restart:
 
 ```bash
-cd frontend-sign-translation/multilingual-sign-translation
+cd frontend
 npx expo start --clear
 ```
 
@@ -90,13 +90,13 @@ npm run reset-project
 
 1. **Start the backend server:**
    ```bash
-   cd ../sign-model-backend
+   cd ../backend
    python app.py
    ```
 
 2. **Start Expo:**
    ```bash
-   cd ../multilingual-sign-translation
+   cd ../frontend
    npx expo start --clear
    ```
 
@@ -170,6 +170,7 @@ Check that `app.json` has:
 4. **Create a minimal test:**
    - Create a simple screen without camera to verify the app loads
    - Then gradually add features back
+
 
 
 
