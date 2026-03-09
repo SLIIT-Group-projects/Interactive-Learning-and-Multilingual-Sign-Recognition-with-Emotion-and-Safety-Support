@@ -457,3 +457,218 @@ export const getEmotionInsights = async (childId) => {
     return null;
   }
 };
+
+/**
+ * Get current week data (Monday to Sunday) with all 7 days
+ * @param {string} childId - Child UID
+ * @returns {Promise<Array>} Array of daily stats for current week
+ */
+export const getCurrentWeekData = async (childId) => {
+  try {
+    if (!db) return [];
+
+    const today = new Date();
+    const dayOfWeek = today.getDay(); // 0 = Sunday, 1 = Monday, etc.
+    
+    // Calculate Monday of current week
+    const monday = new Date(today);
+    const daysToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+    monday.setDate(today.getDate() + daysToMonday);
+    monday.setHours(0, 0, 0, 0);
+
+    const weekData = [];
+    
+    // Get data for all 7 days of the week
+    for (let i = 0; i < 7; i++) {
+      const currentDate = new Date(monday);
+      currentDate.setDate(monday.getDate() + i);
+      const dateKey = currentDate.toISOString().split('T')[0];
+      
+      const dailyStats = await getDailyEmotionStats(childId, dateKey);
+      
+      weekData.push({
+        date: dateKey,
+        dayName: currentDate.toLocaleDateString('en-US', { weekday: 'short' }),
+        dayNumber: currentDate.getDate(),
+        isToday: dateKey === today.toISOString().split('T')[0],
+        data: dailyStats || null,
+      });
+    }
+
+    return weekData;
+  } catch (error) {
+    console.error('❌ Error getting current week data:', error);
+    return [];
+  }
+};
+
+/**
+ * Generate predictive insights based on patterns
+ * @param {string} childId - Child UID
+ * @param {Array} weekData - Current week data
+ * @param {Object} insights - Existing insights
+ * @returns {Promise<Object>} Predictive insights
+ */
+export const generatePredictiveInsights = async (childId, weekData, insights) => {
+  try {
+    if (!weekData || weekData.length === 0) {
+      return { hasPredictions: false };
+    }
+
+    const predictions = {
+      hasPredictions: true,
+      learningPatterns: [],
+      attentionPatterns: [],
+      emotionalPatterns: [],
+      recommendations: [],
+      riskLevel: 'low', // low, medium, high
+    };
+
+    // Calculate weekly averages
+    const daysWithData = weekData.filter(d => d.data !== null);
+    if (daysWithData.length === 0) {
+      return { hasPredictions: false, message: 'Not enough data for predictions' };
+    }
+
+    // Calculate metrics
+    let totalSessions = 0;
+    let totalConfusion = 0;
+    let totalCorrect = 0;
+    let totalQuestions = 0;
+    let highEngagementDays = 0;
+    let lowEngagementDays = 0;
+    let negativeEmotionDays = 0;
+
+    daysWithData.forEach(day => {
+      const data = day.data;
+      totalSessions += data.sessions || 0;
+      totalConfusion += data.totalConfusion || 0;
+      totalCorrect += data.totalCorrect || 0;
+      totalQuestions += data.totalQuestions || 0;
+
+      // Count engagement levels
+      const engagementCounts = data.engagementCounts || {};
+      const high = engagementCounts.HIGH || 0;
+      const medium = engagementCounts.MEDIUM || 0;
+      const low = engagementCounts.LOW || 0;
+      const total = high + medium + low;
+      
+      if (total > 0) {
+        const avgEngagement = (high * 3 + medium * 2 + low * 1) / total;
+        if (avgEngagement >= 2.5) highEngagementDays++;
+        if (avgEngagement <= 1.5) lowEngagementDays++;
+      }
+
+      // Count negative emotions
+      const emotionCounts = data.emotionCounts || {};
+      const negativeEmotions = ['sad', 'angry', 'fear', 'disgust'];
+      const hasNegative = negativeEmotions.some(emotion => 
+        (emotionCounts[emotion] || 0) > 0
+      );
+      if (hasNegative) negativeEmotionDays++;
+    });
+
+    const avgSessionsPerDay = totalSessions / daysWithData.length;
+    const avgConfusionPerDay = totalConfusion / daysWithData.length;
+    const avgAccuracy = totalQuestions > 0 ? (totalCorrect / totalQuestions) * 100 : 0;
+    const lowEngagementRatio = lowEngagementDays / daysWithData.length;
+    const negativeEmotionRatio = negativeEmotionDays / daysWithData.length;
+
+    // Learning Pattern Predictions
+    if (avgConfusionPerDay > 5 && avgAccuracy < 50) {
+      predictions.learningPatterns.push({
+        type: 'learning_difficulty',
+        severity: avgConfusionPerDay > 8 ? 'high' : 'medium',
+        title: 'Potential Learning Difficulty',
+        message: `High confusion rate (${avgConfusionPerDay.toFixed(1)} letters/day) with low accuracy (${avgAccuracy.toFixed(1)}%) suggests the child may need additional support. Consider breaking lessons into smaller chunks or reviewing fundamentals.`,
+        confidence: Math.min(85, 50 + (avgConfusionPerDay * 5)),
+      });
+    }
+
+    if (avgConfusionPerDay > 3 && insights?.confusionPatterns?.mostConfusedLetters?.length > 0) {
+      const topLetter = insights.confusionPatterns.mostConfusedLetters[0];
+      predictions.learningPatterns.push({
+        type: 'specific_letter_struggle',
+        severity: 'medium',
+        title: 'Letter Recognition Challenge',
+        message: `Consistent struggle with letter "${topLetter.letter}" (${topLetter.count} times). This may indicate a specific learning challenge. Try multisensory approaches or visual aids.`,
+        confidence: 75,
+      });
+    }
+
+    // Attention Pattern Predictions
+    if (lowEngagementRatio > 0.5 && avgSessionsPerDay < 2) {
+      predictions.attentionPatterns.push({
+        type: 'attention_deficit',
+        severity: lowEngagementRatio > 0.7 ? 'high' : 'medium',
+        title: 'Attention & Focus Concern',
+        message: `Low engagement in ${(lowEngagementRatio * 100).toFixed(0)}% of sessions with few daily activities suggests attention challenges. Consider shorter sessions, frequent breaks, or activities that match the child's interests.`,
+        confidence: Math.min(80, 40 + (lowEngagementRatio * 60)),
+      });
+    }
+
+    if (avgSessionsPerDay < 1) {
+      predictions.attentionPatterns.push({
+        type: 'low_activity',
+        severity: 'medium',
+        title: 'Low Activity Level',
+        message: `Average of ${avgSessionsPerDay.toFixed(1)} sessions per day. Consistent low activity may indicate lack of interest or motivation. Try varying activities or setting achievable goals.`,
+        confidence: 70,
+      });
+    }
+
+    // Emotional Pattern Predictions
+    if (negativeEmotionRatio > 0.4) {
+      predictions.emotionalPatterns.push({
+        type: 'emotional_regulation',
+        severity: negativeEmotionRatio > 0.6 ? 'high' : 'medium',
+        title: 'Emotional Regulation Support Needed',
+        message: `Negative emotions detected in ${(negativeEmotionRatio * 100).toFixed(0)}% of days. The child may benefit from emotional regulation strategies, stress management techniques, or a more supportive learning environment.`,
+        confidence: Math.min(85, 50 + (negativeEmotionRatio * 50)),
+      });
+    }
+
+    if (insights?.behaviorPatterns?.negativePercentage > 50) {
+      predictions.emotionalPatterns.push({
+        type: 'frustration_pattern',
+        severity: 'high',
+        title: 'High Frustration Pattern',
+        message: `${insights.behaviorPatterns.negativePercentage}% of sessions show frustration. This pattern suggests the child may be overwhelmed. Consider reducing difficulty, increasing positive reinforcement, or consulting with a learning specialist.`,
+        confidence: 80,
+      });
+    }
+
+    // Calculate overall risk level
+    const riskFactors = [
+      avgConfusionPerDay > 5 && avgAccuracy < 50,
+      lowEngagementRatio > 0.6,
+      negativeEmotionRatio > 0.5,
+      insights?.behaviorPatterns?.negativePercentage > 50,
+    ].filter(Boolean).length;
+
+    if (riskFactors >= 3) {
+      predictions.riskLevel = 'high';
+      predictions.recommendations.push({
+        priority: 'high',
+        title: 'Consider Professional Consultation',
+        message: 'Multiple indicators suggest the child may benefit from professional assessment or specialized learning support. Early intervention can be very effective.',
+      });
+    } else if (riskFactors >= 2) {
+      predictions.riskLevel = 'medium';
+    }
+
+    // Add positive patterns
+    if (highEngagementDays > lowEngagementDays && avgAccuracy > 60) {
+      predictions.recommendations.push({
+        priority: 'low',
+        title: 'Positive Learning Pattern',
+        message: `Good engagement and accuracy (${avgAccuracy.toFixed(1)}%)! The child is responding well to current activities. Consider gradually increasing challenge level.`,
+      });
+    }
+
+    return predictions;
+  } catch (error) {
+    console.error('❌ Error generating predictive insights:', error);
+    return { hasPredictions: false };
+  }
+};

@@ -22,6 +22,8 @@ import {
 import {
   analyzeEmotionPatterns,
   getEmotionInsights,
+  generatePredictiveInsights,
+  getCurrentWeekData,
 } from '../../services/firestore/emotionAnalysisService';
 
 const EmotionDashboardScreen = ({ navigation }) => {
@@ -35,6 +37,8 @@ const EmotionDashboardScreen = ({ navigation }) => {
   const [insights, setInsights] = useState(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [recentSessions, setRecentSessions] = useState({ gameSessions: [], storySessions: [] });
+  const [currentWeekData, setCurrentWeekData] = useState([]);
+  const [predictiveInsights, setPredictiveInsights] = useState(null);
 
   useEffect(() => {
     loadChildren();
@@ -84,10 +88,18 @@ const EmotionDashboardScreen = ({ navigation }) => {
       ]);
       setRecentSessions({ gameSessions, storySessions });
 
+      // Load current week data
+      const weekData = await getCurrentWeekData(selectedChild.uid);
+      setCurrentWeekData(weekData);
+
       // Load and analyze insights
       setAnalyzing(true);
       const analysis = await analyzeEmotionPatterns(selectedChild.uid, userData.uid);
       setInsights(analysis);
+
+      // Generate predictive insights
+      const predictions = await generatePredictiveInsights(selectedChild.uid, weekData, analysis);
+      setPredictiveInsights(predictions);
     } catch (error) {
       console.error('Error loading emotion data:', error);
       Alert.alert('Error', 'Failed to load emotion data');
@@ -232,8 +244,8 @@ const EmotionDashboardScreen = ({ navigation }) => {
         </View>
       ) : (
         <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-          {/* Session Breakdown - Games vs Stories */}
-          {insights && insights.sessionBreakdown && (
+          {/* Session Breakdown - Games vs Stories - Only show for day view */}
+          {timeRange === 'day' && insights && insights.sessionBreakdown && (
             <View style={styles.section}>
               <Text style={styles.sectionTitle}> Activity Breakdown</Text>
               <View style={styles.card}>
@@ -303,10 +315,235 @@ const EmotionDashboardScreen = ({ navigation }) => {
             </View>
           )}
 
-          {/* Insights Section */}
-          {insights && insights.hasData && (
+          {/* Insights Section - Enhanced for Week View */}
+          {timeRange === 'week' && insights && insights.hasData && (
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}> Insights & Analysis</Text>
+              <Text style={styles.sectionTitle}>📊 Weekly Insights & Analysis</Text>
+
+              {/* Overall Mood with Enhanced Design */}
+              {insights.overallMood && (
+                <View style={[styles.card, styles.insightCardLarge]}>
+                  <View style={styles.insightCardHeader}>
+                    <Text style={styles.insightCardTitle}>Overall Mood This Week</Text>
+                    <View style={[styles.moodBadge, { backgroundColor: getEmotionColor(insights.overallMood.dominant) + '20' }]}>
+                      <Text style={styles.moodBadgeEmoji}>
+                        {getEmotionEmoji(insights.overallMood.dominant)}
+                      </Text>
+                    </View>
+                  </View>
+                  
+                  <View style={styles.moodContainerLarge}>
+                    <View style={styles.moodMainInfo}>
+                      <Text style={styles.moodEmojiLarge}>
+                        {getEmotionEmoji(insights.overallMood.dominant)}
+                      </Text>
+                      <View>
+                        <Text style={styles.moodTextLarge}>
+                          {insights.overallMood.dominant.charAt(0).toUpperCase() +
+                            insights.overallMood.dominant.slice(1)}
+                        </Text>
+                        <Text style={styles.moodSubtextLarge}>
+                          Based on {insights.overallMood.totalSessions} sessions this week
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+
+                  {/* Enhanced Emotion Distribution Chart */}
+                  {insights.overallMood.percentages && (
+                    <View style={styles.emotionChartLarge}>
+                      <Text style={styles.chartTitle}>Emotion Distribution</Text>
+                      {Object.entries(insights.overallMood.percentages)
+                        .sort((a, b) => b[1] - a[1])
+                        .slice(0, 5)
+                        .map(([emotion, percentage]) => (
+                          <View key={emotion} style={styles.emotionBarItemLarge}>
+                            <View style={styles.emotionBarLabelLarge}>
+                              <Text style={styles.emotionEmojiLarge}>{getEmotionEmoji(emotion)}</Text>
+                              <Text style={styles.emotionNameLarge}>
+                                {emotion.charAt(0).toUpperCase() + emotion.slice(1)}
+                              </Text>
+                              <Text style={styles.emotionPercentageLarge}>{percentage}%</Text>
+                            </View>
+                            <View style={styles.emotionBarContainerLarge}>
+                              <View
+                                style={[
+                                  styles.emotionBarLarge,
+                                  {
+                                    width: `${percentage}%`,
+                                    backgroundColor: getEmotionColor(emotion),
+                                  },
+                                ]}
+                              />
+                            </View>
+                          </View>
+                        ))}
+                    </View>
+                  )}
+                </View>
+              )}
+
+              {/* Enhanced Engagement Trend */}
+              {insights.engagementTrend && (
+                <View style={[styles.card, styles.insightCardLarge]}>
+                  <View style={styles.insightCardHeader}>
+                    <Text style={styles.insightCardTitle}>Engagement Trend</Text>
+                    {insights.engagementTrend.trend === 'improving' && (
+                      <View style={[styles.trendBadge, { backgroundColor: '#10b981' }]}>
+                        <MaterialIcons name="trending-up" size={20} color="#fff" />
+                      </View>
+                    )}
+                    {insights.engagementTrend.trend === 'declining' && (
+                      <View style={[styles.trendBadge, { backgroundColor: '#ef4444' }]}>
+                        <MaterialIcons name="trending-down" size={20} color="#fff" />
+                      </View>
+                    )}
+                    {insights.engagementTrend.trend === 'stable' && (
+                      <View style={[styles.trendBadge, { backgroundColor: '#6b7280' }]}>
+                        <MaterialIcons name="trending-flat" size={20} color="#fff" />
+                      </View>
+                    )}
+                  </View>
+                  
+                  <View style={styles.trendContentLarge}>
+                    <Text style={styles.trendMessageLarge}>
+                      {insights.engagementTrend.message}
+                    </Text>
+                    {insights.engagementTrend.recentAvg !== undefined && (
+                      <View style={styles.trendStatsContainer}>
+                        <View style={styles.trendStatItem}>
+                          <Text style={styles.trendStatLabel}>This Week</Text>
+                          <Text style={[styles.trendStatValue, { color: '#3b82f6' }]}>
+                            {insights.engagementTrend.recentAvg.toFixed(1)}
+                          </Text>
+                        </View>
+                        {insights.engagementTrend.previousAvg !== undefined && (
+                          <>
+                            <MaterialIcons name="arrow-forward" size={16} color="#9ca3af" />
+                            <View style={styles.trendStatItem}>
+                              <Text style={styles.trendStatLabel}>Last Week</Text>
+                              <Text style={[styles.trendStatValue, { color: '#6b7280' }]}>
+                                {insights.engagementTrend.previousAvg.toFixed(1)}
+                              </Text>
+                            </View>
+                          </>
+                        )}
+                      </View>
+                    )}
+                  </View>
+                </View>
+              )}
+
+              {/* Enhanced Warnings */}
+              {insights.warnings && insights.warnings.length > 0 && (
+                <View style={[styles.card, styles.insightCardLarge, styles.warningCardLarge]}>
+                  <View style={styles.insightCardHeader}>
+                    <View style={styles.warningHeaderContent}>
+                      <MaterialIcons name="warning" size={24} color="#ef4444" />
+                      <Text style={styles.insightCardTitle}>Important Notices</Text>
+                    </View>
+                    <View style={[styles.warningCountBadge, { backgroundColor: '#fee2e2' }]}>
+                      <Text style={styles.warningCountText}>{insights.warnings.length}</Text>
+                    </View>
+                  </View>
+                  {insights.warnings.map((warning, index) => (
+                    <View key={index} style={styles.warningItemLarge}>
+                      <View style={styles.warningItemHeader}>
+                        <Text style={styles.warningTitleLarge}>{warning.title}</Text>
+                        {warning.severity && (
+                          <View style={[
+                            styles.severityBadge,
+                            warning.severity === 'high' ? styles.severityHigh :
+                            warning.severity === 'medium' ? styles.severityMedium : styles.severityLow
+                          ]}>
+                            <Text style={styles.severityText}>{warning.severity.toUpperCase()}</Text>
+                          </View>
+                        )}
+                      </View>
+                      <Text style={styles.warningMessageLarge}>{warning.message}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+
+              {/* Enhanced Recommendations */}
+              {insights.recommendations && insights.recommendations.length > 0 && (
+                <View style={[styles.card, styles.insightCardLarge, styles.recommendationCardLarge]}>
+                  <View style={styles.insightCardHeader}>
+                    <View style={styles.recommendationHeaderContent}>
+                      <MaterialIcons name="lightbulb" size={24} color="#f59e0b" />
+                      <Text style={styles.insightCardTitle}>Recommendations</Text>
+                    </View>
+                    <View style={[styles.recommendationCountBadge, { backgroundColor: '#fef3c7' }]}>
+                      <Text style={styles.recommendationCountText}>{insights.recommendations.length}</Text>
+                    </View>
+                  </View>
+                  {insights.recommendations.map((rec, index) => (
+                    <View key={index} style={[
+                      styles.recommendationItemLarge,
+                      rec.priority === 'high' && styles.recommendationItemHigh
+                    ]}>
+                      <View style={styles.recommendationItemHeader}>
+                        <MaterialIcons 
+                          name={rec.priority === 'high' ? 'priority-high' : rec.priority === 'medium' ? 'star' : 'check-circle'} 
+                          size={20} 
+                          color={rec.priority === 'high' ? '#ef4444' : rec.priority === 'medium' ? '#f59e0b' : '#10b981'} 
+                        />
+                        <Text style={styles.recommendationTitleLarge}>{rec.title}</Text>
+                      </View>
+                      <Text style={styles.recommendationMessageLarge}>{rec.message}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+
+              {/* Confusion Patterns - Only show for day view */}
+              {timeRange === 'day' && insights.confusionPatterns &&
+                insights.confusionPatterns.mostConfusedLetters.length > 0 && (
+                  <View style={styles.card}>
+                    <Text style={styles.cardTitle}>Confusion Patterns</Text>
+                    <Text style={styles.cardSubtext}>
+                      Letters your child struggles with:
+                    </Text>
+                    <View style={styles.lettersContainer}>
+                      {insights.confusionPatterns.mostConfusedLetters.map(
+                        (item, index) => (
+                          <View key={index} style={styles.letterBadge}>
+                            <Text style={styles.letterText}>{item.letter}</Text>
+                            <Text style={styles.letterCount}>{item.count}x</Text>
+                          </View>
+                        ),
+                      )}
+                    </View>
+                  </View>
+                )}
+
+              {/* Progress - Only show for day view */}
+              {timeRange === 'day' && insights.progress && insights.progress.accuracyChange !== undefined && (
+                <View style={styles.card}>
+                  <Text style={styles.cardTitle}>Progress</Text>
+                  {insights.progress.isImproving ? (
+                    <View style={styles.progressContainer}>
+                      <MaterialIcons name="trending-up" size={24} color="#10b981" />
+                      <Text style={styles.progressText}>
+                        Accuracy improved by{' '}
+                        {Math.abs(insights.progress.accuracyChange).toFixed(1)}%
+                      </Text>
+                    </View>
+                  ) : (
+                    <Text style={styles.progressText}>
+                      Accuracy: {insights.progress.lastWeekAccuracy.toFixed(1)}%
+                    </Text>
+                  )}
+                </View>
+              )}
+            </View>
+          )}
+
+          {/* Insights Section - For Day View */}
+          {timeRange === 'day' && insights && insights.hasData && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>📊 Insights & Analysis</Text>
 
               {/* Overall Mood with Emotion Distribution */}
               {insights.overallMood && (
@@ -380,73 +617,6 @@ const EmotionDashboardScreen = ({ navigation }) => {
                   )}
                 </View>
               )}
-
-              {/* Warnings */}
-              {insights.warnings && insights.warnings.length > 0 && (
-                <View style={styles.card}>
-                  <Text style={styles.cardTitle}>⚠️ Important Notices</Text>
-                  {insights.warnings.map((warning, index) => (
-                    <View key={index} style={styles.warningItem}>
-                      <Text style={styles.warningTitle}>{warning.title}</Text>
-                      <Text style={styles.warningMessage}>{warning.message}</Text>
-                    </View>
-                  ))}
-                </View>
-              )}
-
-              {/* Recommendations */}
-              {insights.recommendations && insights.recommendations.length > 0 && (
-                <View style={styles.card}>
-                  <Text style={styles.cardTitle}>💡 Recommendations</Text>
-                  {insights.recommendations.map((rec, index) => (
-                    <View key={index} style={styles.recommendationItem}>
-                      <Text style={styles.recommendationTitle}>{rec.title}</Text>
-                      <Text style={styles.recommendationMessage}>{rec.message}</Text>
-                    </View>
-                  ))}
-                </View>
-              )}
-
-              {/* Confusion Patterns */}
-              {insights.confusionPatterns &&
-                insights.confusionPatterns.mostConfusedLetters.length > 0 && (
-                  <View style={styles.card}>
-                    <Text style={styles.cardTitle}>Confusion Patterns</Text>
-                    <Text style={styles.cardSubtext}>
-                      Letters your child struggles with:
-                    </Text>
-                    <View style={styles.lettersContainer}>
-                      {insights.confusionPatterns.mostConfusedLetters.map(
-                        (item, index) => (
-                          <View key={index} style={styles.letterBadge}>
-                            <Text style={styles.letterText}>{item.letter}</Text>
-                            <Text style={styles.letterCount}>{item.count}x</Text>
-                          </View>
-                        ),
-                      )}
-                    </View>
-                  </View>
-                )}
-
-              {/* Progress */}
-              {insights.progress && insights.progress.accuracyChange !== undefined && (
-                <View style={styles.card}>
-                  <Text style={styles.cardTitle}>Progress</Text>
-                  {insights.progress.isImproving ? (
-                    <View style={styles.progressContainer}>
-                      <MaterialIcons name="trending-up" size={24} color="#10b981" />
-                      <Text style={styles.progressText}>
-                        Accuracy improved by{' '}
-                        {Math.abs(insights.progress.accuracyChange).toFixed(1)}%
-                      </Text>
-                    </View>
-                  ) : (
-                    <Text style={styles.progressText}>
-                      Accuracy: {insights.progress.lastWeekAccuracy.toFixed(1)}%
-                    </Text>
-                  )}
-                </View>
-              )}
             </View>
           )}
 
@@ -475,34 +645,310 @@ const EmotionDashboardScreen = ({ navigation }) => {
             </View>
           )}
 
-          {/* Weekly Stats */}
-          {timeRange === 'week' && weeklyStats.length > 0 && (
+          {/* Weekly Calendar View */}
+          {timeRange === 'week' && currentWeekData.length > 0 && (
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Weekly Overview</Text>
-              {weeklyStats.map((day, index) => (
-                <View key={index} style={styles.card}>
-                  <Text style={styles.cardTitle}>
-                    {new Date(day.date).toLocaleDateString('en-US', {
-                      weekday: 'short',
-                      month: 'short',
-                      day: 'numeric',
-                    })}
-                  </Text>
-                  <Text style={styles.statText}>Sessions: {day.sessions || 0}</Text>
-                  <Text style={styles.statText}>
-                    Accuracy:{' '}
-                    {day.totalQuestions > 0
-                      ? ((day.totalCorrect / day.totalQuestions) * 100).toFixed(1)
-                      : 0}
-                    %
-                  </Text>
+              <Text style={styles.sectionTitle}>📅 This Week's Progress</Text>
+              
+              {/* Week Calendar Grid - Larger Cards */}
+              <View style={styles.weekCalendarLarge}>
+                {currentWeekData.map((day, index) => {
+                  const data = day.data;
+                  const sessions = data?.sessions || 0;
+                  const accuracy = data?.totalQuestions > 0
+                    ? ((data.totalCorrect / data.totalQuestions) * 100)
+                    : 0;
+                  
+                  // Calculate engagement score
+                  const engagementCounts = data?.engagementCounts || {};
+                  const high = engagementCounts.HIGH || 0;
+                  const medium = engagementCounts.MEDIUM || 0;
+                  const low = engagementCounts.LOW || 0;
+                  const total = high + medium + low;
+                  const engagementScore = total > 0
+                    ? ((high * 3 + medium * 2 + low * 1) / total) * 33.33
+                    : 0;
+
+                  // Get dominant emotion
+                  const emotionCounts = data?.emotionCounts || {};
+                  const dominantEmotion = Object.entries(emotionCounts)
+                    .sort((a, b) => b[1] - a[1])[0]?.[0] || 'neutral';
+
+                  // Get confusion count
+                  const confusionCount = data?.totalConfusion || 0;
+
+                  return (
+                    <TouchableOpacity
+                      key={index}
+                      activeOpacity={0.8}
+                      style={[
+                        styles.dayCardLarge,
+                        day.isToday && styles.dayCardTodayLarge,
+                        !data && styles.dayCardEmptyLarge,
+                      ]}
+                    >
+                      {/* Header Section */}
+                      <View style={styles.dayCardHeaderLarge}>
+                        <View>
+                          <Text style={[styles.dayNameLarge, day.isToday && styles.dayNameTodayLarge]}>
+                            {day.dayName}
+                          </Text>
+                          <Text style={[styles.dayNumberLarge, day.isToday && styles.dayNumberTodayLarge]}>
+                            {day.dayNumber}
+                          </Text>
+                        </View>
+                        {data && (
+                          <View style={styles.dayEmotionContainerLarge}>
+                            <Text style={styles.dayEmotionLarge}>
+                              {getEmotionEmoji(dominantEmotion)}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+                      
+                      {data ? (
+                        <View style={styles.dayCardContentLarge}>
+                          {/* Sessions */}
+                          <View style={styles.dayMetricLarge}>
+                            <View style={[styles.dayMetricIconContainer, { backgroundColor: '#eff6ff' }]}>
+                              <MaterialIcons name="videogame-asset" size={20} color="#3b82f6" />
+                            </View>
+                            <View style={styles.dayMetricInfoLarge}>
+                              <Text style={styles.dayMetricLabelLarge}>Sessions</Text>
+                              <Text style={styles.dayMetricValueLarge}>{sessions}</Text>
+                            </View>
+                          </View>
+
+                          {/* Engagement Progress */}
+                          <View style={styles.dayProgressContainerLarge}>
+                            <Text style={styles.dayProgressLabelLarge}>Engagement</Text>
+                            <View style={styles.dayProgressBarLarge}>
+                              <View
+                                style={[
+                                  styles.dayProgressFillLarge,
+                                  {
+                                    width: `${engagementScore}%`,
+                                    backgroundColor:
+                                      engagementScore > 66
+                                        ? '#10b981'
+                                        : engagementScore > 33
+                                        ? '#f59e0b'
+                                        : '#ef4444',
+                                  },
+                                ]}
+                              />
+                            </View>
+                            <Text style={styles.dayProgressTextLarge}>
+                              {engagementScore > 66 ? 'HIGH' : engagementScore > 33 ? 'MEDIUM' : 'LOW'}
+                            </Text>
+                          </View>
+
+                          {/* Accuracy */}
+                          <View style={styles.dayAccuracyContainerLarge}>
+                            <View style={[styles.dayMetricIconContainer, { backgroundColor: '#f0fdf4' }]}>
+                              <MaterialIcons name="check-circle" size={20} color="#10b981" />
+                            </View>
+                            <View style={styles.dayMetricInfoLarge}>
+                              <Text style={styles.dayMetricLabelLarge}>Accuracy</Text>
+                              <Text style={styles.dayAccuracyValueLarge}>{accuracy.toFixed(0)}%</Text>
+                            </View>
+                          </View>
+
+                          {/* Confusion Count */}
+                          {confusionCount > 0 && (
+                            <View style={styles.dayConfusionContainerLarge}>
+                              <MaterialIcons name="help-outline" size={18} color="#f59e0b" />
+                              <Text style={styles.dayConfusionTextLarge}>
+                                {confusionCount} confused letter{confusionCount !== 1 ? 's' : ''}
+                              </Text>
+                            </View>
+                          )}
+                        </View>
+                      ) : (
+                        <View style={styles.dayNoDataContainerLarge}>
+                          <MaterialIcons name="event-busy" size={40} color="#d1d5db" />
+                          <Text style={styles.dayNoDataTextLarge}>No activity</Text>
+                        </View>
+                      )}
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              {/* Weekly Summary Stats */}
+              {currentWeekData.some(d => d.data) && (
+                <View style={styles.card}>
+                  <Text style={styles.cardTitle}>Weekly Summary</Text>
+                  <View style={styles.summaryGrid}>
+                    <View style={styles.summaryItem}>
+                      <Text style={styles.summaryLabel}>Total Sessions</Text>
+                      <Text style={styles.summaryValue}>
+                        {currentWeekData.reduce((sum, d) => sum + (d.data?.sessions || 0), 0)}
+                      </Text>
+                    </View>
+                    <View style={styles.summaryItem}>
+                      <Text style={styles.summaryLabel}>Avg Accuracy</Text>
+                      <Text style={styles.summaryValue}>
+                        {(() => {
+                          const totalCorrect = currentWeekData.reduce(
+                            (sum, d) => sum + (d.data?.totalCorrect || 0),
+                            0
+                          );
+                          const totalQuestions = currentWeekData.reduce(
+                            (sum, d) => sum + (d.data?.totalQuestions || 0),
+                            0
+                          );
+                          return totalQuestions > 0
+                            ? ((totalCorrect / totalQuestions) * 100).toFixed(1)
+                            : 0;
+                        })()}
+                        %
+                      </Text>
+                    </View>
+                    <View style={styles.summaryItem}>
+                      <Text style={styles.summaryLabel}>Active Days</Text>
+                      <Text style={styles.summaryValue}>
+                        {currentWeekData.filter(d => d.data).length}/7
+                      </Text>
+                    </View>
+                  </View>
                 </View>
-              ))}
+              )}
             </View>
           )}
 
-          {/* Recent Sessions */}
-          {(recentSessions.gameSessions.length > 0 || recentSessions.storySessions.length > 0) && (
+          {/* Predictive Insights Section - Only for Week View */}
+          {timeRange === 'week' && predictiveInsights && predictiveInsights.hasPredictions && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>🔮 Predictive Insights</Text>
+              
+              {/* Risk Level Indicator */}
+              {predictiveInsights.riskLevel && (
+                <View style={styles.card}>
+                  <View style={styles.riskLevelContainer}>
+                    <Text style={styles.riskLevelLabel}>Overall Assessment:</Text>
+                    <View
+                      style={[
+                        styles.riskLevelBadge,
+                        predictiveInsights.riskLevel === 'high'
+                          ? styles.riskLevelHigh
+                          : predictiveInsights.riskLevel === 'medium'
+                          ? styles.riskLevelMedium
+                          : styles.riskLevelLow,
+                      ]}
+                    >
+                      <Text style={styles.riskLevelText}>
+                        {predictiveInsights.riskLevel.toUpperCase()}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+              )}
+
+              {/* Learning Patterns */}
+              {predictiveInsights.learningPatterns?.length > 0 && (
+                <View style={styles.card}>
+                  <Text style={styles.cardTitle}>📚 Learning Patterns</Text>
+                  {predictiveInsights.learningPatterns.map((pattern, index) => (
+                    <View key={index} style={styles.predictionItem}>
+                      <View style={styles.predictionHeader}>
+                        <Text style={styles.predictionTitle}>{pattern.title}</Text>
+                        <View
+                          style={[
+                            styles.confidenceBadge,
+                            pattern.severity === 'high'
+                              ? styles.confidenceHigh
+                              : styles.confidenceMedium,
+                          ]}
+                        >
+                          <Text style={styles.confidenceText}>
+                            {pattern.confidence}% confidence
+                          </Text>
+                        </View>
+                      </View>
+                      <Text style={styles.predictionMessage}>{pattern.message}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+
+              {/* Attention Patterns */}
+              {predictiveInsights.attentionPatterns?.length > 0 && (
+                <View style={styles.card}>
+                  <Text style={styles.cardTitle}>🎯 Attention Patterns</Text>
+                  {predictiveInsights.attentionPatterns.map((pattern, index) => (
+                    <View key={index} style={styles.predictionItem}>
+                      <View style={styles.predictionHeader}>
+                        <Text style={styles.predictionTitle}>{pattern.title}</Text>
+                        <View
+                          style={[
+                            styles.confidenceBadge,
+                            pattern.severity === 'high'
+                              ? styles.confidenceHigh
+                              : styles.confidenceMedium,
+                          ]}
+                        >
+                          <Text style={styles.confidenceText}>
+                            {pattern.confidence}% confidence
+                          </Text>
+                        </View>
+                      </View>
+                      <Text style={styles.predictionMessage}>{pattern.message}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+
+              {/* Emotional Patterns */}
+              {predictiveInsights.emotionalPatterns?.length > 0 && (
+                <View style={styles.card}>
+                  <Text style={styles.cardTitle}>💭 Emotional Patterns</Text>
+                  {predictiveInsights.emotionalPatterns.map((pattern, index) => (
+                    <View key={index} style={styles.predictionItem}>
+                      <View style={styles.predictionHeader}>
+                        <Text style={styles.predictionTitle}>{pattern.title}</Text>
+                        <View
+                          style={[
+                            styles.confidenceBadge,
+                            pattern.severity === 'high'
+                              ? styles.confidenceHigh
+                              : styles.confidenceMedium,
+                          ]}
+                        >
+                          <Text style={styles.confidenceText}>
+                            {pattern.confidence}% confidence
+                          </Text>
+                        </View>
+                      </View>
+                      <Text style={styles.predictionMessage}>{pattern.message}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+
+              {/* Predictive Recommendations */}
+              {predictiveInsights.recommendations?.length > 0 && (
+                <View style={styles.card}>
+                  <Text style={styles.cardTitle}>💡 Actionable Recommendations</Text>
+                  {predictiveInsights.recommendations.map((rec, index) => (
+                    <View
+                      key={index}
+                      style={[
+                        styles.recommendationItem,
+                        rec.priority === 'high' && styles.recommendationHigh,
+                      ]}
+                    >
+                      <Text style={styles.recommendationTitle}>{rec.title}</Text>
+                      <Text style={styles.recommendationMessage}>{rec.message}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+            </View>
+          )}
+
+          {/* Recent Sessions - Only show for day view */}
+          {timeRange === 'day' && (recentSessions.gameSessions.length > 0 || recentSessions.storySessions.length > 0) && (
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>📝 Recent Sessions</Text>
               
@@ -1025,6 +1471,616 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     color: '#1f2937',
+  },
+  // Weekly Calendar Styles
+  weekCalendar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+    flexWrap: 'wrap',
+  },
+  dayCard: {
+    width: '13.5%',
+    minWidth: 45,
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    padding: 8,
+    marginBottom: 8,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  dayCardToday: {
+    borderColor: '#3b82f6',
+    borderWidth: 2,
+    backgroundColor: '#eff6ff',
+  },
+  dayCardEmpty: {
+    backgroundColor: '#f9fafb',
+    opacity: 0.6,
+  },
+  dayName: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#6b7280',
+    marginBottom: 4,
+    textTransform: 'uppercase',
+  },
+  dayNameToday: {
+    color: '#3b82f6',
+    fontWeight: '700',
+  },
+  dayNumber: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#1f2937',
+    marginBottom: 6,
+  },
+  dayNumberToday: {
+    color: '#3b82f6',
+  },
+  dayMetric: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  dayMetricText: {
+    fontSize: 10,
+    color: '#6b7280',
+    marginLeft: 2,
+  },
+  dayProgressContainer: {
+    width: '100%',
+    marginBottom: 4,
+  },
+  dayProgressBar: {
+    height: 4,
+    backgroundColor: '#e5e7eb',
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
+  dayProgressFill: {
+    height: '100%',
+    borderRadius: 2,
+  },
+  dayAccuracy: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#1f2937',
+    marginBottom: 2,
+  },
+  dayEmotion: {
+    fontSize: 16,
+  },
+  dayNoData: {
+    fontSize: 9,
+    color: '#9ca3af',
+    textAlign: 'center',
+    marginTop: 4,
+  },
+  summaryGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginTop: 12,
+  },
+  summaryItem: {
+    alignItems: 'center',
+  },
+  summaryLabel: {
+    fontSize: 12,
+    color: '#6b7280',
+    marginBottom: 4,
+  },
+  summaryValue: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#1f2937',
+  },
+  // Predictive Insights Styles
+  riskLevelContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  riskLevelLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1f2937',
+  },
+  riskLevelBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+  },
+  riskLevelLow: {
+    backgroundColor: '#10b981',
+  },
+  riskLevelMedium: {
+    backgroundColor: '#f59e0b',
+  },
+  riskLevelHigh: {
+    backgroundColor: '#ef4444',
+  },
+  riskLevelText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  predictionItem: {
+    marginTop: 12,
+    padding: 12,
+    backgroundColor: '#f9fafb',
+    borderRadius: 8,
+    borderLeftWidth: 4,
+    borderLeftColor: '#3b82f6',
+  },
+  predictionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 6,
+  },
+  predictionTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1f2937',
+    flex: 1,
+    marginRight: 8,
+  },
+  confidenceBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  confidenceHigh: {
+    backgroundColor: '#fee2e2',
+  },
+  confidenceMedium: {
+    backgroundColor: '#fef3c7',
+  },
+  confidenceText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#991b1b',
+  },
+  predictionMessage: {
+    fontSize: 13,
+    color: '#4b5563',
+    lineHeight: 18,
+  },
+  recommendationHigh: {
+    borderLeftColor: '#ef4444',
+    backgroundColor: '#fef2f2',
+  },
+  // Enhanced Weekly Calendar Styles - Larger Cards
+  weekCalendarLarge: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 20,
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  dayCardLarge: {
+    width: '47%',
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 2,
+    borderColor: '#e5e7eb',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  dayCardTodayLarge: {
+    borderColor: '#3b82f6',
+    backgroundColor: '#eff6ff',
+    shadowColor: '#3b82f6',
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+  },
+  dayCardEmptyLarge: {
+    backgroundColor: '#f9fafb',
+    opacity: 0.7,
+    borderColor: '#d1d5db',
+  },
+  dayCardHeaderLarge: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 16,
+    paddingBottom: 12,
+    borderBottomWidth: 2,
+    borderBottomColor: '#e5e7eb',
+  },
+  dayNameLarge: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#6b7280',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 4,
+  },
+  dayNameTodayLarge: {
+    color: '#3b82f6',
+  },
+  dayNumberLarge: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: '#1f2937',
+  },
+  dayNumberTodayLarge: {
+    color: '#3b82f6',
+  },
+  dayEmotionContainerLarge: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: '#f9fafb',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  dayEmotionLarge: {
+    fontSize: 32,
+  },
+  dayCardContentLarge: {
+    gap: 14,
+  },
+  dayMetricLarge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  dayMetricIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  dayMetricInfoLarge: {
+    flex: 1,
+  },
+  dayMetricLabelLarge: {
+    fontSize: 12,
+    color: '#6b7280',
+    marginBottom: 4,
+    fontWeight: '500',
+  },
+  dayMetricValueLarge: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#1f2937',
+  },
+  dayProgressContainerLarge: {
+    marginTop: 4,
+  },
+  dayProgressLabelLarge: {
+    fontSize: 12,
+    color: '#6b7280',
+    marginBottom: 8,
+    fontWeight: '600',
+  },
+  dayProgressBarLarge: {
+    height: 10,
+    backgroundColor: '#e5e7eb',
+    borderRadius: 5,
+    overflow: 'hidden',
+    marginBottom: 6,
+  },
+  dayProgressFillLarge: {
+    height: '100%',
+    borderRadius: 5,
+  },
+  dayProgressTextLarge: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#6b7280',
+    textTransform: 'uppercase',
+  },
+  dayAccuracyContainerLarge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginTop: 4,
+  },
+  dayAccuracyValueLarge: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#10b981',
+  },
+  dayConfusionContainerLarge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 4,
+    padding: 10,
+    backgroundColor: '#fef3c7',
+    borderRadius: 10,
+    borderLeftWidth: 3,
+    borderLeftColor: '#f59e0b',
+  },
+  dayConfusionTextLarge: {
+    fontSize: 12,
+    color: '#92400e',
+    fontWeight: '600',
+  },
+  dayNoDataContainerLarge: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 32,
+  },
+  dayNoDataTextLarge: {
+    fontSize: 13,
+    color: '#9ca3af',
+    marginTop: 12,
+    fontWeight: '500',
+  },
+  // Enhanced Insights Styles
+  insightCardLarge: {
+    padding: 20,
+    marginBottom: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  insightCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+  },
+  insightCardTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1f2937',
+  },
+  moodBadge: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  moodBadgeEmoji: {
+    fontSize: 28,
+  },
+  moodContainerLarge: {
+    marginTop: 8,
+  },
+  moodMainInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+  },
+  moodEmojiLarge: {
+    fontSize: 48,
+  },
+  moodTextLarge: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#1f2937',
+    marginBottom: 4,
+  },
+  moodSubtextLarge: {
+    fontSize: 14,
+    color: '#6b7280',
+  },
+  emotionChartLarge: {
+    marginTop: 20,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#e5e7eb',
+  },
+  chartTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#6b7280',
+    marginBottom: 16,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  emotionBarItemLarge: {
+    marginBottom: 16,
+  },
+  emotionBarLabelLarge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+    justifyContent: 'space-between',
+  },
+  emotionEmojiLarge: {
+    fontSize: 20,
+    marginRight: 8,
+  },
+  emotionNameLarge: {
+    fontSize: 14,
+    color: '#1f2937',
+    fontWeight: '600',
+    flex: 1,
+  },
+  emotionPercentageLarge: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#6b7280',
+    minWidth: 45,
+    textAlign: 'right',
+  },
+  emotionBarContainerLarge: {
+    width: '100%',
+  },
+  emotionBarLarge: {
+    height: 24,
+    borderRadius: 12,
+    minWidth: 4,
+  },
+  trendContentLarge: {
+    marginTop: 8,
+  },
+  trendMessageLarge: {
+    fontSize: 16,
+    color: '#1f2937',
+    fontWeight: '500',
+    marginBottom: 16,
+    lineHeight: 24,
+  },
+  trendStatsContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    padding: 16,
+    backgroundColor: '#f9fafb',
+    borderRadius: 12,
+  },
+  trendStatItem: {
+    alignItems: 'center',
+  },
+  trendStatLabel: {
+    fontSize: 11,
+    color: '#6b7280',
+    marginBottom: 4,
+    textTransform: 'uppercase',
+    fontWeight: '600',
+  },
+  trendStatValue: {
+    fontSize: 20,
+    fontWeight: 'bold',
+  },
+  trendBadge: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  warningCardLarge: {
+    borderLeftWidth: 4,
+    borderLeftColor: '#ef4444',
+    backgroundColor: '#fef2f2',
+  },
+  warningHeaderContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  warningCountBadge: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  warningCountText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#dc2626',
+  },
+  warningItemLarge: {
+    marginTop: 16,
+    padding: 16,
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    borderLeftWidth: 3,
+    borderLeftColor: '#ef4444',
+  },
+  warningItemHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  warningTitleLarge: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#dc2626',
+    flex: 1,
+  },
+  severityBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  severityHigh: {
+    backgroundColor: '#fee2e2',
+  },
+  severityMedium: {
+    backgroundColor: '#fef3c7',
+  },
+  severityLow: {
+    backgroundColor: '#dbeafe',
+  },
+  severityText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#991b1b',
+  },
+  warningMessageLarge: {
+    fontSize: 14,
+    color: '#4b5563',
+    lineHeight: 20,
+  },
+  recommendationCardLarge: {
+    borderLeftWidth: 4,
+    borderLeftColor: '#3b82f6',
+    backgroundColor: '#f0f9ff',
+  },
+  recommendationHeaderContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  recommendationCountBadge: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  recommendationCountText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#92400e',
+  },
+  recommendationItemLarge: {
+    marginTop: 16,
+    padding: 16,
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    borderLeftWidth: 3,
+    borderLeftColor: '#3b82f6',
+  },
+  recommendationItemHigh: {
+    borderLeftColor: '#ef4444',
+    backgroundColor: '#fef2f2',
+  },
+  recommendationItemHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 8,
+  },
+  recommendationTitleLarge: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1e40af',
+    flex: 1,
+  },
+  recommendationMessageLarge: {
+    fontSize: 14,
+    color: '#4b5563',
+    lineHeight: 20,
+    marginLeft: 30,
   },
 });
 
