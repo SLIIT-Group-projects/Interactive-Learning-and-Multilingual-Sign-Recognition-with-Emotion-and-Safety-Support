@@ -1,0 +1,54 @@
+{
+    "class_names": [
+        "ayubowan",
+        "good(hodai)",
+        "his",
+        "house",
+        "i_love_you",
+        "naraka",
+        "oba"
+    ],
+    "class_indices": {
+        "ayubowan": 0,
+        "good(hodai)": 1,
+        "his": 2,
+        "house": 3,
+        "i_love_you": 4,
+        "naraka": 5,
+        "oba": 6
+    },
+    "english_translations": {
+        "ayubowan": "Hello",
+        "good(hodai)": "Good",
+        "his": "His",
+        "house": "House",
+        "i_love_you": "I love you",
+        "naraka": "Bad", 
+        "oba": "You"
+    },
+    "accuracy": 99.71,
+    "final_model_accuracy": 100.0,
+    "kfold_results": {
+        "average_accuracy": 99.71,
+        "std_deviation": 0.57,
+        "fold_accuracies": [
+            100.0,
+            100.0,
+            100.0,
+            98.57,
+            100.0
+        ]
+    },
+    "model_info": {
+        "architecture": "MobileNetV2",
+        "input_size": [
+            224,
+            224,
+            3
+        ],
+        "total_classes": 7,
+        "dataset": "Sinhala Sign Language - 7 words",
+        "total_images": 350,
+        "training_date": "2024"
+    }
+}
