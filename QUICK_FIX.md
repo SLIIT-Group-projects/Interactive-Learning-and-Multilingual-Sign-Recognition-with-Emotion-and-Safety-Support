@@ -1,11 +1,13 @@
 # Quick Fix: Phone Can't Connect to API Server
 
 ## Problem
-Phone browser can't open `http://192.168.1.2:5000/health`
+
+Phone browser can't open `http://192.168.13.67:5000/health`
 
 ## Solution 1: Fix Windows Firewall (Recommended)
 
 ### Option A: Use the PowerShell Script (Easiest)
+
 1. **Right-click** on PowerShell
 2. Select **"Run as Administrator"**
 3. Navigate to games folder:
@@ -18,6 +20,7 @@ Phone browser can't open `http://192.168.1.2:5000/health`
    ```
 
 ### Option B: Manual Firewall Fix
+
 1. Press `Win + R`, type `wf.msc`, press Enter
 2. Click **"Inbound Rules"** → **"New Rule..."**
 3. Select **"Port"** → Next
@@ -34,11 +37,12 @@ Your IP might have changed. Check it:
 ipconfig
 ```
 
-Look for "IPv4 Address" under your WiFi adapter. It might be different from `192.168.1.2`.
+Look for "IPv4 Address" under your WiFi adapter. It might be different from `192.168.13.67`.
 
 **Update `PlayGame.js`** with the correct IP:
+
 ```javascript
-const API_URL = 'http://YOUR_ACTUAL_IP:5000';
+const API_URL = "http://YOUR_ACTUAL_IP:5000";
 ```
 
 ## Solution 3: Check Network Connection
@@ -69,7 +73,7 @@ If firewall is too complicated:
 4. **Copy the ngrok URL** (e.g., `https://abc123.ngrok.io`)
 5. **Update `PlayGame.js`:**
    ```javascript
-   const API_URL = 'https://abc123.ngrok.io';  // Your ngrok URL
+   const API_URL = "https://abc123.ngrok.io"; // Your ngrok URL
    ```
 
 ## Solution 5: Check API Server is Running
@@ -82,6 +86,7 @@ python api_server.py
 ```
 
 You should see:
+
 ```
 Starting server on http://localhost:5000
 ```
@@ -91,7 +96,7 @@ Starting server on http://localhost:5000
 After fixing firewall:
 
 1. **From laptop browser:** `http://localhost:5000/health` ✅ Should work
-2. **From phone browser:** `http://192.168.1.2:5000/health` ✅ Should work
+2. **From phone browser:** `http://192.168.13.67:5000/health` ✅ Should work
 3. **From app:** Should now connect ✅
 
 ## Still Not Working?
@@ -114,16 +119,3 @@ After fixing firewall:
    - Create hotspot on phone
    - Connect laptop to phone's hotspot
    - Use laptop's IP from hotspot network
-
-
-
-
-
-
-
-
-
-
-
-
-

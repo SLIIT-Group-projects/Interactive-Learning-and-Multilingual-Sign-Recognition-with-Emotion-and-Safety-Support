@@ -59,7 +59,11 @@ const PlayGame = ({ navigation, route }) => {
   // Firestore tracking states
   const [questionStartTime, setQuestionStartTime] = useState(null);
   const [gameStartTime, setGameStartTime] = useState(null);
-  const { userData, childProgress: contextProgress, refreshChildProgress } = useAuth();
+  const {
+    userData,
+    childProgress: contextProgress,
+    refreshChildProgress,
+  } = useAuth();
 
   // Get child and parent IDs from authenticated user
   const childId = userData?.uid || null;
@@ -67,8 +71,8 @@ const PlayGame = ({ navigation, route }) => {
 
   // API endpoint - update this to your server IP/URL
   const API_URL = __DEV__
-    ? "http://192.168.1.2:5000" // Your laptop's IP address with port
-    : "http://192.168.1.2:5000"; // For production (same IP)
+    ? "http://192.168.13.67:5000" // Your laptop's IP address with port
+    : "http://192.168.13.67:5000"; // For production (same IP)
 
   // Stable camera ref callback - must be at top level (Rules of Hooks)
   const handleCameraRef = useCallback(
@@ -145,8 +149,7 @@ const PlayGame = ({ navigation, route }) => {
     setQuestionStartTime(Date.now()); // Track when question starts for response time
 
     // Random letter question
-    const randomLetter =
-      ALPHABET[Math.floor(Math.random() * ALPHABET.length)];
+    const randomLetter = ALPHABET[Math.floor(Math.random() * ALPHABET.length)];
     setTargetLetter(randomLetter);
     setCurrentObject(null);
   };
@@ -189,7 +192,7 @@ const PlayGame = ({ navigation, route }) => {
 
     // Hide capture button immediately
     setIsCapturing(true);
-    
+
     // Don't set other state immediately - it causes re-render that detaches camera
     // Set these after capture starts
     setPredictedLetter(null);
@@ -517,10 +520,13 @@ const PlayGame = ({ navigation, route }) => {
       if (childId) {
         try {
           const confidence = result.confidence ?? 0;
-          const { progress, xpGained, leveledUp, newLevel } = await addXP(childId, {
-            correct: result.isCorrect,
-            confidence,
-          });
+          const { progress, xpGained, leveledUp, newLevel } = await addXP(
+            childId,
+            {
+              correct: result.isCorrect,
+              confidence,
+            },
+          );
           setXpGainedThisAnswer(xpGained);
           setStreakBonusThisAnswer(xpGained >= 50);
           setChildProgress(progress);
@@ -593,7 +599,7 @@ const PlayGame = ({ navigation, route }) => {
       clearTimeout(autoAdvanceTimeoutRef.current);
       autoAdvanceTimeoutRef.current = null;
     }
-    
+
     setFeedback(null);
     setHasAnswered(false);
     setIsCapturing(false);
@@ -605,7 +611,7 @@ const PlayGame = ({ navigation, route }) => {
       clearTimeout(autoAdvanceTimeoutRef.current);
       autoAdvanceTimeoutRef.current = null;
     }
-    
+
     setXpGainedThisAnswer(0);
     setStreakBonusThisAnswer(false);
 
@@ -644,7 +650,7 @@ const PlayGame = ({ navigation, route }) => {
       Alert.alert(
         "Game Complete!",
         `Great job! You got ${score} correct. Keep playing to earn more XP and level up!`,
-        [{ text: "OK", onPress: () => {} }]
+        [{ text: "OK", onPress: () => {} }],
       );
 
       setCurrentQuestion(0);
@@ -653,7 +659,8 @@ const PlayGame = ({ navigation, route }) => {
       generateNewQuestion();
       if (childId) {
         try {
-          const p = await refreshChildProgress?.() ?? getChildProgress(childId);
+          const p =
+            (await refreshChildProgress?.()) ?? getChildProgress(childId);
           if (p) setChildProgress(p);
         } catch (e) {}
       }
@@ -709,7 +716,9 @@ const PlayGame = ({ navigation, route }) => {
             >
               {/* Overlay: Target Letter with Question Counter (Top-Left, below back button) */}
               <View className="absolute top-20 left-4 bg-black/70 rounded-2xl px-4 py-3 items-center">
-                <Text className="text-xs text-white/80 mb-1">Show the sign for</Text>
+                <Text className="text-xs text-white/80 mb-1">
+                  Show the sign for
+                </Text>
                 <Text className="text-5xl font-bold text-white">
                   {targetLetter}
                 </Text>
@@ -745,44 +754,43 @@ const PlayGame = ({ navigation, route }) => {
         </View>
 
         {/* Overlay: Floating Capture Button (Bottom Center) */}
-        {!hasAnswered && permission?.granted && !isProcessing && !isCapturing && (
-          <View className="absolute bottom-8 left-0 right-0 items-center px-6">
-            <TouchableOpacity
-              onPress={handleCapture}
-              disabled={
-                isCapturing ||
-                isProcessing ||
-                !permission?.granted ||
-                !cameraReady
-              }
-              className="bg-blue-500 rounded-full p-5 shadow-2xl"
-              activeOpacity={0.8}
-              style={[
-                {
-                  width: 80,
-                  height: 80,
-                  justifyContent: 'center',
-                  alignItems: 'center',
-                },
-                (isCapturing ||
+        {!hasAnswered &&
+          permission?.granted &&
+          !isProcessing &&
+          !isCapturing && (
+            <View className="absolute bottom-8 left-0 right-0 items-center px-6">
+              <TouchableOpacity
+                onPress={handleCapture}
+                disabled={
+                  isCapturing ||
                   isProcessing ||
                   !permission?.granted ||
-                  !cameraReady) &&
-                  styles.disabledButton,
-              ]}
-            >
-              {isCapturing ? (
-                <ActivityIndicator size="small" color="#ffffff" />
-              ) : (
-                <MaterialIcons
-                  name="camera-alt"
-                  size={36}
-                  color="#ffffff"
-                />
-              )}
-            </TouchableOpacity>
-          </View>
-        )}
+                  !cameraReady
+                }
+                className="bg-blue-500 rounded-full p-5 shadow-2xl"
+                activeOpacity={0.8}
+                style={[
+                  {
+                    width: 80,
+                    height: 80,
+                    justifyContent: "center",
+                    alignItems: "center",
+                  },
+                  (isCapturing ||
+                    isProcessing ||
+                    !permission?.granted ||
+                    !cameraReady) &&
+                    styles.disabledButton,
+                ]}
+              >
+                {isCapturing ? (
+                  <ActivityIndicator size="small" color="#ffffff" />
+                ) : (
+                  <MaterialIcons name="camera-alt" size={36} color="#ffffff" />
+                )}
+              </TouchableOpacity>
+            </View>
+          )}
 
         {/* Overlay: Feedback Toast (Bottom, above capture button) */}
         {feedback && (
@@ -816,11 +824,7 @@ const PlayGame = ({ navigation, route }) => {
                 </>
               ) : (
                 <>
-                  <MaterialIcons
-                    name="cancel"
-                    size={40}
-                    color="#ffffff"
-                  />
+                  <MaterialIcons name="cancel" size={40} color="#ffffff" />
                   <Text className="text-lg font-bold text-white mt-2 text-center">
                     Try again!
                   </Text>
@@ -886,10 +890,21 @@ const PlayGame = ({ navigation, route }) => {
         >
           <View className="flex-1 bg-black/50 justify-center items-center px-6">
             <View className="bg-white rounded-3xl p-8 items-center shadow-xl max-w-sm">
-              <MaterialIcons name="celebration" size={64} color="#7c3aed" style={{ marginBottom: 16 }} />
-              <Text className="text-2xl font-bold text-gray-800 text-center">Level Up!</Text>
-              <Text className="text-4xl font-bold text-violet-600 mt-2">Level {levelUpModal?.level}</Text>
-              <Text className="text-gray-500 text-center mt-2">New games unlocked!</Text>
+              <MaterialIcons
+                name="celebration"
+                size={64}
+                color="#7c3aed"
+                style={{ marginBottom: 16 }}
+              />
+              <Text className="text-2xl font-bold text-gray-800 text-center">
+                Level Up!
+              </Text>
+              <Text className="text-4xl font-bold text-violet-600 mt-2">
+                Level {levelUpModal?.level}
+              </Text>
+              <Text className="text-gray-500 text-center mt-2">
+                New games unlocked!
+              </Text>
               <TouchableOpacity
                 onPress={() => setLevelUpModal(null)}
                 className="bg-violet-500 rounded-xl px-8 py-3 mt-6"

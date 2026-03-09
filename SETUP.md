@@ -16,11 +16,13 @@ Before starting, ensure you have:
 The model requires an ASL alphabet dataset. You have two options:
 
 ### Option 1: Use Pre-extracted Landmarks (Recommended)
+
 - Place your dataset in `model/dataset_landmarks/`
 - Structure: `model/dataset_landmarks/asl_alphabet_train/asl_alphabet_train/[A-Z]/`
 - Each letter folder should contain JSON files with extracted landmarks
 
 ### Option 2: Use Raw Images
+
 - Place your dataset in `model/dataset_raw/`
 - Structure: `model/dataset_raw/asl_alphabet_train/asl_alphabet_train/[A-Z]/`
 - Each letter folder should contain image files (JPG/PNG)
@@ -40,10 +42,12 @@ cd ASL_learning
 ### Step 2: Prepare the Dataset
 
 1. **If using raw images**, extract landmarks first:
+
    ```bash
    cd model
    python extract_landmarks.py
    ```
+
    This will create the `dataset_landmarks` directory with extracted features.
 
 2. **If using pre-extracted landmarks**, ensure your dataset is in the correct location:
@@ -66,6 +70,7 @@ python train_asl_model.py
 ```
 
 This will:
+
 - Load landmark data from your dataset
 - Train a neural network model
 - Save the model as `asl_model.h5` in the `model/` directory
@@ -74,6 +79,7 @@ This will:
 **Training Time**: Depending on your dataset size and hardware, this may take 30 minutes to several hours.
 
 **Alternative**: For training with raw images using EfficientNetB0, use the Google Colab notebook:
+
 - Open `model/train_efficientnet_colab.ipynb` in Google Colab
 - Follow the instructions in the notebook
 
@@ -85,6 +91,7 @@ pip install -r requirements.txt
 ```
 
 Or install individually:
+
 ```bash
 pip install opencv-python mediapipe numpy tqdm tensorflow scikit-learn matplotlib flask flask-cors pillow
 ```
@@ -97,6 +104,7 @@ npm install
 ```
 
 If you encounter issues with `react-dom`, run:
+
 ```bash
 npx expo install react-dom
 ```
@@ -108,16 +116,17 @@ npx expo install react-dom
 1. Find your computer's IP address:
    - **Windows**: Run `ipconfig` in Command Prompt/PowerShell
    - **Mac/Linux**: Run `ifconfig` or `ip addr`
-   - Look for your Wi-Fi adapter's IPv4 address (e.g., `192.168.1.2`)
+   - Look for your Wi-Fi adapter's IPv4 address (e.g., `192.168.13.67`)
 
 2. Update the API URL in `frontend/screens/PlayGame.js`:
+
    ```javascript
    const API_URL = __DEV__
-     ? "http://YOUR_IP_ADDRESS:5000"  // Replace with your IP
+     ? "http://YOUR_IP_ADDRESS:5000" // Replace with your IP
      : "http://YOUR_IP_ADDRESS:5000";
    ```
 
-3. **Important**: 
+3. **Important**:
    - Your phone and laptop must be on the **same Wi-Fi network**
    - If you change networks, update the IP address again
 
@@ -126,18 +135,21 @@ npx expo install react-dom
 If you're on Windows, allow port 5000 through the firewall:
 
 **Option A: Using PowerShell (Run as Administrator)**
+
 ```powershell
 cd model
 .\fix_firewall.ps1
 ```
 
 **Option B: Using Batch File (Run as Administrator)**
+
 ```cmd
 cd model
 .\add_firewall_rule.bat
 ```
 
 **Option C: Manual**
+
 1. Open Windows Defender Firewall
 2. Click "Advanced settings"
 3. Click "Inbound Rules" → "New Rule"
@@ -157,14 +169,16 @@ python api_server.py
 ```
 
 You should see:
+
 ```
 Model loaded successfully from asl_model.h5
 Starting Flask server on http://0.0.0.0:5000
 ```
 
 **Test the API**: Open `http://localhost:5000/health` in your browser. You should see:
+
 ```json
-{"status":"healthy","model_loaded":true}
+{ "status": "healthy", "model_loaded": true }
 ```
 
 #### Terminal 2: Frontend (React Native/Expo)
@@ -175,21 +189,25 @@ npm start
 ```
 
 Or:
+
 ```bash
 npx expo start
 ```
 
 This will:
+
 - Start the Expo development server
 - Show a QR code for scanning with Expo Go app
 - Provide options to open on Android/iOS simulator or web browser
 
 **To run on mobile**:
+
 1. Install "Expo Go" app on your phone
 2. Scan the QR code from the terminal
 3. Make sure your phone and laptop are on the same Wi-Fi network
 
 **To run on web**:
+
 - Press `w` in the terminal to open in web browser
 - Note: Camera functionality may be limited in web browsers
 
@@ -225,7 +243,8 @@ Interactive-Learning-and-Multilingual-Sign-Recognition-with-Emotion-and-Safety-S
 
 ### Issue: "Model not loaded" error
 
-**Solution**: 
+**Solution**:
+
 - Make sure you've trained the model (Step 3)
 - Check that `asl_model.h5` exists in the `backend/models/games/` directory
 - Verify the model path in `api_server.py` is correct
@@ -233,6 +252,7 @@ Interactive-Learning-and-Multilingual-Sign-Recognition-with-Emotion-and-Safety-S
 ### Issue: "Could not connect to API server"
 
 **Solutions**:
+
 1. Check that the backend is running (`python backend/models/games/api_server.py`)
 2. Verify the IP address in `PlayGame.js` matches your computer's IP
 3. Ensure both devices are on the same Wi-Fi network
@@ -242,6 +262,7 @@ Interactive-Learning-and-Multilingual-Sign-Recognition-with-Emotion-and-Safety-S
 ### Issue: Camera not working
 
 **Solutions**:
+
 1. Grant camera permissions to the app
 2. Check that `expo-camera` is installed: `npm install expo-camera`
 3. On Android, ensure the app has camera permissions in device settings
@@ -250,21 +271,25 @@ Interactive-Learning-and-Multilingual-Sign-Recognition-with-Emotion-and-Safety-S
 ### Issue: "Module not found" errors
 
 **Solutions**:
+
 1. Reinstall dependencies:
+
    ```bash
    # Backend
    pip install -r requirements.txt
-   
+
    # Frontend
    cd frontend
    npm install
    ```
+
 2. Clear npm cache: `npm cache clean --force`
 3. Delete `node_modules` and reinstall: `rm -rf node_modules && npm install`
 
 ### Issue: Training script crashes or runs out of memory
 
 **Solutions**:
+
 1. Reduce batch size in `train_asl_model.py`
 2. Use a smaller subset of letters for initial testing
 3. For large datasets, use the Google Colab notebook with GPU support
@@ -272,7 +297,8 @@ Interactive-Learning-and-Multilingual-Sign-Recognition-with-Emotion-and-Safety-S
 
 ### Issue: Different Wi-Fi network
 
-**Solution**: 
+**Solution**:
+
 - Update the IP address in `frontend/screens/PlayGame.js` to match your new network
 - Find your new IP with `ipconfig` (Windows) or `ifconfig` (Mac/Linux)
 - Restart the frontend after changing the IP
@@ -310,10 +336,3 @@ If you encounter issues not covered here:
 ---
 
 **Happy Learning! 🎉**
-
-
-
-
-
-
-

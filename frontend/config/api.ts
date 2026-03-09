@@ -30,7 +30,7 @@ export function getBaseUrl(): string {
     // Find your IP: Windows: ipconfig | Mac/Linux: ifconfig
     // Look for IPv4 Address (Windows) or inet (Mac/Linux) - should start with 192.168. or 10.
     if (isExpoGo) {
-      const deviceUrl = process.env.EXPO_PUBLIC_API_URL || "http://192.168.1.6:5000"; // ✅ Updated to your IP: 192.168.1.6
+      const deviceUrl = process.env.EXPO_PUBLIC_API_URL || "http://192.168.13.67:5000"; // ✅ Updated to your IP: 192.168.13.67
       console.log(`[API] Expo Go detected (real device). Using: ${deviceUrl}`);
       console.log(`[API] ⚠️ If connection fails, create .env file in frontend/ with:`);
       console.log(`[API] EXPO_PUBLIC_API_URL=http://YOUR_COMPUTER_IP:5000`);
@@ -52,8 +52,8 @@ export function getBaseUrl(): string {
           "Create a .env file with: EXPO_PUBLIC_API_URL=http://<your-laptop-ip>:5000"
         );
         // Try common IPs (update if your IP is different)
-        // ✅ Updated to your IP: 192.168.1.6
-        const possibleIPs = ["192.168.1.6", "192.168.1.10"]; // ✅ Your IP: 192.168.1.6
+        // ✅ Updated to your IP: 192.168.13.67
+        const possibleIPs = ["192.168.13.67", "192.168.1.10"]; // ✅ Your IP: 192.168.13.67
         const selectedIP = possibleIPs[0];
         console.warn(`[API] Real Android device detected. Using laptop IP: ${selectedIP}`);
         console.warn(`[API] If connection fails, update EXPO_PUBLIC_API_URL in .env file`);
@@ -76,7 +76,7 @@ export function getBaseUrl(): string {
           "⚠️ Real iOS device detected but EXPO_PUBLIC_API_URL not set. " +
           "Create a .env file with: EXPO_PUBLIC_API_URL=http://<your-laptop-ip>:5000"
         );
-        return "http://192.168.1.6:5000"; // ✅ Updated to your IP: 192.168.1.6
+        return "http://192.168.13.67:5000"; // ✅ Updated to your IP: 192.168.13.67
       } else {
         // iOS simulator can use localhost
         return "http://localhost:5000";
@@ -93,7 +93,7 @@ export function getBaseUrl(): string {
 
 /**
  * For real devices, you need to use your laptop's IP address
- * Example: http://192.168.1.6:5000
+ * Example: http://192.168.13.67:5000
  * Set this via environment variable or modify the function above
  */
 export function getBaseUrlForRealDevice(ipAddress?: string): string {

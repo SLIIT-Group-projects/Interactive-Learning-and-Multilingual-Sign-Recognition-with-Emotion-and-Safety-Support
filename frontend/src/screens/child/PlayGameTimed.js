@@ -59,13 +59,17 @@ const PlayGameTimed = ({ navigation, route }) => {
   const longestStreakRef = useRef(0);
   const currentStreakRef = useRef(0);
 
-  const { userData, childProgress: contextProgress, refreshChildProgress } = useAuth();
+  const {
+    userData,
+    childProgress: contextProgress,
+    refreshChildProgress,
+  } = useAuth();
   const childId = userData?.uid || null;
   const parentId = userData?.parentId || null;
 
   const API_URL = __DEV__
-    ? "http://192.168.1.2:5000"
-    : "http://192.168.1.2:5000";
+    ? "http://192.168.13.67:5000"
+    : "http://192.168.13.67:5000";
 
   // Initialize game (but don't start timer until user clicks Start)
   useEffect(() => {
@@ -83,7 +87,13 @@ const PlayGameTimed = ({ navigation, route }) => {
 
   // Timer logic - only start when game has started
   useEffect(() => {
-    if (!hasGameStarted || !isGameActive || hasAnswered || timer <= 0 || currentQuestion >= TIMED_QUESTIONS) {
+    if (
+      !hasGameStarted ||
+      !isGameActive ||
+      hasAnswered ||
+      timer <= 0 ||
+      currentQuestion >= TIMED_QUESTIONS
+    ) {
       if (timerIntervalRef.current) {
         clearInterval(timerIntervalRef.current);
         timerIntervalRef.current = null;
@@ -112,8 +122,8 @@ const PlayGameTimed = ({ navigation, route }) => {
         clearInterval(timerIntervalRef.current);
         timerIntervalRef.current = null;
       }
-      };
-      // eslint-disable-next-line react-hooks/exhaustive-deps
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasGameStarted, isGameActive, hasAnswered, currentQuestion]);
 
   const testAPIConnection = async () => {
@@ -141,7 +151,7 @@ const PlayGameTimed = ({ navigation, route }) => {
     do {
       randomLetter = ALPHABET[Math.floor(Math.random() * ALPHABET.length)];
     } while (randomLetter === lastLetterRef.current && ALPHABET.length > 1);
-    
+
     lastLetterRef.current = randomLetter;
     setTargetLetter(randomLetter);
   };
@@ -174,7 +184,10 @@ const PlayGameTimed = ({ navigation, route }) => {
     if (!permission?.granted) {
       const result = await requestPermission();
       if (!result.granted) {
-        Alert.alert("Permission Required", "Camera permission is needed to capture gestures");
+        Alert.alert(
+          "Permission Required",
+          "Camera permission is needed to capture gestures",
+        );
         return;
       }
     }
@@ -186,7 +199,10 @@ const PlayGameTimed = ({ navigation, route }) => {
     }
 
     if (!cameraReady || !cameraRef.current) {
-      Alert.alert("Camera Not Ready", "Please wait for the camera to fully initialize.");
+      Alert.alert(
+        "Camera Not Ready",
+        "Please wait for the camera to fully initialize.",
+      );
       return;
     }
 
@@ -201,7 +217,10 @@ const PlayGameTimed = ({ navigation, route }) => {
 
       await new Promise((resolve) => setTimeout(resolve, 500));
       const currentCamera = camera;
-      if (!currentCamera || typeof currentCamera.takePictureAsync !== "function") {
+      if (
+        !currentCamera ||
+        typeof currentCamera.takePictureAsync !== "function"
+      ) {
         throw new Error("Camera became unavailable");
       }
 
@@ -290,7 +309,12 @@ const PlayGameTimed = ({ navigation, route }) => {
 
         if (childId) {
           try {
-            const { progress, xpGained: actualXP, leveledUp, newLevel } = await addXP(childId, {
+            const {
+              progress,
+              xpGained: actualXP,
+              leveledUp,
+              newLevel,
+            } = await addXP(childId, {
               correct: true,
               timedModeXP: xpGained,
             });
@@ -404,7 +428,8 @@ const PlayGameTimed = ({ navigation, route }) => {
       }
     }
 
-    const accuracy = TIMED_QUESTIONS > 0 ? Math.round((score / TIMED_QUESTIONS) * 100) : 0;
+    const accuracy =
+      TIMED_QUESTIONS > 0 ? Math.round((score / TIMED_QUESTIONS) * 100) : 0;
 
     setGameResults({
       totalXP: totalXPRef.current,
@@ -494,7 +519,11 @@ const PlayGameTimed = ({ navigation, route }) => {
                     style={{ borderWidth: 2, borderColor: getTimerColor() }}
                   >
                     <View className="flex-row items-center">
-                      <MaterialIcons name="timer" size={20} color={getTimerColor()} />
+                      <MaterialIcons
+                        name="timer"
+                        size={20}
+                        color={getTimerColor()}
+                      />
                       <Text
                         className="text-2xl font-bold ml-2"
                         style={{ color: getTimerColor() }}
@@ -516,8 +545,12 @@ const PlayGameTimed = ({ navigation, route }) => {
 
                 {/* Target Letter (Top-Left, below back button) */}
                 <View className="absolute top-20 left-4 bg-black/70 rounded-2xl px-4 py-3 items-center">
-                  <Text className="text-xs text-white/80 mb-1">Show the sign for</Text>
-                  <Text className="text-5xl font-bold text-white">{targetLetter}</Text>
+                  <Text className="text-xs text-white/80 mb-1">
+                    Show the sign for
+                  </Text>
+                  <Text className="text-5xl font-bold text-white">
+                    {targetLetter}
+                  </Text>
                   <View className="mt-2 bg-white/20 rounded-full px-3 py-1">
                     <Text className="text-white font-semibold text-xs">
                       {currentQuestion + 1} / {TIMED_QUESTIONS}
@@ -533,18 +566,22 @@ const PlayGameTimed = ({ navigation, route }) => {
         )}
 
         {/* Capture Button - Only show when game has started */}
-        {hasGameStarted && !hasAnswered && permission?.granted && !isProcessing && !isCapturing && (
-          <View className="absolute bottom-8 left-0 right-0 items-center px-6">
-            <TouchableOpacity
-              onPress={handleCapture}
-              disabled={!permission?.granted || !cameraReady}
-              className="bg-blue-500 rounded-full w-20 h-20 items-center justify-center shadow-lg"
-              activeOpacity={0.8}
-            >
-              <MaterialIcons name="camera-alt" size={36} color="#ffffff" />
-            </TouchableOpacity>
-          </View>
-        )}
+        {hasGameStarted &&
+          !hasAnswered &&
+          permission?.granted &&
+          !isProcessing &&
+          !isCapturing && (
+            <View className="absolute bottom-8 left-0 right-0 items-center px-6">
+              <TouchableOpacity
+                onPress={handleCapture}
+                disabled={!permission?.granted || !cameraReady}
+                className="bg-blue-500 rounded-full w-20 h-20 items-center justify-center shadow-lg"
+                activeOpacity={0.8}
+              >
+                <MaterialIcons name="camera-alt" size={36} color="#ffffff" />
+              </TouchableOpacity>
+            </View>
+          )}
 
         {/* Feedback Toast */}
         {feedback && (
@@ -556,7 +593,11 @@ const PlayGameTimed = ({ navigation, route }) => {
             >
               {feedback === "correct" ? (
                 <>
-                  <MaterialIcons name="check-circle" size={40} color="#ffffff" />
+                  <MaterialIcons
+                    name="check-circle"
+                    size={40}
+                    color="#ffffff"
+                  />
                   <Text className="text-lg font-bold text-white mt-2 text-center">
                     Correct! Well done!
                   </Text>
@@ -605,31 +646,48 @@ const PlayGameTimed = ({ navigation, route }) => {
                 <Text className="text-lg font-semibold text-gray-800 mb-3">
                   How to Play:
                 </Text>
-                
+
                 <View className="mb-3">
                   <View className="flex-row items-start mb-2">
-                    <MaterialIcons name="check-circle" size={20} color="#10b981" style={{ marginRight: 8, marginTop: 2 }} />
+                    <MaterialIcons
+                      name="check-circle"
+                      size={20}
+                      color="#10b981"
+                      style={{ marginRight: 8, marginTop: 2 }}
+                    />
                     <View className="flex-1">
                       <Text className="text-base text-gray-700">
-                        You have <Text className="font-bold">10 seconds</Text> per letter
+                        You have <Text className="font-bold">10 seconds</Text>{" "}
+                        per letter
                       </Text>
                     </View>
                   </View>
-                  
+
                   <View className="flex-row items-start mb-2">
-                    <MaterialIcons name="check-circle" size={20} color="#10b981" style={{ marginRight: 8, marginTop: 2 }} />
+                    <MaterialIcons
+                      name="check-circle"
+                      size={20}
+                      color="#10b981"
+                      style={{ marginRight: 8, marginTop: 2 }}
+                    />
                     <View className="flex-1">
                       <Text className="text-base text-gray-700">
                         Show the correct sign before time runs out
                       </Text>
                     </View>
                   </View>
-                  
+
                   <View className="flex-row items-start mb-2">
-                    <MaterialIcons name="check-circle" size={20} color="#10b981" style={{ marginRight: 8, marginTop: 2 }} />
+                    <MaterialIcons
+                      name="check-circle"
+                      size={20}
+                      color="#10b981"
+                      style={{ marginRight: 8, marginTop: 2 }}
+                    />
                     <View className="flex-1">
                       <Text className="text-base text-gray-700">
-                        Complete <Text className="font-bold">10 letters</Text> to finish
+                        Complete <Text className="font-bold">10 letters</Text>{" "}
+                        to finish
                       </Text>
                     </View>
                   </View>
@@ -641,13 +699,19 @@ const PlayGameTimed = ({ navigation, route }) => {
                   </Text>
                   <View className="ml-2">
                     <Text className="text-sm text-gray-700 mb-1">
-                      • Correct in <Text className="font-bold">under 3 seconds</Text>: <Text className="font-bold text-violet-600">+20 XP</Text>
+                      • Correct in{" "}
+                      <Text className="font-bold">under 3 seconds</Text>:{" "}
+                      <Text className="font-bold text-violet-600">+20 XP</Text>
                     </Text>
                     <Text className="text-sm text-gray-700 mb-1">
-                      • Correct in <Text className="font-bold">under 5 seconds</Text>: <Text className="font-bold text-violet-600">+15 XP</Text>
+                      • Correct in{" "}
+                      <Text className="font-bold">under 5 seconds</Text>:{" "}
+                      <Text className="font-bold text-violet-600">+15 XP</Text>
                     </Text>
                     <Text className="text-sm text-gray-700">
-                      • Correct in <Text className="font-bold">5+ seconds</Text>: <Text className="font-bold text-violet-600">+10 XP</Text>
+                      • Correct in <Text className="font-bold">5+ seconds</Text>
+                      :{" "}
+                      <Text className="font-bold text-violet-600">+10 XP</Text>
                     </Text>
                   </View>
                 </View>
@@ -660,8 +724,15 @@ const PlayGameTimed = ({ navigation, route }) => {
                 activeOpacity={0.8}
               >
                 <View className="flex-row items-center">
-                  <MaterialIcons name="play-arrow" size={24} color="#ffffff" style={{ marginRight: 8 }} />
-                  <Text className="text-lg font-bold text-white">Start Now</Text>
+                  <MaterialIcons
+                    name="play-arrow"
+                    size={24}
+                    color="#ffffff"
+                    style={{ marginRight: 8 }}
+                  />
+                  <Text className="text-lg font-bold text-white">
+                    Start Now
+                  </Text>
                 </View>
               </TouchableOpacity>
             </View>
@@ -677,9 +748,18 @@ const PlayGameTimed = ({ navigation, route }) => {
         >
           <View className="flex-1 bg-black/50 justify-center items-center px-6">
             <View className="bg-white rounded-3xl p-8 items-center shadow-xl max-w-sm">
-              <MaterialIcons name="celebration" size={64} color="#7c3aed" style={{ marginBottom: 16 }} />
-              <Text className="text-2xl font-bold text-gray-800 text-center">Level Up!</Text>
-              <Text className="text-4xl font-bold text-violet-600 mt-2">Level {levelUpModal?.level}</Text>
+              <MaterialIcons
+                name="celebration"
+                size={64}
+                color="#7c3aed"
+                style={{ marginBottom: 16 }}
+              />
+              <Text className="text-2xl font-bold text-gray-800 text-center">
+                Level Up!
+              </Text>
+              <Text className="text-4xl font-bold text-violet-600 mt-2">
+                Level {levelUpModal?.level}
+              </Text>
               <TouchableOpacity
                 onPress={() => setLevelUpModal(null)}
                 className="bg-violet-500 rounded-xl px-8 py-3 mt-6"
@@ -695,4 +775,3 @@ const PlayGameTimed = ({ navigation, route }) => {
 };
 
 export default PlayGameTimed;
-

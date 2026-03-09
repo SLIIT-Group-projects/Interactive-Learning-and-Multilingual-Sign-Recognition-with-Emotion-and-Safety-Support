@@ -63,8 +63,8 @@ app.get("/test", (req, res) => {
       emotion: "/api/emotion/predict",
       hand: "/api/hand/analyze",
       startSession: "/api/eh/start",
-      finalizeSession: "/api/eh/finalize"
-    }
+      finalizeSession: "/api/eh/finalize",
+    },
   });
 });
 
@@ -96,23 +96,30 @@ app.use((req, res) => {
 });
 
 // Start server - listen on all network interfaces (0.0.0.0) to allow access from physical devices
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`📡 Health check: http://localhost:${PORT}/health`);
-  console.log(`🧪 Test endpoint: http://localhost:${PORT}/test`);
-  console.log(`🌐 Network access (Android emulator): http://10.0.2.2:${PORT}/health`);
-  console.log(`🌐 Network access example: http://192.168.1.11:${PORT}/health`);
-  console.log(`🌍 Environment: ${process.env.NODE_ENV || "development"}`);
-  console.log(`📁 Upload directory: ${config.UPLOAD_DIR}`);
-  console.log(`🐍 Python command: ${config.PYTHON_CMD}`);
-  console.log(`\n✅ Backend is ready to accept connections!\n`);
-}).on("error", (err) => {
-  console.error(`❌ Failed to start server:`, err);
-  if (err.code === "EADDRINUSE") {
-    console.error(`   Port ${PORT} is already in use. Please stop the other process or change the port.`);
-  }
-  process.exit(1);
-
-});
+app
+  .listen(PORT, "0.0.0.0", () => {
+    console.log(`🚀 Server running on port ${PORT}`);
+    console.log(`📡 Health check: http://localhost:${PORT}/health`);
+    console.log(`🧪 Test endpoint: http://localhost:${PORT}/test`);
+    console.log(
+      `🌐 Network access (Android emulator): http://10.0.2.2:${PORT}/health`,
+    );
+    console.log(
+      `🌐 Network access example: http://192.168.13.67:${PORT}/health`,
+    );
+    console.log(`🌍 Environment: ${process.env.NODE_ENV || "development"}`);
+    console.log(`📁 Upload directory: ${config.UPLOAD_DIR}`);
+    console.log(`🐍 Python command: ${config.PYTHON_CMD}`);
+    console.log(`\n✅ Backend is ready to accept connections!\n`);
+  })
+  .on("error", (err) => {
+    console.error(`❌ Failed to start server:`, err);
+    if (err.code === "EADDRINUSE") {
+      console.error(
+        `   Port ${PORT} is already in use. Please stop the other process or change the port.`,
+      );
+    }
+    process.exit(1);
+  });
 
 export default app;
