@@ -51,12 +51,14 @@ export default function SignDetectionScreen() {
   const cameraRef = useRef(null);
   const detectionIntervalRef = useRef(null);
   const lastSignTimeRef = useRef(0); // Timestamp of last sign detection
-  const consecutiveFramesRef = useRef(0); // Count of consecutive frames with same sign
+  const consecutiveFramesRef = useRef(0); // Count of consecutive frames with same sign (Sinhala)
   const lastSignRef = useRef(null); // Last sign detected
+  const isMountedRef = useRef(true); // Track if component is mounted
+  const isRealTimeModeRef = useRef(false); // Track real-time mode state
 
   const languages = [
     { value: 'sinhala', label: 'Sinhala Sign Language', icon: slIcon, available: true },
-    { value: 'asl', label: 'American Sign Language', icon: usaIcon, available: false },
+    { value: 'asl', label: 'American Sign Language', icon: usaIcon, available: true },
   ];
 
   // Check connection status
@@ -95,6 +97,8 @@ export default function SignDetectionScreen() {
   };
 
   useEffect(() => {
+    isMountedRef.current = true;
+    
     // Request camera permission on mount
     if (!permission?.granted) {
       requestPermission();
@@ -102,11 +106,31 @@ export default function SignDetectionScreen() {
 
     // Check connection on mount and when API URL changes
     checkConnection();
-
+    
+    // Reset buffers when language changes
+    consecutiveFramesRef.current = 0;
+    lastSignRef.current = null;
+    setHoldSteadyCount(0);
+    setIsHoldingSteady(false);
+    setDetectionFeedback('');
+    
+    // Reset ASL backend buffer when switching to ASL
+    if (selectedLanguage === 'asl') {
+      fetch(`${apiUrl}/reset-asl-buffer`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      }).catch(() => {
+        // Silently fail if backend is not available yet
+      });
+    }
+    
     // Cleanup on unmount
     return () => {
+      isMountedRef.current = false;
+      isRealTimeModeRef.current = false;
       if (detectionIntervalRef.current) {
         clearInterval(detectionIntervalRef.current);
+        detectionIntervalRef.current = null;
       }
       if (sentenceFinalizeTimeout) {
         clearTimeout(sentenceFinalizeTimeout);
@@ -121,11 +145,15 @@ export default function SignDetectionScreen() {
   // Configuration constants
   const DETECTION_CONFIG = {
     MIN_CONFIDENCE: 0.6, // Minimum confidence threshold
-    REQUIRED_CONSECUTIVE_FRAMES: 3, // Frames needed for consistent detection
+    REQUIRED_CONSECUTIVE_FRAMES: 3, // Frames needed for consistent detection (Sinhala)
     MIN_SIGN_DURATION: 1000, // Minimum time (ms) to hold a sign before accepting
     SENTENCE_FINALIZE_DELAY: 2000, // Time (ms) without detection before finalizing sentence
-    DUPLICATE_PREVENTION_DELAY: 500, // Minimum time (ms) between accepting same sign
-    DETECTION_INTERVAL: 500, // Interval (ms) between detections in real-time mode
+    DUPLICATE_PREVENTION_DELAY: 500, // Minimum time (ms) between accepting same sign (Sinhala)
+    DETECTION_INTERVAL_SINHALA: 500, // Interval (ms) between detections for Sinhala
+    DETECTION_INTERVAL_ASL: 100, // Interval (ms) between detections for ASL (faster for live frames, backend handles skipping)
+    // ASL-specific config
+    ASL_MIN_CONFIDENCE: 0.6, // Minimum confidence for ASL
+    ASL_DUPLICATE_PREVENTION_DELAY: 1000, // Minimum time (ms) between accepting same ASL sign (~1 second)
   };
 
   // Helper function to create a fetch with timeout
@@ -168,46 +196,67 @@ export default function SignDetectionScreen() {
     return sentence;
   };
 
-  // Process detection result with consistency checking
+  // Process detection result with language-specific logic
   const processDetection = (result) => {
-    if (!result) return null;
+    // Don't process if component is unmounted or real-time mode stopped
+    if (!isMountedRef.current || !result) return null;
 
     // Handle no hand detected case
     if (result.no_hand) {
-      setDetectionFeedback('👋 No hand detected. Please show your hand to the camera.');
-      setIsHoldingSteady(false);
-      setHoldSteadyCount(0);
+      if (isMountedRef.current && isRealTimeModeRef.current) {
+        setDetectionFeedback('👋 No hand detected. Please show your hand to the camera.');
+        setIsHoldingSteady(false);
+        setHoldSteadyCount(0);
+      }
       consecutiveFramesRef.current = 0;
       lastSignRef.current = null;
       return null;
     }
 
-    if (!result.prediction) return null;
+    if (!result.prediction || !isMountedRef.current || !isRealTimeModeRef.current) return null;
 
     const { prediction, english_translation, confidence } = result;
     // Use English translation if available, otherwise use prediction
     const displayText = english_translation || prediction;
     const now = Date.now();
 
+    // Language-specific processing
+    if (selectedLanguage === 'sinhala') {
+      return processSinhalaDetection(result, displayText, confidence, now);
+    } else if (selectedLanguage === 'asl') {
+      return processAslDetection(result, displayText, confidence, now);
+    }
+
+    return null;
+  };
+
+  // Sinhala: Hold steady frame-based confirmation
+  const processSinhalaDetection = (result, displayText, confidence, now) => {
+    // Don't process if component is unmounted or real-time mode stopped
+    if (!isMountedRef.current || !isRealTimeModeRef.current) {
+      return null;
+    }
+
     // Ignore low confidence predictions
     if (confidence < DETECTION_CONFIG.MIN_CONFIDENCE) {
-      setDetectionFeedback(`Confidence too low: ${(confidence * 100).toFixed(0)}% (need ${(DETECTION_CONFIG.MIN_CONFIDENCE * 100).toFixed(0)}%)`);
-      setIsHoldingSteady(false);
-      setHoldSteadyCount(0);
+      if (isMountedRef.current && isRealTimeModeRef.current) {
+        setDetectionFeedback(`Confidence too low: ${(confidence * 100).toFixed(0)}% (need ${(DETECTION_CONFIG.MIN_CONFIDENCE * 100).toFixed(0)}%)`);
+        setIsHoldingSteady(false);
+        setHoldSteadyCount(0);
+      }
       consecutiveFramesRef.current = 0;
       return null;
     }
 
     // Check if same sign as last frame
-    if (lastSignRef.current === prediction) {
+    if (lastSignRef.current === result.prediction) {
       consecutiveFramesRef.current += 1;
     } else {
       consecutiveFramesRef.current = 1;
-      lastSignRef.current = prediction;
+      lastSignRef.current = result.prediction;
     }
 
     // Update hold steady feedback
-    const progress = (consecutiveFramesRef.current / DETECTION_CONFIG.REQUIRED_CONSECUTIVE_FRAMES) * 100;
     setHoldSteadyCount(consecutiveFramesRef.current);
     setIsHoldingSteady(consecutiveFramesRef.current >= DETECTION_CONFIG.REQUIRED_CONSECUTIVE_FRAMES);
 
@@ -218,12 +267,66 @@ export default function SignDetectionScreen() {
 
     // Check for duplicate prevention
     const timeSinceLastSign = now - lastSignTimeRef.current;
-    if (lastDetectedSign === prediction && timeSinceLastSign < DETECTION_CONFIG.DUPLICATE_PREVENTION_DELAY) {
+    if (lastDetectedSign === result.prediction && timeSinceLastSign < DETECTION_CONFIG.DUPLICATE_PREVENTION_DELAY) {
       setDetectionFeedback(`Sign detected! (waiting ${DETECTION_CONFIG.DUPLICATE_PREVENTION_DELAY - timeSinceLastSign}ms to prevent duplicates)`);
       return null;
     }
 
-    // Sign is confirmed - add to sequence (use English translation)
+    // Sign is confirmed - add to sequence
+    return confirmSign(displayText, result.prediction, confidence, now);
+  };
+
+  // ASL: Simple detection relying on backend sequence buffering (Bi-LSTM sequence model)
+  const processAslDetection = (result, displayText, confidence, now) => {
+    // Don't process if component is unmounted or real-time mode stopped
+    if (!isMountedRef.current || !isRealTimeModeRef.current) {
+      return null;
+    }
+
+    // Filter out invalid predictions (backend returns "..." when sequence buffer is too short)
+    if (result.prediction === "..." || result.prediction === null || !result.prediction) {
+      if (isMountedRef.current && isRealTimeModeRef.current) {
+        setDetectionFeedback('📹 Building sequence...');
+        setIsHoldingSteady(false);
+        setHoldSteadyCount(1); // Show progress indicator
+      }
+      return null;
+    }
+
+    // Ignore low confidence predictions
+    if (confidence < DETECTION_CONFIG.ASL_MIN_CONFIDENCE) {
+      if (isMountedRef.current && isRealTimeModeRef.current) {
+        setDetectionFeedback(`📹 Low confidence: ${(confidence * 100).toFixed(0)}%`);
+        setIsHoldingSteady(false);
+        setHoldSteadyCount(1); // Show progress indicator
+      }
+      return null;
+    }
+
+    // Check for duplicate prevention (~1 second delay for ASL)
+    const timeSinceLastSign = now - lastSignTimeRef.current;
+    if (lastDetectedSign === result.prediction && timeSinceLastSign < DETECTION_CONFIG.ASL_DUPLICATE_PREVENTION_DELAY) {
+      setDetectionFeedback(`📹 Detected! (waiting ${DETECTION_CONFIG.ASL_DUPLICATE_PREVENTION_DELAY - timeSinceLastSign}ms to prevent duplicates)`);
+      setIsHoldingSteady(true); // Show that we detected something
+      setHoldSteadyCount(1);
+      return null;
+    }
+
+    // Sign is confirmed - add to sequence
+    // Backend handles sequence buffering and motion analysis
+    setIsHoldingSteady(true);
+    setHoldSteadyCount(1);
+    setDetectionFeedback(`✅ "${displayText}" detected! (${(confidence * 100).toFixed(0)}% confidence)`);
+    return confirmSign(displayText, result.prediction, confidence, now);
+  };
+
+  // Common function to confirm and add sign to sequence
+  const confirmSign = (displayText, prediction, confidence, now) => {
+    // Don't update state if component is unmounted or real-time mode stopped
+    if (!isMountedRef.current || !isRealTimeModeRef.current) {
+      return null;
+    }
+
     setLastDetectedSign(prediction);
     lastSignTimeRef.current = now;
     setDetectionFeedback(`✅ "${displayText}" added! (${(confidence * 100).toFixed(0)}% confidence)`);
@@ -232,11 +335,13 @@ export default function SignDetectionScreen() {
     setSignSequence(prev => {
       const newSequence = [...prev, displayText];
       const newSentence = buildSentenceFromSequence(newSequence);
-      setCurrentSentence(newSentence);
+      if (isMountedRef.current) {
+        setCurrentSentence(newSentence);
+      }
       return newSequence;
     });
 
-    // Reset consecutive frames counter
+    // Reset consecutive frames counter (for Sinhala)
     consecutiveFramesRef.current = 0;
     lastSignRef.current = null;
 
@@ -278,17 +383,44 @@ export default function SignDetectionScreen() {
   };
 
   const captureAndDetect = async () => {
-    if (!cameraRef.current) {
+    // Check if component is still mounted and camera is available
+    if (!isMountedRef.current || !cameraRef.current) {
+      return null;
+    }
+
+    // Check if real-time mode is still active (for real-time detection)
+    if (isRealTimeMode && !isRealTimeModeRef.current) {
       return null;
     }
 
     try {
+      // Language-specific capture settings
+      // ASL: Lower quality for faster capture (live-frame approach)
+      // Sinhala: Higher quality for static sign detection
+      const captureOptions = selectedLanguage === 'asl' 
+        ? {
+            quality: 0.6,  // Lower quality for faster capture
+            base64: true,
+            skipProcessing: true,  // Skip processing for speed
+          }
+        : {
+            quality: 0.8,  // Higher quality for static signs
+            base64: true,
+            skipProcessing: false,
+          };
+
+      // Double-check camera ref before taking picture
+      if (!cameraRef.current) {
+        return null;
+      }
+
       // Take a picture
-      const photo = await cameraRef.current.takePictureAsync({
-        quality: 0.8,
-        base64: true,
-        skipProcessing: false,
-      });
+      const photo = await cameraRef.current.takePictureAsync(captureOptions);
+
+      // Check again after async operation
+      if (!isMountedRef.current || !isRealTimeModeRef.current) {
+        return null;
+      }
 
       if (!photo?.base64) {
         throw new Error('Failed to capture image');
@@ -338,7 +470,18 @@ export default function SignDetectionScreen() {
         throw new Error(data.error || 'Unknown error');
       }
     } catch (error) {
+      // Don't log or throw errors if component is unmounted or real-time mode stopped
+      if (!isMountedRef.current || (isRealTimeMode && !isRealTimeModeRef.current)) {
+        return null;
+      }
+
       console.error('Error in captureAndDetect:', error);
+
+      // Handle camera unmount error gracefully
+      if (error.message.includes('Camera unmounted') || error.message.includes('unmounted')) {
+        // This is expected when stopping real-time mode or unmounting
+        return null;
+      }
 
       // Provide child-friendly error messages
       let errorMessage = 'Oops! Something went wrong. 😔';
@@ -391,6 +534,7 @@ export default function SignDetectionScreen() {
   const toggleRealTimeMode = () => {
     if (isRealTimeMode) {
       // Stop real-time detection
+      isRealTimeModeRef.current = false; // Set this first to stop new captures
       if (detectionIntervalRef.current) {
         clearInterval(detectionIntervalRef.current);
         detectionIntervalRef.current = null;
@@ -408,32 +552,68 @@ export default function SignDetectionScreen() {
       setSignSequence([]);
       setCurrentSentence('');
       setLastDetectedSign(null);
-      setDetectionFeedback('Starting real-time detection...');
+      setDetectionFeedback(selectedLanguage === 'asl' ? '📹 Starting motion capture...' : 'Starting real-time detection...');
+      // Clear buffers
+      consecutiveFramesRef.current = 0;
+      lastSignRef.current = null;
+
+      // Reset ASL backend buffer when starting real-time mode with ASL
+      const resetAslBufferPromise = selectedLanguage === 'asl' 
+        ? fetch(`${apiUrl}/reset-asl-buffer`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+          }).catch(() => {
+            // Silently fail if backend is not available yet
+          })
+        : Promise.resolve();
 
       // Check connection before starting real-time mode
-      fetchWithTimeout(
-        `${apiUrl}/health?language=${selectedLanguage}`,
-        { method: 'GET' },
-        10000 // 10 second timeout for health check
-      )
+      Promise.all([
+        resetAslBufferPromise,
+        fetchWithTimeout(
+          `${apiUrl}/health?language=${selectedLanguage}`,
+          { method: 'GET' },
+          10000 // 10 second timeout for health check
+        )
+      ])
         .then(() => {
+          // Determine detection interval based on language
+          const detectionInterval = selectedLanguage === 'asl' 
+            ? DETECTION_CONFIG.DETECTION_INTERVAL_ASL 
+            : DETECTION_CONFIG.DETECTION_INTERVAL_SINHALA;
+          
           // Start real-time detection
           setIsRealTimeMode(true);
+          isRealTimeModeRef.current = true; // Set ref to allow captures
           detectionIntervalRef.current = setInterval(async () => {
-            if (!isDetecting) {
+            // Check if still in real-time mode and component is mounted
+            if (!isRealTimeModeRef.current || !isMountedRef.current) {
+              if (detectionIntervalRef.current) {
+                clearInterval(detectionIntervalRef.current);
+                detectionIntervalRef.current = null;
+              }
+              return;
+            }
+
+            if (!isDetecting && isRealTimeModeRef.current) {
               setIsDetecting(true);
               try {
                 const result = await captureAndDetect();
-                if (result) {
+                // Check again after async operation
+                if (isRealTimeModeRef.current && isMountedRef.current && result) {
                   processDetection(result);
                   if (result.confidence) {
                     setConfidence(result.confidence);
                   }
                 }
               } catch (error) {
-                console.error('Real-time detection error:', error);
+                // Don't log camera unmount errors - they're expected when stopping
+                if (!error.message.includes('Camera unmounted') && !error.message.includes('unmounted')) {
+                  console.error('Real-time detection error:', error);
+                }
                 // Stop real-time mode on persistent errors
                 if (error.message.includes('timeout') || error.message.includes('Can\'t connect')) {
+                  isRealTimeModeRef.current = false;
                   if (detectionIntervalRef.current) {
                     clearInterval(detectionIntervalRef.current);
                     detectionIntervalRef.current = null;
@@ -447,10 +627,12 @@ export default function SignDetectionScreen() {
                   );
                 }
               } finally {
-                setIsDetecting(false);
+                if (isMountedRef.current) {
+                  setIsDetecting(false);
+                }
               }
             }
-          }, DETECTION_CONFIG.DETECTION_INTERVAL);
+          }, detectionInterval);
         })
         .catch(() => {
           Alert.alert(
@@ -497,6 +679,7 @@ export default function SignDetectionScreen() {
     setHoldSteadyCount(0);
     consecutiveFramesRef.current = 0;
     lastSignRef.current = null;
+    lastSignRef.current = null;
     if (sentenceFinalizeTimeout) {
       clearTimeout(sentenceFinalizeTimeout);
       setSentenceFinalizeTimeout(null);
@@ -534,7 +717,7 @@ export default function SignDetectionScreen() {
     <ThemedView style={styles.container}>
       <ThemedView style={styles.header}>
 
-        {/* Connection Status Indicator 
+        {/* Connection Status Indicator
         <View style={styles.connectionStatusContainer}>
           <View style={[
             styles.connectionDot,
@@ -610,7 +793,7 @@ export default function SignDetectionScreen() {
               <ThemedText style={styles.testButtonText}>🔍 Test Connection</ThemedText>
             </TouchableOpacity>
           </View>
-        )}*/}
+        )} */}
 
         {/* Language Selector */}
         <TouchableOpacity
@@ -651,10 +834,19 @@ export default function SignDetectionScreen() {
                     selectedLanguage === lang.value && styles.languageOptionSelected,
                     !lang.available && styles.languageOptionDisabled
                   ]}
-                  onPress={() => {
+                  onPress={async () => {
                     if (lang.available) {
+                      try {
+                        await fetch(`${apiUrl}/reset-asl-buffer`, {
+                          method: 'POST',
+                        });
+                      } catch (e) {
+                        console.log('Could not reset ASL buffer');
+                      }
+                  
                       setSelectedLanguage(lang.value);
                       setShowLanguagePicker(false);
+                      clearText();
                     } else {
                       Alert.alert(
                         'Coming Soon! 🚀',
@@ -760,25 +952,47 @@ export default function SignDetectionScreen() {
       {/* Live Feedback Section */}
       {isRealTimeMode && (
         <ThemedView style={styles.feedbackContainer}>
-          {/* Hold Steady Indicator */}
-          {isHoldingSteady ? (
-            <View style={styles.holdSteadyIndicator}>
-              <ThemedText style={styles.holdSteadyText}>✅ Hold Steady!</ThemedText>
-              <View style={styles.progressBar}>
-                <View style={[styles.progressBarFill, { width: '100%' }]} />
+          {/* Language-specific feedback indicator */}
+          {selectedLanguage === 'sinhala' ? (
+            // Sinhala: Hold steady indicator
+            isHoldingSteady ? (
+              <View style={styles.holdSteadyIndicator}>
+                <ThemedText style={styles.holdSteadyText}>✅ Hold Steady!</ThemedText>
+                <View style={styles.progressBar}>
+                  <View style={[styles.progressBarFill, { width: '100%' }]} />
+                </View>
               </View>
-            </View>
-          ) : holdSteadyCount > 0 ? (
-            <View style={styles.holdSteadyIndicator}>
-              <ThemedText style={styles.holdSteadyText}>
-                📸 Hold steady... {holdSteadyCount}/{DETECTION_CONFIG.REQUIRED_CONSECUTIVE_FRAMES}
-              </ThemedText>
-              <View style={styles.progressBar}>
-                <View style={[styles.progressBarFill, {
-                  width: `${(holdSteadyCount / DETECTION_CONFIG.REQUIRED_CONSECUTIVE_FRAMES) * 100}%`
-                }]} />
+            ) : holdSteadyCount > 0 ? (
+              <View style={styles.holdSteadyIndicator}>
+                <ThemedText style={styles.holdSteadyText}>
+                  📸 Hold steady... {holdSteadyCount}/{DETECTION_CONFIG.REQUIRED_CONSECUTIVE_FRAMES}
+                </ThemedText>
+                <View style={styles.progressBar}>
+                  <View style={[styles.progressBarFill, {
+                    width: `${(holdSteadyCount / DETECTION_CONFIG.REQUIRED_CONSECUTIVE_FRAMES) * 100}%`
+                  }]} />
+                </View>
               </View>
-            </View>
+            ) : null
+          ) : selectedLanguage === 'asl' ? (
+            // ASL: Motion capture indicator (backend handles sequence buffering)
+            isHoldingSteady ? (
+              <View style={styles.holdSteadyIndicator}>
+                <ThemedText style={styles.holdSteadyText}>✅ Motion Captured!</ThemedText>
+                <View style={styles.progressBar}>
+                  <View style={[styles.progressBarFill, { width: '100%' }]} />
+                </View>
+              </View>
+            ) : holdSteadyCount > 0 ? (
+              <View style={styles.holdSteadyIndicator}>
+                <ThemedText style={styles.holdSteadyText}>
+                  📹 Capturing motion...
+                </ThemedText>
+                <View style={styles.progressBar}>
+                  <View style={[styles.progressBarFill, { width: '50%' }]} />
+                </View>
+              </View>
+            ) : null
           ) : null}
 
           {/* Detection Feedback */}
@@ -825,7 +1039,7 @@ export default function SignDetectionScreen() {
                 color="#fff"
               />
               <ThemedText style={styles.speechButtonText}>
-                {isSpeaking ? 'Stop Speaking' : 'Speak Now 🔊'}
+                {isSpeaking ? 'Stop Speaking' : 'Speak Now '}
               </ThemedText>
             </TouchableOpacity>
           </View>
@@ -847,7 +1061,7 @@ export default function SignDetectionScreen() {
         <ThemedView style={styles.placeholderContainer}>
           <IconSymbol name="hand.wave" size={48} color="#9CA3AF" />
           <ThemedText style={styles.placeholderText}>
-            👋 Show your sign to start translating!
+             Show your sign to start translating!
           </ThemedText>
         </ThemedView>
       ) : null}
@@ -858,7 +1072,7 @@ export default function SignDetectionScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: '#E8F4F8',
     paddingHorizontal: 16,
     paddingTop: 24,
   },
@@ -968,7 +1182,7 @@ const styles = StyleSheet.create({
   textContainer: {
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
-    padding: 20,
+    padding: 15,
     marginBottom: 16,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
