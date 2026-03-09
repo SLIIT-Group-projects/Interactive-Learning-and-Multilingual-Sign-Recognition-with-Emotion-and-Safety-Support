@@ -41,6 +41,18 @@
       ],
       "expo-audio",
       "expo-web-browser"
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow $(PRODUCT_NAME) to access your camera to detect sign language gestures."
+        }
+      ],
+      [
+        "react-native-vision-camera",
+        {
+          "cameraPermissionText": "$(PRODUCT_NAME) needs access to your camera for ASL sign language detection."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
