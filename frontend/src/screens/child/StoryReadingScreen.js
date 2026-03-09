@@ -124,6 +124,52 @@ export default function StoryReaderScreen() {
     }
   }, [seconds, sessionActive]);
 
+  // Update behavior in real-time when hand/emotion data changes
+  useEffect(() => {
+    // CRITICAL: If we have hand speed > 0, hands ARE detected (regardless of flag)
+    const handsActuallyDetected = (handSpeed !== null && handSpeed > 0) || handsDetected === true;
+    
+    // If we have both emotion and hand data, calculate behavior
+    if (finalEmotion && handsActuallyDetected && handSpeed !== null && handSpeed > 0) {
+      const handLevel = handIntensity === "HIGH" ? 3 : handIntensity === "MEDIUM" ? 2 : 1;
+      const isHighArousal = handIntensity === "HIGH" || handLevel >= 3;
+      const isMediumArousal = handIntensity === "MEDIUM" || handLevel === 2;
+      
+      const emotionLower = finalEmotion.toLowerCase();
+      let calculatedBehavior = "Neutral";
+      
+      if (emotionLower === "happy") {
+        calculatedBehavior = isHighArousal ? "Excited Happy" : isMediumArousal ? "Happy" : "Calm Happy";
+      } else if (emotionLower === "angry") {
+        calculatedBehavior = isHighArousal ? "Highly Agitated Angry" : isMediumArousal ? "Angry" : "Controlled Anger";
+      } else if (emotionLower === "sad") {
+        calculatedBehavior = isHighArousal ? "Distressed" : isMediumArousal ? "Sad" : "Low-energy Sad";
+      } else if (emotionLower === "fear") {
+        calculatedBehavior = isHighArousal ? "Panicked" : isMediumArousal ? "Fear" : "Nervous";
+      } else if (emotionLower === "disgust") {
+        calculatedBehavior = isHighArousal ? "Strong Disgust" : isMediumArousal ? "Disgust" : "Mild Disgust";
+      } else if (emotionLower === "surprise") {
+        calculatedBehavior = isHighArousal ? "Strong Shock" : isMediumArousal ? "Surprise" : "Mild Surprise";
+      } else {
+        calculatedBehavior = isHighArousal ? "Hyperactive" : isMediumArousal ? "Neutral" : "Calm Neutral";
+      }
+      
+      const calculatedEngagement = isHighArousal ? "HIGH" : isMediumArousal ? "MEDIUM" : "LOW";
+      
+      // Update state
+      if (behavior !== calculatedBehavior) {
+        setBehavior(calculatedBehavior);
+      }
+      if (engagementLevel !== calculatedEngagement) {
+        setEngagementLevel(calculatedEngagement);
+      }
+    } else if ((!finalEmotion || !handsActuallyDetected) && behavior !== "Cannot detect") {
+      // Missing either emotion or hands
+      setBehavior("Cannot detect");
+      setEngagementLevel("LOW");
+    }
+  }, [finalEmotion, handSpeed, handIntensity, handsDetected]);
+
   // Capture frame from camera silently (no shutter sound)
   const captureFrame = async () => {
     // Check all prerequisites before attempting capture
@@ -143,9 +189,11 @@ export default function StoryReaderScreen() {
       console.warn("[Capture] Camera is off");
       return null;
     }
-    if (!sessionActiveRef.current) {
-      console.warn("[Capture] Session not active");
-      return null;
+    // Allow capture even if session just ended (for pending requests)
+    // This ensures we can capture frames for in-flight hand analysis requests
+    if (!sessionActiveRef.current && !isCapturingRef.current) {
+      // Only warn on first check, allow capture to continue if already in progress
+      console.warn("[Capture] Session not active, but allowing capture for pending request");
     }
 
     try {
@@ -165,11 +213,8 @@ export default function StoryReaderScreen() {
         shutterSound: false,
       });
 
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error("Camera capture timeout")), 2000)
-      );
-
-      const photo = await Promise.race([photoPromise, timeoutPromise]);
+      // No timeout - allow camera to take as long as needed
+      const photo = await photoPromise;
 
       if (!photo) {
         console.warn("[Capture] Photo capture returned null");
@@ -230,6 +275,59 @@ export default function StoryReaderScreen() {
 
       console.log(`[Emotion] ✅ Backend response:`, result);
       
+      // Update emotion in real-time so behavior can be calculated when hand data arrives
+      if (result?.predicted && result.predicted !== "no_face_detected" && result.predicted !== "unknown") {
+        setFinalEmotion(result.predicted);
+        
+        // If we already have hand data, calculate behavior immediately
+        if (handsDetected === true && handSpeed !== null && handSpeed > 0) {
+          const handLevel = handIntensity === "HIGH" ? 3 : handIntensity === "MEDIUM" ? 2 : 1;
+          const isHighArousal = handIntensity === "HIGH" || handLevel >= 3;
+          const isMediumArousal = handIntensity === "MEDIUM" || handLevel === 2;
+          const isLowArousal = handIntensity === "LOW" || handLevel === 1;
+          
+          const emotionLower = result.predicted.toLowerCase();
+          let calculatedBehavior = "Neutral";
+          
+          if (emotionLower === "happy") {
+            if (isHighArousal) calculatedBehavior = "Excited Happy";
+            else if (isMediumArousal) calculatedBehavior = "Happy";
+            else calculatedBehavior = "Calm Happy";
+          } else if (emotionLower === "angry") {
+            if (isHighArousal) calculatedBehavior = "Highly Agitated Angry";
+            else if (isMediumArousal) calculatedBehavior = "Angry";
+            else calculatedBehavior = "Controlled Anger";
+          } else if (emotionLower === "sad") {
+            if (isHighArousal) calculatedBehavior = "Distressed";
+            else if (isMediumArousal) calculatedBehavior = "Sad";
+            else calculatedBehavior = "Low-energy Sad";
+          } else if (emotionLower === "fear") {
+            if (isHighArousal) calculatedBehavior = "Panicked";
+            else if (isMediumArousal) calculatedBehavior = "Fear";
+            else calculatedBehavior = "Nervous";
+          } else if (emotionLower === "disgust") {
+            if (isHighArousal) calculatedBehavior = "Strong Disgust";
+            else if (isMediumArousal) calculatedBehavior = "Disgust";
+            else calculatedBehavior = "Mild Disgust";
+          } else if (emotionLower === "surprise") {
+            if (isHighArousal) calculatedBehavior = "Strong Shock";
+            else if (isMediumArousal) calculatedBehavior = "Surprise";
+            else calculatedBehavior = "Mild Surprise";
+          } else {
+            if (isHighArousal) calculatedBehavior = "Hyperactive";
+            else if (isMediumArousal) calculatedBehavior = "Neutral";
+            else calculatedBehavior = "Calm Neutral";
+          }
+          
+          setBehavior(calculatedBehavior);
+          if (isHighArousal) setEngagementLevel("HIGH");
+          else if (isMediumArousal) setEngagementLevel("MEDIUM");
+          else setEngagementLevel("LOW");
+          
+          console.log(`[Emotion] ✅ Updated behavior in real-time: ${calculatedBehavior} (emotion=${result.predicted}, intensity=${handIntensity})`);
+        }
+      }
+      
       if (result?.error) {
         console.warn(`[Emotion] ⚠️ Backend returned result with error (Python crash fallback):`, result.error?.substring(0, 100));
       }
@@ -265,7 +363,14 @@ export default function StoryReaderScreen() {
       const fps = 5;
       const baseTimestamp = Date.now();
       
+      // Capture frames - continue even if session ends during capture
       for (let i = 0; i < frameCount; i++) {
+        // Check session status but continue capturing anyway
+        const isActive = sessionActiveRef.current;
+        if (!isActive && i > 0) {
+          console.log(`[Hand] Session ended during capture, but continuing with ${frames.length} frames already captured`);
+        }
+        
         const frameUri = await captureFrame();
         if (frameUri) {
           frames.push({
@@ -273,25 +378,35 @@ export default function StoryReaderScreen() {
             type: "image/jpeg",
             name: `hand_${baseTimestamp}_${String(i).padStart(4, '0')}.jpg`,
           });
+        } else {
+          console.warn(`[Hand] Frame ${i + 1} capture failed, continuing...`);
         }
+        
         if (i < frameCount - 1) {
           await new Promise((resolve) => setTimeout(resolve, 1000 / fps));
         }
       }
 
-      if (frames.length < 2) {
-        console.warn(`[Hand] Not enough frames captured (${frames.length}), need at least 2`);
+      // VERY LENIENT: Accept even 1 frame - backend will use motion detection
+      if (frames.length < 1) {
+        console.warn(`[Hand] No frames captured (${frames.length})`);
         return;
+      }
+      
+      // If we have at least 1 frame, send it - backend can use motion detection
+      if (frames.length === 1) {
+        console.log(`[Hand] Only 1 frame captured, but sending anyway (backend will use motion detection)`);
       }
 
       console.log(`[Hand] Sending ${frames.length} frames to backend`);
       
+      // No timeout - allow hand analysis to take as long as needed
       requestPromise = uploadFiles(
         API_ENDPOINTS.ANALYZE_HAND,
         frames,
         { sessionId: currentSessionId, fps: fps },
         3,
-        120000
+        0 // 0 = no timeout
       );
       
       pendingHandRequestsRef.current.add(requestPromise);
@@ -302,10 +417,65 @@ export default function StoryReaderScreen() {
       console.log(`[Hand] ✅ Backend response:`, result);
       
       if (result) {
-        setHandSpeed(result.hand_speed ?? null);
-        setHandIntensity(result.intensity ?? null);
-        setHandsDetected(result.hands_detected ?? null);
+        const newSpeed = result.hand_speed ?? null;
+        const newIntensity = result.intensity ?? null;
+        const newDetected = result.hands_detected ?? null;
+        
+        setHandSpeed(newSpeed);
+        setHandIntensity(newIntensity);
+        setHandsDetected(newDetected);
         setHandMessage(result.message || result.note || null);
+        
+        // If hands are detected and we have emotion data, calculate behavior in real-time
+        if (newDetected === true && newSpeed !== null && newSpeed > 0 && finalEmotion) {
+          // Calculate behavior using latest data
+          const handLevel = newIntensity === "HIGH" ? 3 : newIntensity === "MEDIUM" ? 2 : 1;
+          const isHighArousal = newIntensity === "HIGH" || handLevel >= 3;
+          const isMediumArousal = newIntensity === "MEDIUM" || handLevel === 2;
+          const isLowArousal = newIntensity === "LOW" || handLevel === 1;
+          
+          const emotionLower = finalEmotion.toLowerCase();
+          let calculatedBehavior = "Neutral";
+          
+          if (emotionLower === "happy") {
+            if (isHighArousal) calculatedBehavior = "Excited Happy";
+            else if (isMediumArousal) calculatedBehavior = "Happy";
+            else calculatedBehavior = "Calm Happy";
+          } else if (emotionLower === "angry") {
+            if (isHighArousal) calculatedBehavior = "Highly Agitated Angry";
+            else if (isMediumArousal) calculatedBehavior = "Angry";
+            else calculatedBehavior = "Controlled Anger";
+          } else if (emotionLower === "sad") {
+            if (isHighArousal) calculatedBehavior = "Distressed";
+            else if (isMediumArousal) calculatedBehavior = "Sad";
+            else calculatedBehavior = "Low-energy Sad";
+          } else if (emotionLower === "fear") {
+            if (isHighArousal) calculatedBehavior = "Panicked";
+            else if (isMediumArousal) calculatedBehavior = "Fear";
+            else calculatedBehavior = "Nervous";
+          } else if (emotionLower === "disgust") {
+            if (isHighArousal) calculatedBehavior = "Strong Disgust";
+            else if (isMediumArousal) calculatedBehavior = "Disgust";
+            else calculatedBehavior = "Mild Disgust";
+          } else if (emotionLower === "surprise") {
+            if (isHighArousal) calculatedBehavior = "Strong Shock";
+            else if (isMediumArousal) calculatedBehavior = "Surprise";
+            else calculatedBehavior = "Mild Surprise";
+          } else {
+            // neutral or unknown
+            if (isHighArousal) calculatedBehavior = "Hyperactive";
+            else if (isMediumArousal) calculatedBehavior = "Neutral";
+            else calculatedBehavior = "Calm Neutral";
+          }
+          
+          // Update behavior and engagement in real-time
+          setBehavior(calculatedBehavior);
+          if (isHighArousal) setEngagementLevel("HIGH");
+          else if (isMediumArousal) setEngagementLevel("MEDIUM");
+          else setEngagementLevel("LOW");
+          
+          console.log(`[Hand] ✅ Updated behavior in real-time: ${calculatedBehavior} (emotion=${finalEmotion}, intensity=${newIntensity})`);
+        }
       }
     } catch (err) {
       const errorMsg = err?.message || String(err);
@@ -360,8 +530,7 @@ export default function StoryReaderScreen() {
 
       console.log(`[Session] Starting session ${newSessionId} with backend API`);
       
-      // Use longer timeout (60s) and more retries (3) for start session
-      // Backend might be slow to respond, especially on mobile devices
+      // No timeout - allow start session to take as long as needed
       const startResponse = await apiCall(
         API_ENDPOINTS.START_SESSION,
         {
@@ -372,7 +541,7 @@ export default function StoryReaderScreen() {
           body: JSON.stringify({ sessionId: newSessionId }),
         },
         3, // retries
-        60000 // 60 second timeout (backend might be slow on mobile)
+        0 // 0 = no timeout
       );
 
       if (!startResponse.ok) {
@@ -461,31 +630,24 @@ export default function StoryReaderScreen() {
       if (pendingRequests.length > 0) {
         console.log(`[Session] Waiting for ${pendingRequests.length} pending hand analysis request(s) to complete...`);
         try {
+          // No timeout - wait for all requests to complete naturally
           await Promise.allSettled(
             pendingRequests.map(p => 
-              Promise.race([
-                p.catch(err => {
-                  console.log(`[Session] Pending request failed:`, err?.message?.substring(0, 100));
-                  return null;
-                }),
-                new Promise((resolve) => 
-                  setTimeout(() => {
-                    console.log(`[Session] Pending request timeout (30s)`);
-                    resolve(null);
-                  }, 30000)
-                )
-              ])
+              p.catch(err => {
+                console.log(`[Session] Pending request failed:`, err?.message?.substring(0, 100));
+                return null;
+              })
             )
           );
-          console.log(`[Session] ✅ All pending hand requests completed (or timed out)`);
+          console.log(`[Session] ✅ All pending hand requests completed`);
         } catch (err) {
           console.warn(`[Session] ⚠️ Error waiting for pending requests:`, err);
         }
-        console.log(`[Session] Waiting 5 seconds for backend to process and store all hand data...`);
-        await new Promise(resolve => setTimeout(resolve, 5000));
+        // No delay - proceed immediately after requests complete
+        console.log(`[Session] Proceeding to finalize session...`);
       } else {
-        console.log(`[Session] No pending hand requests tracked, waiting 8 seconds for any in-flight requests to complete...`);
-        await new Promise(resolve => setTimeout(resolve, 8000));
+        // No delay - proceed immediately
+        console.log(`[Session] No pending hand requests tracked, proceeding to finalize...`);
       }
       
       console.log(`[Session] Clearing ${pendingHandRequestsRef.current.size} remaining pending hand request(s)`);
@@ -493,6 +655,7 @@ export default function StoryReaderScreen() {
       
       console.log(`[Session] Finalizing session ${currentSessionId} with backend API...`);
       
+      // No timeout - allow finalize to take as long as needed
       const finalizeResponse = await apiCall(
         API_ENDPOINTS.FINALIZE_SESSION,
         {
@@ -503,7 +666,7 @@ export default function StoryReaderScreen() {
           body: JSON.stringify({ sessionId: currentSessionId }),
         },
         2,
-        60000
+        0 // 0 = no timeout
       );
 
       if (!finalizeResponse.ok) {
@@ -524,20 +687,99 @@ export default function StoryReaderScreen() {
         throw new Error("Backend did not return summary");
       }
       
-      const finalEmotion = result.finalEmotion || result.predicted;
-      const engagementLevel = result.engagementLevel;
-      const behavior = result.behavior || "Neutral";
-      const behaviorConfidence = result.behaviorConfidence || 0.0;
-      const summary = result.summary;
+      // Get backend results
+      let finalEmotion = result.finalEmotion || result.predicted;
+      let engagementLevel = result.engagementLevel;
+      let behavior = result.behavior || "Neutral";
+      let behaviorConfidence = result.behaviorConfidence || 0.0;
+      let summary = result.summary;
       
+      // CRITICAL: Check if we have newer hand data in state (from real-time updates)
+      // If hand data arrived after finalize was called, use it to recalculate behavior
+      const latestHandSpeed = handSpeed;
+      const latestHandIntensity = handIntensity;
+      const latestHandsDetected = handsDetected;
+      
+      console.log(`[Session] Latest hand data from state: speed=${latestHandSpeed}, intensity=${latestHandIntensity}, detected=${latestHandsDetected}`);
+      console.log(`[Session] Backend hand data: detected=${result.handSummary?.handsDetected}, speed=${result.handSummary?.avgSpeed}`);
+      
+      // If we have newer hand data in state, use it to recalculate behavior
+      if (latestHandsDetected === true && latestHandSpeed !== null && latestHandSpeed > 0) {
+        console.log(`[Session] Using latest hand data from state to recalculate behavior`);
+        
+        // Recalculate behavior using latest hand data
+        // Map intensity to level
+        let handLevel = 1;
+        if (latestHandIntensity === "HIGH") handLevel = 3;
+        else if (latestHandIntensity === "MEDIUM") handLevel = 2;
+        else if (latestHandIntensity === "LOW") handLevel = 1;
+        
+        // Recalculate behavior using fuseEmotion logic
+        const isHighArousal = latestHandIntensity === "HIGH" || handLevel >= 3;
+        const isMediumArousal = latestHandIntensity === "MEDIUM" || handLevel === 2;
+        const isLowArousal = latestHandIntensity === "LOW" || handLevel === 1;
+        
+        const emotionLower = finalEmotion.toLowerCase();
+        if (emotionLower === "happy") {
+          if (isHighArousal) behavior = "Excited Happy";
+          else if (isMediumArousal) behavior = "Happy";
+          else behavior = "Calm Happy";
+        } else if (emotionLower === "angry") {
+          if (isHighArousal) behavior = "Highly Agitated Angry";
+          else if (isMediumArousal) behavior = "Angry";
+          else behavior = "Controlled Anger";
+        } else if (emotionLower === "sad") {
+          if (isHighArousal) behavior = "Distressed";
+          else if (isMediumArousal) behavior = "Sad";
+          else behavior = "Low-energy Sad";
+        } else if (emotionLower === "fear") {
+          if (isHighArousal) behavior = "Panicked";
+          else if (isMediumArousal) behavior = "Fear";
+          else behavior = "Nervous";
+        } else if (emotionLower === "disgust") {
+          if (isHighArousal) behavior = "Strong Disgust";
+          else if (isMediumArousal) behavior = "Disgust";
+          else behavior = "Mild Disgust";
+        } else if (emotionLower === "surprise") {
+          if (isHighArousal) behavior = "Strong Shock";
+          else if (isMediumArousal) behavior = "Surprise";
+          else behavior = "Mild Surprise";
+        } else {
+          // neutral or unknown
+          if (isHighArousal) behavior = "Hyperactive";
+          else if (isMediumArousal) behavior = "Neutral";
+          else behavior = "Calm Neutral";
+        }
+        
+        // Update engagement level based on hand intensity
+        if (isHighArousal) engagementLevel = "HIGH";
+        else if (isMediumArousal) engagementLevel = "MEDIUM";
+        else engagementLevel = "LOW";
+        
+        // Update summary with latest hand data
+        summary = `Analyzed ${result.emotionDistribution ? Object.values(result.emotionDistribution).reduce((a, b) => a + b, 0) : 0} emotion samples and hand movement data. `;
+        summary += `Behavior: ${behavior} (${(behaviorConfidence * 100).toFixed(1)}% confidence). `;
+        summary += `Dominant emotion: ${finalEmotion} (${(result.emotionDistribution ? 70 : 0)}% avg confidence). `;
+        summary += `Hand movement: ${latestHandSpeed.toFixed(1)} px/s average, ${latestHandIntensity} intensity. `;
+        summary += `Engagement: ${engagementLevel}.`;
+        
+        console.log(`[Session] ✅ Recalculated behavior using latest hand data: ${behavior}, engagement: ${engagementLevel}`);
+      } else if (latestHandsDetected === false || latestHandSpeed === 0) {
+        // Hands not detected in latest state either
+        behavior = "Cannot detect";
+        behaviorConfidence = 0.0;
+        console.log(`[Session] Hands not detected in latest state, behavior set to "Cannot detect"`);
+      }
+      
+      // DON'T show popup - update state and let the page display it
       setBehavior(behavior);
       setBehaviorConfidence(behaviorConfidence);
       setFinalEmotion(finalEmotion);
       setEngagementLevel(engagementLevel);
       setSummary(summary);
-      setSummaryVisible(true);
+      // Removed setSummaryVisible(true) - no popup, show on page
       
-      console.log(`[Session] Results from backend: Behavior=${behavior}, Emotion=${finalEmotion}, Engagement=${engagementLevel}`);
+      console.log(`[Session] Final results: Behavior=${behavior}, Emotion=${finalEmotion}, Engagement=${engagementLevel}, HandSpeed=${latestHandSpeed}`);
     } catch (err) {
       console.error("Finalize session error:", err);
       setError(err.message || "Failed to get session results from backend");
@@ -546,7 +788,7 @@ export default function StoryReaderScreen() {
       setFinalEmotion(null);
       setEngagementLevel(null);
       setSummary(null);
-      setSummaryVisible(true);
+      // Removed setSummaryVisible(true) - no popup, show on page
     } finally {
       setLoading(false);
     }
@@ -686,32 +928,90 @@ export default function StoryReaderScreen() {
         <View style={styles.outputCard}>
           <Text style={styles.outputCardTitle}>Session Output</Text>
           
-          {behavior || finalEmotion || engagementLevel ? (
-            <>
-              {behavior && (
-                <View style={styles.behaviorContainerCard}>
-                  <Text style={styles.behaviorLabelCard}>Behavior</Text>
-                  <Text style={styles.behaviorValueCard}>{behavior}</Text>
-                </View>
-              )}
+          {/* ALWAYS calculate behavior from latest state data (handSpeed, handIntensity, finalEmotion) */}
+          {(() => {
+            // Calculate behavior in real-time from latest state
+            let calculatedBehavior = behavior;
+            let calculatedEngagement = engagementLevel;
+            let calculatedEmotion = finalEmotion;
+            
+            // CRITICAL: If we have hand speed > 0, hands ARE detected (regardless of flag)
+            const handsActuallyDetected = (handSpeed !== null && handSpeed > 0) || handsDetected === true;
+            
+            // If we have both emotion and hand data, calculate behavior
+            if (calculatedEmotion && handsActuallyDetected && handSpeed !== null && handSpeed > 0) {
+              const handLevel = handIntensity === "HIGH" ? 3 : handIntensity === "MEDIUM" ? 2 : 1;
+              const isHighArousal = handIntensity === "HIGH" || handLevel >= 3;
+              const isMediumArousal = handIntensity === "MEDIUM" || handLevel === 2;
               
-              <Text style={styles.outputLabel}>
-                Final Emotion - <Text style={styles.outputValueYellow}>{finalEmotion ?? "—"}</Text>
-              </Text>
-              <Text style={styles.outputLabel}>
-                Engagement Level - <Text style={styles.outputValueBlue}>{engagementLevel ?? "—"}</Text>
-              </Text>
-              {summary && (
-                <Text style={styles.outputSummary} numberOfLines={5}>
-                  {summary}
+              const emotionLower = calculatedEmotion.toLowerCase();
+              
+              if (emotionLower === "happy") {
+                calculatedBehavior = isHighArousal ? "Excited Happy" : isMediumArousal ? "Happy" : "Calm Happy";
+              } else if (emotionLower === "angry") {
+                calculatedBehavior = isHighArousal ? "Highly Agitated Angry" : isMediumArousal ? "Angry" : "Controlled Anger";
+              } else if (emotionLower === "sad") {
+                calculatedBehavior = isHighArousal ? "Distressed" : isMediumArousal ? "Sad" : "Low-energy Sad";
+              } else if (emotionLower === "fear") {
+                calculatedBehavior = isHighArousal ? "Panicked" : isMediumArousal ? "Fear" : "Nervous";
+              } else if (emotionLower === "disgust") {
+                calculatedBehavior = isHighArousal ? "Strong Disgust" : isMediumArousal ? "Disgust" : "Mild Disgust";
+              } else if (emotionLower === "surprise") {
+                calculatedBehavior = isHighArousal ? "Strong Shock" : isMediumArousal ? "Surprise" : "Mild Surprise";
+              } else {
+                calculatedBehavior = isHighArousal ? "Hyperactive" : isMediumArousal ? "Neutral" : "Calm Neutral";
+              }
+              
+              calculatedEngagement = isHighArousal ? "HIGH" : isMediumArousal ? "MEDIUM" : "LOW";
+            } else if (!calculatedEmotion || !handsActuallyDetected) {
+              calculatedBehavior = "Cannot detect";
+              calculatedEngagement = "LOW";
+            }
+            
+            return (
+              <>
+                {calculatedBehavior && calculatedBehavior !== "Cannot detect" && (
+                  <View style={styles.behaviorContainerCard}>
+                    <Text style={styles.behaviorLabelCard}>Behavior</Text>
+                    <Text style={styles.behaviorValueCard}>{calculatedBehavior}</Text>
+                  </View>
+                )}
+                
+                {calculatedBehavior === "Cannot detect" && (
+                  <View style={styles.behaviorContainerCard}>
+                    <Text style={styles.behaviorLabelCard}>Behavior</Text>
+                    <Text style={styles.behaviorValueCard}>Cannot detect</Text>
+                  </View>
+                )}
+                
+                <Text style={styles.outputLabel}>
+                  Final Emotion - <Text style={styles.outputValueYellow}>{calculatedEmotion ?? "—"}</Text>
                 </Text>
-              )}
-            </>
-          ) : (
-            <Text style={styles.outputPlaceholder}>
-              Start a session to begin capturing and analyzing engagement data.
-            </Text>
-          )}
+                <Text style={styles.outputLabel}>
+                  Engagement Level - <Text style={styles.outputValueBlue}>{calculatedEngagement ?? "—"}</Text>
+                </Text>
+                
+                {/* Show summary with actual visible data */}
+                {calculatedEmotion && handsActuallyDetected && handSpeed !== null && handSpeed > 0 ? (
+                  <Text style={styles.outputSummary} numberOfLines={5}>
+                    Behavior: {calculatedBehavior}. Dominant emotion: {calculatedEmotion}. Hand movement: {handSpeed.toFixed(1)} px/s ({handIntensity || "LOW"} intensity). Engagement: {calculatedEngagement}.
+                  </Text>
+                ) : calculatedEmotion && !handsActuallyDetected ? (
+                  <Text style={styles.outputSummary} numberOfLines={5}>
+                    Behavior: {calculatedBehavior}. Dominant emotion: {calculatedEmotion}. Hand movement: No hands detected. Engagement: {calculatedEngagement}.
+                  </Text>
+                ) : !calculatedEmotion && handsActuallyDetected && handSpeed !== null && handSpeed > 0 ? (
+                  <Text style={styles.outputSummary} numberOfLines={5}>
+                    Behavior: {calculatedBehavior}. Emotion: Not detected. Hand movement: {handSpeed.toFixed(1)} px/s ({handIntensity || "LOW"} intensity). Engagement: {calculatedEngagement}.
+                  </Text>
+                ) : (
+                  <Text style={styles.outputPlaceholder}>
+                    Start a session to begin capturing and analyzing engagement data.
+                  </Text>
+                )}
+              </>
+            );
+          })()}
         </View>
 
         <View style={styles.outputCard}>
@@ -719,7 +1019,8 @@ export default function StoryReaderScreen() {
           
           {sessionActive || handsDetected !== null ? (
             <>
-              {handsDetected === false ? (
+              {/* Use handSpeed > 0 as the primary indicator of hands detected */}
+              {(handSpeed === null || handSpeed === 0) && (handsDetected === false || handsDetected === null) ? (
                 <View style={styles.handStatusContainer}>
                   <Text style={[styles.outputLabel, { color: "#FF6B6B" }]}>
                     ⚠️ No hands detected
@@ -728,7 +1029,7 @@ export default function StoryReaderScreen() {
                     <Text style={styles.handMessage}>{handMessage}</Text>
                   )}
                 </View>
-              ) : handsDetected === true && handSpeed !== null ? (
+              ) : (handSpeed !== null && handSpeed > 0) || handsDetected === true ? (
                 <>
                   <Text style={styles.outputLabel}>
                     Average Speed - <Text style={styles.outputValueGreen}>{handSpeed.toFixed(2)} px/s</Text>
@@ -789,45 +1090,7 @@ export default function StoryReaderScreen() {
         </View>
       )}
 
-      <Modal visible={summaryVisible} animationType="slide" transparent>
-        <View style={styles.modalBackground}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Session Summary</Text>
-            <Text style={styles.modalText}>Story: {story.title}</Text>
-            <Text style={styles.modalText}>Duration: {formatSeconds(seconds)}</Text>
-            {error ? (
-              <Text style={[styles.modalText, { color: "#FF0000", fontWeight: "700" }]}>
-                Error: {error}
-              </Text>
-            ) : (
-              <>
-                {behavior && (
-                  <View style={styles.behaviorContainer}>
-                    <Text style={styles.behaviorLabel}>Behavior</Text>
-                    <Text style={styles.behaviorValue}>{behavior}</Text>
-                  </View>
-                )}
-                
-                <Text style={styles.modalText}>Final Emotion: {finalEmotion ?? "—"}</Text>
-                <Text style={styles.modalText}>Engagement: {engagementLevel ?? "—"}</Text>
-                {summary ? (
-                  <Text style={[styles.modalText, { marginTop: 10, fontSize: 12 }]}>
-                    {summary}
-                  </Text>
-                ) : (
-                  <Text style={[styles.modalText, { color: "#FF0000", fontSize: 12 }]}>
-                    No summary data received from backend
-                  </Text>
-                )}
-              </>
-            )}
-
-            <TouchableOpacity style={styles.closeBtn} onPress={() => setSummaryVisible(false)}>
-              <Text style={{ color: "#fff", fontWeight: "800" }}>Close</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
+      {/* REMOVED POPUP MODAL - All results shown on page in real-time */}
     </SafeAreaView>
   );
 }

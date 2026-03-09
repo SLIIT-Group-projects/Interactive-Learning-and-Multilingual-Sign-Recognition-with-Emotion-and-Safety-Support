@@ -53,14 +53,17 @@ export function computeFusion(session) {
 
   const avgConfidence = emotionSum > 0 ? totalConfidence / emotionSum : 0;
 
-  // Compute hand movement summary - Use samples where hands were detected OR speed > 0
-  // FALLBACK: If speed > 0, consider it as hands detected (even if hands_detected flag is false)
-  // This handles cases where detection worked but validation was too strict
+  // VERY LENIENT: Use samples where hands were detected OR speed > 0
+  // If speed is calculated, ALWAYS consider it as hands detected (even if hands_detected flag is false)
+  // This ensures we use hand data whenever speed is available
   const validHands = hands.filter((h) => {
     // Include if explicitly marked as detected
     if (h.hands_detected === true) return true;
     // OR if speed > 0 (indicates hands were actually detected and speed calculated)
+    // This is the primary check - if speed exists, hands are detected
     if ((h.hand_speed || 0) > 0) return true;
+    // OR if frames_with_hands > 0 (indicates hands were seen)
+    if ((h.frames_with_hands || 0) > 0) return true;
     return false;
   });
   

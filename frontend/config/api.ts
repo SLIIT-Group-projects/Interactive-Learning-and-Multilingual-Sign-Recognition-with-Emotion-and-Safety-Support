@@ -134,20 +134,23 @@ export async function apiCall(
   endpoint: string,
   options: RequestInit = {},
   retries = 2,
-  timeout = 20000
+  timeout = 0 // 0 = no timeout (allow unlimited time)
 ): Promise<Response> {
   const url = `${BASE_URL}${endpoint}`;
   
-  console.log(`[API] Calling: ${url}`);
+  console.log(`[API] Calling: ${url}${timeout > 0 ? ` (timeout: ${timeout}ms)` : ' (no timeout)'}`);
   
   const controller = new AbortController();
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
   
   try {
-    timeoutId = setTimeout(() => {
-      console.log(`[API] Timeout after ${timeout}ms for ${url}`);
-      controller.abort();
-    }, timeout);
+    // Only set timeout if timeout > 0
+    if (timeout > 0) {
+      timeoutId = setTimeout(() => {
+        console.log(`[API] Timeout after ${timeout}ms for ${url}`);
+        controller.abort();
+      }, timeout);
+    }
     
     const response = await fetch(url, {
       ...options,
@@ -213,7 +216,7 @@ export async function uploadFile(
   file: { uri: string; type: string; name: string },
   body: Record<string, any> = {},
   retries = 2,
-  timeout = 120000 // 120 seconds default for ML operations (DeepFace can be very slow on mobile, especially first load)
+  timeout = 0 // 0 = no timeout (allow unlimited time for ML operations)
 ): Promise<any> {
   console.log(`[Upload] Preparing upload - endpoint: ${endpoint}, file: ${file.name}`);
   console.log(`[Upload] URI type: ${file.uri?.startsWith('data:') ? 'base64' : file.uri?.startsWith('file://') ? 'file' : 'other'}`);
@@ -451,7 +454,7 @@ export async function uploadFiles(
   files: Array<{ uri: string; type: string; name: string }>,
   body: Record<string, any> = {},
   retries = 2,
-  timeout = 90000 // 90 seconds default for hand analysis (multiple frames - can be slow)
+  timeout = 0 // 0 = no timeout (allow unlimited time for hand analysis)
 ): Promise<any> {
   console.log(`[Upload] Preparing upload of ${files.length} files...`);
   const formData = new FormData();
