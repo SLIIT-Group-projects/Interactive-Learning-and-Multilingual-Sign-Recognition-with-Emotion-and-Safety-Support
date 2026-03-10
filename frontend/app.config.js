@@ -48,7 +48,7 @@ export default {
       reactCompiler: true,
     },
     // Set API URL here for real devices
-    // ✅ Updated to your IP: 192.168.1.9
+    // ✅ Updated to your IP: 192.168.8.151
     extra: {
       apiUrl: process.env.EXPO_PUBLIC_API_URL || "http://192.168.1.9:5000",
     },
