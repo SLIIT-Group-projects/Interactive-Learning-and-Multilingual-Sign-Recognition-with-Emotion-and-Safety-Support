@@ -8,6 +8,7 @@ import {
   TextInput,
   Modal,
   ScrollView,
+  Switch,
 } from "react-native";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import * as Speech from "expo-speech";
@@ -53,6 +54,7 @@ export default function SignDetectionScreen() {
   const [isHoldingSteady, setIsHoldingSteady] = useState(false); // User is holding sign steady
   const [detectionFeedback, setDetectionFeedback] = useState(""); // Live feedback message
   const [sentenceFinalizeTimeout, setSentenceFinalizeTimeout] = useState(null); // Timeout for sentence finalization
+  const [grammarCorrectionEnabled, setGrammarCorrectionEnabled] = useState(false); // Toggle for grammar correction
 
   const cameraRef = useRef(null);
   const detectionIntervalRef = useRef(null);
@@ -220,6 +222,89 @@ export default function SignDetectionScreen() {
     sentence += ".";
 
     return sentence;
+  };
+
+  // Grammar correction function for ASL sentences
+  const applyGrammarCorrection = (sentence) => {
+    if (!sentence || sentence.trim().length === 0) return sentence;
+
+    // Remove period if present (we'll add it back at the end)
+    let text = sentence.trim().replace(/\.$/, "");
+
+    // Split into words
+    const words = text.split(/\s+/).map(w => w.toLowerCase());
+    const correctedWords = [];
+
+    // Common greetings that should have a comma after them
+    const greetings = ["hello", "hi", "hey", "goodbye", "bye"];
+    // Action verbs that don't need "are" after "you"
+    const actionVerbs = ["go", "come", "see", "know", "think", "want", "need", "like", "love", "have", "do", "get", "make", "take", "give", "say", "tell", "ask", "help", "work", "play", "eat", "drink", "sleep", "wake", "run", "walk", "sit", "stand", "look", "watch", "listen", "read", "write", "speak", "talk"];
+    // Auxiliary verbs that are already present
+    const auxVerbs = ["are", "is", "am", "was", "were", "will", "can", "should", "would", "could", "have", "has", "had"];
+
+    let skipNext = false;
+    for (let i = 0; i < words.length; i++) {
+      if (skipNext) {
+        skipNext = false;
+        continue;
+      }
+
+      const word = words[i];
+      const nextWord = i < words.length - 1 ? words[i + 1] : null;
+      const prevWord = i > 0 ? words[i - 1] : null;
+
+      // Handle greetings - add comma if followed by another word
+      if (greetings.includes(word) && nextWord) {
+        correctedWords.push(word.charAt(0).toUpperCase() + word.slice(1) + ",");
+      }
+      // Handle "where you" -> "where are you"
+      else if (word === "where" && nextWord === "you") {
+        correctedWords.push(word.charAt(0).toUpperCase() + word.slice(1));
+        correctedWords.push("are");
+        correctedWords.push("you"); // Add "you" immediately
+        skipNext = true; // Skip processing "you" in next iteration
+      }
+      // Handle "you" followed by adjective/noun (needs "are")
+      else if (word === "you" && nextWord && !auxVerbs.includes(nextWord)) {
+        // Check if next word is a question word (don't add "are" before question words)
+        const questionWords = ["where", "what", "when", "why", "how", "who", "which"];
+        
+        if (questionWords.includes(nextWord)) {
+          // "you where" -> "you are where" (but this pattern is less common, usually it's "where you")
+          correctedWords.push(i === 0 ? "You" : "you");
+        } else if (!actionVerbs.includes(nextWord)) {
+          // "you" + adjective/noun -> "you are" + adjective/noun
+          correctedWords.push(i === 0 ? "You" : "you");
+          correctedWords.push("are");
+        } else {
+          // "you" + action verb -> keep as is
+          correctedWords.push(i === 0 ? "You" : "you");
+        }
+      }
+      // Capitalize first word
+      else if (i === 0) {
+        correctedWords.push(word.charAt(0).toUpperCase() + word.slice(1));
+      }
+      // Keep other words as lowercase
+      else {
+        correctedWords.push(word);
+      }
+    }
+
+    // Join words
+    let corrected = correctedWords.join(" ");
+    
+    // Ensure proper capitalization at the start
+    if (corrected.length > 0) {
+      corrected = corrected.charAt(0).toUpperCase() + corrected.slice(1);
+    }
+    
+    // Add period at the end if not present
+    if (!corrected.endsWith(".") && !corrected.endsWith("!") && !corrected.endsWith("?")) {
+      corrected += ".";
+    }
+
+    return corrected;
   };
 
   // Process detection result with language-specific logic
@@ -1121,13 +1206,6 @@ export default function SignDetectionScreen() {
             ) : null
           ) : null}
 
-          {/* Detection Feedback */}
-          {detectionFeedback ? (
-            <ThemedText style={styles.detectionFeedbackText}>
-              {detectionFeedback}
-            </ThemedText>
-          ) : null}
-
           {/* Current Sentence Being Built */}
           {currentSentence ? (
             <View style={styles.currentSentenceContainer}>
@@ -1137,14 +1215,21 @@ export default function SignDetectionScreen() {
               <ThemedText style={styles.currentSentenceText}>
                 {currentSentence}
               </ThemedText>
-              <View style={styles.signSequenceContainer}>
+              {/*<View style={styles.signSequenceContainer}>
                 {signSequence.map((sign, index) => (
                   <View key={index} style={styles.signChip}>
                     <ThemedText style={styles.signChipText}>{sign}</ThemedText>
                   </View>
                 ))}
-              </View>
+              </View>*/}
             </View>
+          ) : null}
+
+          {/* Detection Feedback */}
+          {detectionFeedback ? (
+            <ThemedText style={styles.detectionFeedbackText}>
+              {detectionFeedback}
+            </ThemedText>
           ) : null}
         </ThemedView>
       )}
@@ -1152,12 +1237,27 @@ export default function SignDetectionScreen() {
       {/* Finalized Sentence Display */}
       {translatedText ? (
         <ThemedView style={styles.textContainer}>
-          <ThemedText style={styles.sectionTitle}>
-            Translated Sentence
-          </ThemedText>
+          <View style={styles.sectionTitleContainer}>
+            <ThemedText style={styles.sectionTitle}>
+              Translated Sentence
+            </ThemedText>
+            <View style={styles.grammarToggleContainer}>
+              <ThemedText style={styles.grammarToggleLabel}>
+                Grammar
+              </ThemedText>
+              <Switch
+                value={grammarCorrectionEnabled}
+                onValueChange={setGrammarCorrectionEnabled}
+                trackColor={{ false: "#D1D5DB", true: "#3B82F6" }}
+                thumbColor={grammarCorrectionEnabled ? "#FFFFFF" : "#F3F4F6"}
+              />
+            </View>
+          </View>
           <ThemedView style={styles.textBox}>
             <ThemedText style={styles.translatedText}>
-              {translatedText}
+              {grammarCorrectionEnabled
+                ? applyGrammarCorrection(translatedText)
+                : translatedText}
             </ThemedText>
           </ThemedView>
           <View style={styles.speechButtonContainer}>
@@ -1534,16 +1634,31 @@ const styles = StyleSheet.create({
     color: "#6B7280",
   },
   currentSentenceText: {
-    fontSize: 16,
+    fontSize: 20,
     fontWeight: "600",
     color: "#111827",
     marginTop: 4,
+  },
+  sectionTitleContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 12,
   },
   sectionTitle: {
     fontSize: 18,
     fontWeight: "600",
     color: "#374151",
-    marginBottom: 12,
+  },
+  grammarToggleContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  grammarToggleLabel: {
+    fontSize: 14,
+    fontWeight: "500",
+    color: "#6B7280",
   },
   speechButtonContainer: {
     alignItems: "center", // Center the button
