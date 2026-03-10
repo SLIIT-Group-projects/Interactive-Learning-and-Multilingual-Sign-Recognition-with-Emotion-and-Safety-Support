@@ -30,7 +30,7 @@ export function getBaseUrl(): string {
     // Find your IP: Windows: ipconfig | Mac/Linux: ifconfig
     // Look for IPv4 Address (Windows) or inet (Mac/Linux) - should start with 192.168. or 10.
     if (isExpoGo) {
-      const deviceUrl = process.env.EXPO_PUBLIC_API_URL || "http://192.168.8.151:5000"; // ✅ Updated to match backend port 5000
+      const deviceUrl = process.env.EXPO_PUBLIC_API_URL || "http://192.168.1.9:5000"; // ✅ Updated to match backend port 5000
       console.log(`[API] Expo Go detected (real device). Using: ${deviceUrl}`);
       console.log(`[API] ⚠️ If connection fails, create .env file in frontend/ with:`);
       console.log(`[API] EXPO_PUBLIC_API_URL=http://YOUR_COMPUTER_IP:5000`);
@@ -52,8 +52,8 @@ export function getBaseUrl(): string {
           "Create a .env file with: EXPO_PUBLIC_API_URL=http://<your-laptop-ip>:5000"
         );
         // Try common IPs (update if your IP is different)
-        // ✅ Updated to your IP: 192.168.8.151
-        const possibleIPs = ["192.168.8.151", "192.168.1.9"]; // ✅ Your IP: 192.168.8.151
+        // ✅ Updated to your IP: 192.168.1.9
+        const possibleIPs = ["192.168.1.9", "192.168.1.9"]; // ✅ Your IP: 192.168.1.9
         const selectedIP = possibleIPs[0];
         console.warn(`[API] Real Android device detected. Using laptop IP: ${selectedIP}`);
         console.warn(`[API] If connection fails, update EXPO_PUBLIC_API_URL in .env file`);

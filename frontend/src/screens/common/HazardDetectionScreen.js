@@ -72,6 +72,18 @@ export default function HazardDetectionScreen() {
   const safetyCheckTimeoutRef = useRef(null);
   const LOCATION_FETCH_COOLDOWN_MS = 60 * 1000;
   const SAFETY_CHECK_DELAY_MS = 15000;
+  const TRAIN_CONFIRMATION_WINDOW = 5;
+  const TRAIN_REQUIRED_MATCHES = 3;
+
+  const getRecentMatchCount = (hazardType, windowSize) => {
+    const recentDetections = detectionHistoryRef.current.slice(-windowSize);
+    const sameTypeCount = recentDetections.filter((d) => d.type === hazardType).length;
+
+    return {
+      sameTypeCount,
+      windowCount: recentDetections.length,
+    };
+  };
 
   const getAlertColor = (urgency) => {
     switch (urgency) {
@@ -104,11 +116,11 @@ export default function HazardDetectionScreen() {
 
   // Helper function to safely clear alert message (never clears critical alerts)
   const safeClearAlertMessage = () => {
-    // Use refs for reliable checking (survives React state updates)
+    // Only treat as critical when the explicit critical flag is active.
     const currentPriority = currentAlertPriorityRef.current || detections?.highestPriority?.priority || 0;
-    const isCurrentlyCritical = criticalAlertRef.current || isCriticalAlert || currentPriority >= 9;
+    const isCurrentlyCritical = criticalAlertRef.current || isCriticalAlert;
 
-    if (currentPriority < 9 && !isCurrentlyCritical) {
+    if (!isCurrentlyCritical) {
       setAlertMessage(null);
       currentAlertMessageRef.current = null;
       return true; // Cleared successfully
@@ -757,7 +769,7 @@ export default function HazardDetectionScreen() {
         // This prevents lower priority detections from overwriting critical alerts
         // Use refs for reliable checking (survives React state updates)
         const currentCriticalPriority = currentAlertPriorityRef.current || detections?.highestPriority?.priority || 0;
-        const hasActiveCriticalAlert = criticalAlertRef.current || isCriticalAlert || currentCriticalPriority >= 9;
+        const hasActiveCriticalAlert = criticalAlertRef.current || isCriticalAlert;
         const newPriority = response.data.highestPriority?.priority || 0;
         const isNewDetectionCritical = newPriority >= 9;
 
@@ -864,50 +876,55 @@ export default function HazardDetectionScreen() {
             let shouldAlert = false;
             let alertReason = '';
 
-            // Rule 1: Critical hazards (fire, gunshot) with VERY high confidence - alert immediately
-            // Increased from 0.75 to 0.80 to reduce false positives
-            if (priority >= 9 && confidence >= 0.80) {
+            // Special rule for train: require 3 detections within the last 5 frames.
+            if (hazardType === 'train') {
+              const { sameTypeCount, windowCount } = getRecentMatchCount(
+                hazardType,
+                TRAIN_CONFIRMATION_WINDOW
+              );
+
+              if (windowCount < TRAIN_CONFIRMATION_WINDOW) {
+                console.log(`⏳ train needs ${TRAIN_CONFIRMATION_WINDOW} frames before vote (${windowCount}/${TRAIN_CONFIRMATION_WINDOW})`);
+              } else if (confidence < 0.65) {
+                console.log(`⏭️ Skipping train - confidence too low (${(confidence * 100).toFixed(0)}% < 65%)`);
+              } else if (sameTypeCount >= TRAIN_REQUIRED_MATCHES) {
+                shouldAlert = true;
+                alertReason = `Train confirmed by ${sameTypeCount}/${TRAIN_CONFIRMATION_WINDOW} recent frames`;
+              } else {
+                console.log(`⏳ train needs more votes (${sameTypeCount}/${TRAIN_REQUIRED_MATCHES} in last ${TRAIN_CONFIRMATION_WINDOW} frames)`);
+              }
+            } else if (priority >= 9 && confidence >= 0.80) {
+              // Rule 1: Critical hazards (fire, gunshot) with VERY high confidence - alert immediately
               shouldAlert = true;
               alertReason = `Critical hazard with very high confidence (${(confidence * 100).toFixed(0)}%)`;
               console.log(`✅ Rule 1 matched: priority ${priority} >= 9, confidence ${(confidence * 100).toFixed(1)}% >= 80%`);
-            }
-            // Rule 2: High priority hazards (siren, glass breaking) with high confidence - alert immediately
-            // Increased from 0.70 to 0.75 to reduce false positives
-            else if (priority >= 7 && confidence >= 0.75) {
+            } else if (priority >= 7 && confidence >= 0.75) {
+              // Rule 2: High priority hazards (siren, glass breaking) with high confidence - alert immediately
               shouldAlert = true;
               alertReason = `High priority hazard with high confidence (${(confidence * 100).toFixed(0)}%)`;
               console.log(`✅ Rule 2 matched: priority ${priority} >= 7, confidence ${(confidence * 100).toFixed(1)}% >= 75%`);
-            }
-            // Rule 3: Medium-high confidence (0.70-0.75) - require 2 out of last 3 detections to be same type
-            // Increased threshold from 0.60-0.70 to 0.70-0.75
-            else if (confidence >= 0.70 && confidence < 0.75) {
-              const recentSameType = detectionHistoryRef.current
-                .filter(d => d.type === hazardType)
-                .slice(-3); // Last 3 detections
+            } else if (confidence >= 0.70 && confidence < 0.75) {
+              // Rule 3: Medium-high confidence - require 2 matches in last 3 frames
+              const { sameTypeCount, windowCount } = getRecentMatchCount(hazardType, 3);
 
-              if (recentSameType.length >= 2) {
+              if (windowCount >= 3 && sameTypeCount >= 2) {
                 shouldAlert = true;
-                alertReason = `Confirmed by ${recentSameType.length} recent detections (confidence: ${(confidence * 100).toFixed(0)}%)`;
+                alertReason = `Confirmed by ${sameTypeCount}/3 recent detections (confidence: ${(confidence * 100).toFixed(0)}%)`;
               } else {
-                console.log(`⏳ ${hazardType} needs confirmation (${recentSameType.length}/2 detections, confidence: ${(confidence * 100).toFixed(0)}%)`);
+                console.log(`⏳ ${hazardType} needs confirmation (${sameTypeCount}/2 in last ${windowCount}/3 frames, confidence: ${(confidence * 100).toFixed(0)}%)`);
               }
-            }
-            // Rule 4: Medium confidence (0.65-0.70) - require 3 out of last 5 detections
-            // Increased threshold from 0.50-0.60 to 0.65-0.70
-            else if (confidence >= 0.65 && confidence < 0.70) {
-              const recentSameType = detectionHistoryRef.current
-                .filter(d => d.type === hazardType)
-                .slice(-5); // Last 5 detections
+            } else if (confidence >= 0.65 && confidence < 0.70) {
+              // Rule 4: Medium confidence - require 3 matches in last 5 frames
+              const { sameTypeCount, windowCount } = getRecentMatchCount(hazardType, 5);
 
-              if (recentSameType.length >= 3) {
+              if (windowCount >= 5 && sameTypeCount >= 3) {
                 shouldAlert = true;
-                alertReason = `Confirmed by ${recentSameType.length} recent detections (confidence: ${(confidence * 100).toFixed(0)}%)`;
+                alertReason = `Confirmed by ${sameTypeCount}/5 recent detections (confidence: ${(confidence * 100).toFixed(0)}%)`;
               } else {
-                console.log(`⏳ ${hazardType} needs more confirmation (${recentSameType.length}/3 detections, confidence: ${(confidence * 100).toFixed(0)}%)`);
+                console.log(`⏳ ${hazardType} needs more confirmation (${sameTypeCount}/3 in last ${windowCount}/5 frames, confidence: ${(confidence * 100).toFixed(0)}%)`);
               }
-            }
-            // Rule 5: Very low confidence - don't alert (increased minimum from 0.50 to 0.65)
-            else {
+            } else {
+              // Rule 5: Very low confidence - don't alert
               console.log(`⏭️ Skipping ${hazardType} - confidence too low (${(confidence * 100).toFixed(0)}% < 65%)`);
             }
 
@@ -915,7 +932,7 @@ export default function HazardDetectionScreen() {
             // CRITICAL: Also check that we're not replacing a higher priority alert
             // Use refs for reliable checking (survives React state updates)
             const existingAlertPriority = currentAlertPriorityRef.current || detections?.highestPriority?.priority || 0;
-            const existingAlertIsCritical = criticalAlertRef.current || isCriticalAlert || existingAlertPriority >= 9;
+            const existingAlertIsCritical = criticalAlertRef.current || isCriticalAlert;
             // Can replace if: 
             // 1. No existing alert (priority 0), OR
             // 2. New priority is >= existing priority (higher or equal priority can replace)
@@ -1299,7 +1316,7 @@ export default function HazardDetectionScreen() {
     // Don't auto-dismiss critical alerts - they must be explicitly dismissed by user
     // Use refs for reliable checking (survives React state updates)
     const currentPriority = currentAlertPriorityRef.current || detections?.highestPriority?.priority || 0;
-    if (criticalAlertRef.current || isCriticalAlert || currentPriority >= 9) {
+    if (criticalAlertRef.current || isCriticalAlert) {
       console.log('⚠️ Critical alert cannot be auto-dismissed - user must explicitly dismiss');
       return;
     }
@@ -1390,7 +1407,7 @@ export default function HazardDetectionScreen() {
 
   const dismissAlert = () => {
     const currentPriority = currentAlertPriorityRef.current || detections?.highestPriority?.priority || 0;
-    const wasCritical = criticalAlertRef.current || isCriticalAlert || currentPriority >= 9;
+    const wasCritical = criticalAlertRef.current || isCriticalAlert;
 
     // Stop any ongoing alerts
     if (hazardAlertService && typeof hazardAlertService.stopAlert === 'function') {
@@ -1702,7 +1719,7 @@ export default function HazardDetectionScreen() {
         )}
 
         {/* Critical Alert Full Screen Overlay - Must stay until child responds */}
-        {alertMessage && detections?.highestPriority && detections.highestPriority.priority >= 9 && (
+        {alertMessage && detections?.highestPriority && isCriticalAlert && (
           <View style={styles.criticalOverlay} pointerEvents="box-none">
             {/* Pulsing red background */}
             <Animated.View
@@ -1765,7 +1782,7 @@ export default function HazardDetectionScreen() {
         )}
 
         {/* Half-Screen Pop-up Alert for Hazards */}
-        {alertMessage && detections?.highestPriority && detections.highestPriority.priority < 9 && (
+        {alertMessage && detections?.highestPriority && !isCriticalAlert && (
           <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
             {/* Backdrop - darker for better visibility */}
             <Animated.View
