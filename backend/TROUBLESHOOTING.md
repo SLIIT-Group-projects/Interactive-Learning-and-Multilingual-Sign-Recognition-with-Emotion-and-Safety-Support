@@ -31,7 +31,7 @@ This means your app cannot connect to the backend server. Follow these steps:
 1. Open Command Prompt or PowerShell
 2. Run: `ipconfig`
 3. Look for "IPv4 Address" under your active network adapter
-4. Example: `192.168.1.9`
+4. Example: `192.168.8.151`
 
 Or double-click `get_ip_address.bat` in the backend folder
 
@@ -56,7 +56,7 @@ ip addr show | grep "inet "
 
 1. In the app, tap **"Configure API"** button
 2. Enter your IP address: `http://YOUR_IP:5000`
-   - Example: `http://192.168.1.9:5000`
+   - Example: `http://192.168.8.151:5000`
 3. Tap **"Test Connection"** to verify
 4. You should see: "Connected! Model loaded: Yes"
 

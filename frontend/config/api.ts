@@ -53,7 +53,7 @@ export function getBaseUrl(): string {
         );
         // Try common IPs (update if your IP is different)
         // ✅ Updated to your IP: 192.168.8.151
-        const possibleIPs = ["192.168.8.151", "192.168.1.9"]; // ✅ Your IP: 192.168.8.151
+        const possibleIPs = ["192.168.8.151", "192.168.8.151"]; // ✅ Your IP: 192.168.8.151
         const selectedIP = possibleIPs[0];
         console.warn(`[API] Real Android device detected. Using laptop IP: ${selectedIP}`);
         console.warn(`[API] If connection fails, update EXPO_PUBLIC_API_URL in .env file`);
@@ -76,7 +76,7 @@ export function getBaseUrl(): string {
           "⚠️ Real iOS device detected but EXPO_PUBLIC_API_URL not set. " +
           "Create a .env file with: EXPO_PUBLIC_API_URL=http://<your-laptop-ip>:5000"
         );
-        return "http://192.168.1.9:5000"; // ✅ Updated to match backend port 5000
+        return "http://192.168.8.151:5000"; // ✅ Updated to match backend port 5000
       } else {
         // iOS simulator can use localhost
         return "http://localhost:5000";
@@ -93,7 +93,7 @@ export function getBaseUrl(): string {
 
 /**
  * For real devices, you need to use your laptop's IP address
- * Example: http://192.168.1.9:5000
+ * Example: http://192.168.8.151:5000
  * Set this via environment variable or modify the function above
  */
 export function getBaseUrlForRealDevice(ipAddress?: string): string {

@@ -52,7 +52,7 @@ If testing on a **physical device** (not emulator), you need to update the API U
 
    ```javascript
    const API_URL = "http://YOUR_IP_ADDRESS:5000";
-   // Example: const API_URL = 'http://192.168.1.9:5000';
+   // Example: const API_URL = 'http://192.168.8.151:5000';
    ```
 
 3. Make sure your phone and computer are on the **same WiFi network**

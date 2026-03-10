@@ -47,7 +47,7 @@ The server will start on `http://localhost:5000`
    - **Windows**: Open Command Prompt and run `ipconfig` (look for IPv4 Address)
    - **Mac/Linux**: Run `ifconfig` or `ip addr` in terminal
 2. In the app, tap "Configure API" and enter: `http://YOUR_IP:5000`
-   - Example: `http://192.168.1.9:5000`
+   - Example: `http://192.168.8.151:5000`
 
 3. Make sure your phone and computer are on the same Wi-Fi network
 

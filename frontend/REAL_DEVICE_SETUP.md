@@ -14,7 +14,7 @@ When testing on a real phone (not emulator), the app can't connect to the backen
 ipconfig
 ```
 
-Look for "IPv4 Address" under your active network adapter (usually WiFi or Ethernet). It will look like `192.168.1.9` or `192.168.1.10`.
+Look for "IPv4 Address" under your active network adapter (usually WiFi or Ethernet). It will look like `192.168.8.151` or `192.168.1.10`.
 
 **Mac/Linux:**
 
@@ -33,10 +33,10 @@ You have **3 options**:
 1. Create a `.env` file in the `frontend` folder:
 
 ```env
-EXPO_PUBLIC_API_URL=http://192.168.1.9:5000
+EXPO_PUBLIC_API_URL=http://192.168.8.151:5000
 ```
 
-(Replace `192.168.1.9` with YOUR laptop's IP)
+(Replace `192.168.8.151` with YOUR laptop's IP)
 
 2. Restart Expo:
 
@@ -49,10 +49,10 @@ npm start
 Find this line (around line 31):
 
 ```typescript
-return "http://192.168.1.9:5000";
+return "http://192.168.8.151:5000";
 ```
 
-Replace `192.168.1.9` with your laptop's IP address.
+Replace `192.168.8.151` with your laptop's IP address.
 
 #### Option C: Use app.config.js
 
@@ -63,7 +63,7 @@ export default {
   expo: {
     // ... existing config ...
     extra: {
-      apiUrl: process.env.EXPO_PUBLIC_API_URL || "http://192.168.1.9:5000",
+      apiUrl: process.env.EXPO_PUBLIC_API_URL || "http://192.168.8.151:5000",
     },
   },
 };
@@ -86,7 +86,7 @@ The backend should be listening on `0.0.0.0:5000` (which allows connections from
 ### Step 5: Test Connection
 
 1. On your phone, try opening in browser: `http://YOUR_LAPTOP_IP:5000/health`
-   - Example: `http://192.168.1.9:5000/health`
+   - Example: `http://192.168.8.151:5000/health`
    - You should see: `{"status":"ok","timestamp":"...","service":"..."}`
 
 2. If that works, restart your Expo app and try again.
@@ -116,7 +116,7 @@ The backend should be listening on `0.0.0.0:5000` (which allows connections from
 
 Based on your system, your laptop's IP addresses are:
 
-- `192.168.1.9` (most likely)
+- `192.168.8.151` (most likely)
 - `192.168.1.10`
 
-The code is currently set to use `192.168.1.9`. If your phone still can't connect, try `192.168.1.10` or check which IP your WiFi adapter is actually using.
+The code is currently set to use `192.168.8.151`. If your phone still can't connect, try `192.168.1.10` or check which IP your WiFi adapter is actually using.
