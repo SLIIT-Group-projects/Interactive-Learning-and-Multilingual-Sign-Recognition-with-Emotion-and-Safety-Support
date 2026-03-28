@@ -47,7 +47,11 @@ class ApiService {
     if (error.response) {
       // Server responded with error status
       const message = (error.response.data as any)?.error?.message || error.message;
-      return new Error(message);
+      const normalizedError: any = new Error(message);
+      normalizedError.statusCode = error.response.status;
+      normalizedError.serverErrorCode = (error.response.data as any)?.error?.code || null;
+      normalizedError.retryAfterMs = (error.response.data as any)?.error?.retryAfterMs || null;
+      return normalizedError;
     } else if (error.request) {
       // Request made but no response received
       const platform = require('react-native').Platform.OS;

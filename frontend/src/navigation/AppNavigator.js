@@ -39,7 +39,10 @@ export default function AppNavigator({ navigationRef }) {
     return notification?.type === 'critical_hazard_alert' || Number(notification?.priority || 0) >= 9;
   };
 
-  const checkForCriticalNotifications = async ({ initializeOnly = false } = {}) => {
+  /**
+   * One-time check for notifications to populate seen IDs
+   */
+  const initializeSeenNotifications = async () => {
     if (!userData?.uid || isCheckingNotificationsRef.current) return;
 
     isCheckingNotificationsRef.current = true;
@@ -49,25 +52,11 @@ export default function AppNavigator({ navigationRef }) {
         limit: 20,
       });
 
-      if (initializeOnly) {
-        notifications.forEach((item) => {
-          shownCriticalNotificationIdsRef.current.add(item.id);
-        });
-        return;
-      }
-
-      const newestUnseenCritical = notifications.find(
-        (item) =>
-          isCriticalNotification(item) &&
-          !shownCriticalNotificationIdsRef.current.has(item.id)
-      );
-
-      if (newestUnseenCritical) {
-        shownCriticalNotificationIdsRef.current.add(newestUnseenCritical.id);
-        setCriticalOverlayAlert(newestUnseenCritical);
-      }
+      notifications.forEach((item) => {
+        shownCriticalNotificationIdsRef.current.add(item.id);
+      });
     } catch (error) {
-      console.error('Error checking critical notifications:', error);
+      console.error('Error initializing seen notifications:', error);
     } finally {
       isCheckingNotificationsRef.current = false;
     }
@@ -81,16 +70,43 @@ export default function AppNavigator({ navigationRef }) {
   useEffect(() => {
     if (!isAuthenticated || !isParent || !userData?.uid) return undefined;
 
+    // Register for push notifications
     registerPushToken(userData.uid).catch((error) => {
-      // Only log as error if it's not the expected projectId missing error
       if (!error?.message?.includes('projectId')) {
         console.error('Error registering push token:', error);
       }
-      // Otherwise, the pushNotification service already logged a warning
     });
 
-    checkForCriticalNotifications({ initializeOnly: true });
+    // Populate initially seen notifications to avoid old alerts popping up
+    initializeSeenNotifications();
 
+    // Subscribe to real-time notifications
+    const unsubscribeNotifications = notificationService.subscribeToNotifications(
+      userData.uid,
+      (notifications) => {
+        // Handle incoming critical notifications
+        const newestUnseenCritical = notifications.find(
+          (item) =>
+            isCriticalNotification(item) &&
+            !shownCriticalNotificationIdsRef.current.has(item.id)
+        );
+
+        if (newestUnseenCritical) {
+          shownCriticalNotificationIdsRef.current.add(newestUnseenCritical.id);
+          setCriticalOverlayAlert(newestUnseenCritical);
+        }
+
+        // Keep seen IDs updated
+        notifications.forEach(item => {
+          if (isCriticalNotification(item)) {
+            shownCriticalNotificationIdsRef.current.add(item.id);
+          }
+        });
+      },
+      { unreadOnly: true, limit: 10 }
+    );
+
+    // Set up Expo notification listeners
     const cleanupNotificationListener = setupNotificationListener(
       { navigate: navigateToHazardHistory },
       {
@@ -103,13 +119,9 @@ export default function AppNavigator({ navigationRef }) {
       }
     );
 
-    const pollInterval = setInterval(() => {
-      checkForCriticalNotifications();
-    }, 5000);
-
     return () => {
       cleanupNotificationListener?.();
-      clearInterval(pollInterval);
+      unsubscribeNotifications?.();
     };
   }, [isAuthenticated, isParent, userData?.uid, navigateToHazardHistory]);
 
@@ -317,4 +329,3 @@ export default function AppNavigator({ navigationRef }) {
     </>
   );
 }
-

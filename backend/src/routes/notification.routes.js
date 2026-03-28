@@ -4,6 +4,18 @@ import { db } from '../firebase/admin.js';
 const router = express.Router();
 const NOTIFICATIONS_COLLECTION = 'notifications';
 const USERS_COLLECTION = 'users';
+const MAX_NOTIFICATION_LIMIT = 200;
+
+const parsePositiveInt = (value, fallback) => {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+};
+
+const isQuotaExceededError = (error) => {
+  const code = error?.code;
+  const message = String(error?.message || '').toLowerCase();
+  return code === 8 || code === 'resource-exhausted' || message.includes('resource_exhausted') || message.includes('quota exceeded');
+};
 
 /**
  * GET /api/notifications
@@ -26,6 +38,10 @@ router.get('/', async (req, res, next) => {
       });
     }
 
+    const safeLimit = Math.min(parsePositiveInt(limit, 50), MAX_NOTIFICATION_LIMIT);
+    const safeOffset = parsePositiveInt(offset, 0);
+    const fetchSize = Math.min(safeLimit + safeOffset, MAX_NOTIFICATION_LIMIT);
+
     let query = db.collection(NOTIFICATIONS_COLLECTION)
       .where('parentId', '==', parentId);
 
@@ -33,8 +49,8 @@ router.get('/', async (req, res, next) => {
       query = query.where('read', '==', false);
     }
 
-    // Fetch all matching documents
-    const snapshot = await query.get();
+    // Fetch only a bounded number of documents to avoid large Firestore reads.
+    const snapshot = await query.limit(fetchSize).get();
 
     // Convert to array and sort in memory
     let notifications = [];
@@ -53,7 +69,7 @@ router.get('/', async (req, res, next) => {
     });
 
     // Apply pagination
-    const paginated = notifications.slice(parseInt(offset), parseInt(offset) + parseInt(limit));
+    const paginated = notifications.slice(safeOffset, safeOffset + safeLimit);
 
     res.json({
       success: true,
@@ -61,6 +77,15 @@ router.get('/', async (req, res, next) => {
       total: notifications.length,
     });
   } catch (error) {
+    if (isQuotaExceededError(error)) {
+      return res.status(429).json({
+        error: {
+          message: 'Notification service is temporarily rate-limited. Please retry shortly.',
+          code: 'RESOURCE_EXHAUSTED',
+          retryAfterMs: 60000,
+        },
+      });
+    }
     next(error);
   }
 });

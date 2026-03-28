@@ -71,9 +71,13 @@ export default function HazardDetectionScreen() {
   const criticalHazardTypeRef = useRef(null);
   const safetyCheckTimeoutRef = useRef(null);
   const LOCATION_FETCH_COOLDOWN_MS = 60 * 1000;
+  const LOCATION_UPDATE_INTERVAL_MS = 15 * 1000;
   const SAFETY_CHECK_DELAY_MS = 15000;
+  const locationPermissionGrantedRef = useRef(null);
   const TRAIN_CONFIRMATION_WINDOW = 5;
   const TRAIN_REQUIRED_MATCHES = 3;
+  const CRACKLING_FIRE_CONFIRMATION_WINDOW = 5;
+  const CRACKLING_FIRE_REQUIRED_MATCHES = 5;
 
   const getRecentMatchCount = (hazardType, windowSize) => {
     const recentDetections = detectionHistoryRef.current.slice(-windowSize);
@@ -81,6 +85,16 @@ export default function HazardDetectionScreen() {
 
     return {
       sameTypeCount,
+      windowCount: recentDetections.length,
+    };
+  };
+
+  const getRecentPredicateMatchCount = (windowSize, predicate) => {
+    const recentDetections = detectionHistoryRef.current.slice(-windowSize);
+    const matchCount = recentDetections.filter(predicate).length;
+
+    return {
+      matchCount,
       windowCount: recentDetections.length,
     };
   };
@@ -140,19 +154,24 @@ export default function HazardDetectionScreen() {
     }
   };
 
-  const fetchLocationForCriticalAlert = async () => {
+  const getCurrentLocationForHazard = async () => {
     const now = Date.now();
 
-    // Avoid frequent GPS calls during ongoing critical state.
-    if (currentLocation && (now - lastLocationFetchRef.current) < LOCATION_FETCH_COOLDOWN_MS) {
+    // Reuse recent location to avoid frequent GPS calls.
+    if (currentLocation && (now - lastLocationFetchRef.current) < LOCATION_UPDATE_INTERVAL_MS) {
       return currentLocation;
     }
 
     try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        console.warn('⚠️ Location permission not granted for critical alert');
-        return null;
+      if (locationPermissionGrantedRef.current !== true) {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        locationPermissionGrantedRef.current = status === 'granted';
+      }
+
+      if (!locationPermissionGrantedRef.current) {
+        console.warn('⚠️ Location permission not granted for hazard detection');
+        // Fall back to last known in-memory location if available.
+        return currentLocation || null;
       }
 
       const loc = await Location.getCurrentPositionAsync({
@@ -168,11 +187,12 @@ export default function HazardDetectionScreen() {
 
       setCurrentLocation(locationData);
       lastLocationFetchRef.current = now;
-      console.log('📍 Critical alert location captured:', locationData);
+      console.log('📍 Current location captured:', locationData);
       return locationData;
     } catch (locationError) {
-      console.error('❌ Error getting critical alert location:', locationError);
-      return null;
+      console.error('❌ Error getting current location:', locationError);
+      // Don't drop location completely if GPS fails temporarily.
+      return currentLocation || null;
     }
   };
 
@@ -731,11 +751,8 @@ export default function HazardDetectionScreen() {
       // Get user ID from auth context
       const userId = userData?.uid || null;
 
-      // Battery optimization: include location only while a critical alert is active.
-      let locationData = null;
-      if (criticalAlertRef.current) {
-        locationData = await fetchLocationForCriticalAlert();
-      }
+      // Always attach the latest kid location (cached + throttled).
+      const locationData = await getCurrentLocationForHazard();
 
       // Get current context (time, location, userId, etc.)
       const context = {
@@ -788,6 +805,7 @@ export default function HazardDetectionScreen() {
         if (response.data.highestPriority) {
           const hazard = response.data.highestPriority;
           const hazardType = hazard.type;
+          const originalClass = (hazard.original_class || hazard.originalClass || '').toLowerCase();
           // Get confidence, priority, and urgency - with fallbacks
           const confidence = hazard.confidence || 0;
           // If priority is missing, try to get it from detections array or use default
@@ -809,6 +827,7 @@ export default function HazardDetectionScreen() {
             const now = Date.now();
             const detection = {
               type: hazardType,
+              originalClass,
               confidence,
               priority,
               timestamp: now
@@ -876,8 +895,24 @@ export default function HazardDetectionScreen() {
             let shouldAlert = false;
             let alertReason = '';
 
-            // Special rule for train: require 3 detections within the last 5 frames.
-            if (hazardType === 'train') {
+            // Special rule for crackling_fire mapped to fire_alarm: require 5/5 confirmation.
+            if (hazardType === 'fire_alarm' && originalClass === 'crackling_fire') {
+              const { matchCount, windowCount } = getRecentPredicateMatchCount(
+                CRACKLING_FIRE_CONFIRMATION_WINDOW,
+                (d) => d.type === 'fire_alarm' && d.originalClass === 'crackling_fire'
+              );
+
+              if (windowCount < CRACKLING_FIRE_CONFIRMATION_WINDOW) {
+                console.log(`⏳ crackling_fire→fire_alarm needs ${CRACKLING_FIRE_CONFIRMATION_WINDOW} frames (${windowCount}/${CRACKLING_FIRE_CONFIRMATION_WINDOW})`);
+              } else if (confidence < 0.65) {
+                console.log(`⏭️ Skipping crackling_fire→fire_alarm - confidence too low (${(confidence * 100).toFixed(0)}% < 65%)`);
+              } else if (matchCount >= CRACKLING_FIRE_REQUIRED_MATCHES) {
+                shouldAlert = true;
+                alertReason = `Fire confirmed from crackling_fire by ${matchCount}/${CRACKLING_FIRE_CONFIRMATION_WINDOW} frames`;
+              } else {
+                console.log(`⏳ crackling_fire→fire_alarm needs more confirmation (${matchCount}/${CRACKLING_FIRE_REQUIRED_MATCHES} in last ${CRACKLING_FIRE_CONFIRMATION_WINDOW} frames)`);
+              }
+            } else if (hazardType === 'train') {
               const { sameTypeCount, windowCount } = getRecentMatchCount(
                 hazardType,
                 TRAIN_CONFIRMATION_WINDOW
@@ -894,12 +929,12 @@ export default function HazardDetectionScreen() {
                 console.log(`⏳ train needs more votes (${sameTypeCount}/${TRAIN_REQUIRED_MATCHES} in last ${TRAIN_CONFIRMATION_WINDOW} frames)`);
               }
             } else if (priority >= 9 && confidence >= 0.80) {
-              // Rule 1: Critical hazards (fire, gunshot) with VERY high confidence - alert immediately
+            // Rule 1: Critical hazards (fire, gunshot) with VERY high confidence - alert immediately
               shouldAlert = true;
               alertReason = `Critical hazard with very high confidence (${(confidence * 100).toFixed(0)}%)`;
               console.log(`✅ Rule 1 matched: priority ${priority} >= 9, confidence ${(confidence * 100).toFixed(1)}% >= 80%`);
             } else if (priority >= 7 && confidence >= 0.75) {
-              // Rule 2: High priority hazards (siren, glass breaking) with high confidence - alert immediately
+            // Rule 2: High priority hazards (siren, glass breaking) with high confidence - alert immediately
               shouldAlert = true;
               alertReason = `High priority hazard with high confidence (${(confidence * 100).toFixed(0)}%)`;
               console.log(`✅ Rule 2 matched: priority ${priority} >= 7, confidence ${(confidence * 100).toFixed(1)}% >= 75%`);
@@ -995,7 +1030,7 @@ export default function HazardDetectionScreen() {
                   }
 
                   // Capture GPS only for critical alerts (avoids per-chunk battery drain).
-                  const criticalLocation = await fetchLocationForCriticalAlert();
+                  const criticalLocation = await getCurrentLocationForHazard();
                   if (criticalLocation) {
                     hazard.location = criticalLocation;
                   }

@@ -25,6 +25,61 @@ const FALSE_POSITIVE_TYPES = ['silence', 'background_noise', 'noise', 'static', 
 // Deduplicate repeated detections/alerts (same user + hazard type within this window)
 const SOUND_DEDUP_WINDOW_MS = parseInt(process.env.SOUND_DEDUP_WINDOW_MS || '60000', 10);
 const PARENT_ALERT_DEDUP_WINDOW_MS = parseInt(process.env.PARENT_ALERT_DEDUP_WINDOW_MS || '60000', 10);
+const CRACKLING_FIRE_CONFIRMATION_FRAMES = parseInt(process.env.CRACKLING_FIRE_CONFIRMATION_FRAMES || '5', 10);
+const cracklingFireVotesByUser = new Map();
+const PARENT_CRITICAL_MIN_CONFIDENCE = parseFloat(process.env.PARENT_CRITICAL_MIN_CONFIDENCE || '0.80');
+
+function isNightTimeNow() {
+  const hour = new Date().getHours();
+  return hour >= 22 || hour < 6;
+}
+
+function isWhitelistedCriticalTypeForParent(hazardType) {
+  const criticalTypes = new Set(['fire_alarm', 'smoke_alarm', 'gun_shot', 'siren']);
+  // Keep parity with child screen rule: dog_barking is critical only at night.
+  if (isNightTimeNow()) {
+    criticalTypes.add('dog_barking');
+  }
+  return criticalTypes.has(hazardType);
+}
+
+function shouldNotifyParentForDetection(detection, priority) {
+  const hazardType = String(detection?.type || '').toLowerCase();
+  const confidence = Number(detection?.confidence || 0);
+
+  // Parent should only receive truly critical alerts that child would see as critical.
+  return (
+    priority >= 9 &&
+    confidence >= PARENT_CRITICAL_MIN_CONFIDENCE &&
+    isWhitelistedCriticalTypeForParent(hazardType)
+  );
+}
+
+function isCracklingFireMappedToFireAlarm(detection) {
+  const hazardType = (detection?.type || '').toLowerCase();
+  const originalClass = String(detection?.original_class || detection?.originalClass || '').toLowerCase();
+  return hazardType === 'fire_alarm' && originalClass === 'crackling_fire';
+}
+
+function updateCracklingFireVote(userId, detections = []) {
+  if (!userId) {
+    return { matched: false, count: 0, confirmed: false };
+  }
+
+  const matched = Array.isArray(detections) && detections.some(isCracklingFireMappedToFireAlarm);
+  const previous = cracklingFireVotesByUser.get(userId) || 0;
+  const nextCount = matched
+    ? Math.min(previous + 1, CRACKLING_FIRE_CONFIRMATION_FRAMES)
+    : 0;
+
+  cracklingFireVotesByUser.set(userId, nextCount);
+
+  return {
+    matched,
+    count: nextCount,
+    confirmed: nextCount >= CRACKLING_FIRE_CONFIRMATION_FRAMES,
+  };
+}
 
 async function hasRecentDuplicateSound(userId, hazardType, dedupWindowMs = SOUND_DEDUP_WINDOW_MS) {
   if (!userId || !hazardType || dedupWindowMs <= 0) return false;
@@ -123,6 +178,7 @@ async function saveSoundsToDatabase(detections, context = {}, audioFileUrl = nul
       }
 
       const isCriticalAlert = (basePriority >= 9 || calculatedPriority >= 9);
+      const isCracklingFireMappedAlert = isCracklingFireMappedToFireAlarm(detection);
 
       // Skip duplicate records for rapid repeated detections of the same hazard.
       if (hasUserId) {
@@ -196,8 +252,23 @@ async function saveSoundsToDatabase(detections, context = {}, audioFileUrl = nul
         savedSoundIds.push(docRef.id);
         console.log(`💾 Saved ${isCriticalAlert ? 'CRITICAL' : 'identified'} alert: ${hazardType} (confidence: ${confidence.toFixed(2)}, priority: ${priority}, ID: ${docRef.id})`);
         
-        // If this is a critical alert and has a userId, notify the parent
+        // If this is a critical alert and has a userId, notify the parent.
+        // Notification gating is aligned with child-side critical alert rules.
         if (isCriticalAlert && context.userId) {
+          if (!shouldNotifyParentForDetection(detection, priority)) {
+            console.log(
+              `⏭️ Skipping parent notification for ${hazardType} (priority=${priority}, confidence=${confidence.toFixed(2)}) - not a parent-notifiable critical alert`
+            );
+            continue;
+          }
+
+          if (isCracklingFireMappedAlert && !context.cracklingFireVote?.confirmed) {
+            const voteCount = context.cracklingFireVote?.count || 0;
+            console.log(
+              `⏳ Suppressing parent notification for crackling_fire→fire_alarm (${voteCount}/${CRACKLING_FIRE_CONFIRMATION_FRAMES} frames)`
+            );
+            continue;
+          }
           try {
             // Get parent ID from child user ID
             const parentId = await getParentIdFromChild(context.userId);
@@ -896,12 +967,14 @@ router.post('/detect', upload.single('audio'), async (req, res, next) => {
       location: finalLocation || context.location || null,
       time: context.time || timestamp,
     };
+    saveContext.cracklingFireVote = updateCracklingFireVote(saveContext.userId, prioritized);
     
     console.log('💾 Saving with context:', {
       userId: saveContext.userId,
       hasLocation: !!saveContext.location,
       locationType: saveContext.location?.type,
       coordinates: saveContext.location?.coordinates,
+      cracklingFireVote: saveContext.cracklingFireVote,
     });
     
     // Note: audioFileUrl is null since we delete the file after processing
@@ -925,6 +998,7 @@ router.post('/detect', upload.single('audio'), async (req, res, next) => {
           ...audioMetadata,
           savedSoundIds, // Include IDs of saved sound records
           highestPrioritySoundId: savedSoundIds.length > 0 ? savedSoundIds[0] : null,
+          cracklingFireVote: saveContext.cracklingFireVote,
         }
       }
     };
@@ -1029,9 +1103,16 @@ router.post('/detect-stream', upload.array('audio', 10), async (req, res, next) 
       processingMode: 'stream',
     };
 
+    const saveContext = {
+      ...context,
+      userId: context.userId || req.body.userId,
+      location: finalLocation,
+    };
+    saveContext.cracklingFireVote = updateCracklingFireVote(saveContext.userId, prioritized);
+
     const savedSoundIds = await saveSoundsToDatabase(
       prioritized,
-      { ...context, userId: context.userId || req.body.userId, location: finalLocation },
+      saveContext,
       null, // audioFileUrl
       audioMetadata
     );
@@ -1049,6 +1130,7 @@ router.post('/detect-stream', upload.array('audio', 10), async (req, res, next) 
           ...audioMetadata,
           savedSoundIds,
           highestPrioritySoundId: savedSoundIds.length > 0 ? savedSoundIds[0] : null,
+          cracklingFireVote: saveContext.cracklingFireVote,
         }
       }
     });

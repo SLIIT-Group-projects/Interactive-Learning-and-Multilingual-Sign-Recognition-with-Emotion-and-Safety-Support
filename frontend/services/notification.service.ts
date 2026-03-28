@@ -1,4 +1,14 @@
 import apiService from './api.service';
+import {
+  collection,
+  query,
+  where,
+  orderBy,
+  limit,
+  onSnapshot,
+  Firestore
+} from 'firebase/firestore';
+import { db } from '../src/services/firebase/firebaseConfig';
 
 /**
  * Notification Service
@@ -125,6 +135,58 @@ class NotificationService {
     } catch (error) {
       console.error('Error getting notification by ID:', error);
       return null;
+    }
+  }
+
+  /**
+   * Subscribe to notifications for a parent in real-time
+   * @param parentId Parent user ID
+   * @param callback Callback function with notifications array
+   * @param params Query parameters
+   * @returns Unsubscribe function
+   */
+  subscribeToNotifications(
+    parentId: string,
+    callback: (notifications: Notification[]) => void,
+    params: { unreadOnly?: boolean; limit?: number } = {}
+  ): () => void {
+    if (!db) {
+      console.error('Firestore not initialized');
+      return () => { };
+    }
+
+    try {
+      const notificationsRef = collection(db as Firestore, 'notifications');
+      let q = query(
+        notificationsRef,
+        where('parentId', '==', parentId),
+        orderBy('timestamp', 'desc'),
+        limit(params.limit || 50)
+      );
+
+      if (params.unreadOnly) {
+        // Note: Firestore might require a composite index for this query (parentId == X AND read == false ORDER BY timestamp DESC)
+        // If it fails due to index, we might need to filter in memory or tell the user to create index
+        q = query(q, where('read', '==', false));
+      }
+
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        const notifications: Notification[] = [];
+        snapshot.forEach((doc) => {
+          notifications.push({
+            id: doc.id,
+            ...doc.data(),
+          } as Notification);
+        });
+        callback(notifications);
+      }, (error) => {
+        console.error('Error in notifications snapshot:', error);
+      });
+
+      return unsubscribe;
+    } catch (error) {
+      console.error('Error subscribing to notifications:', error);
+      return () => { };
     }
   }
 }
