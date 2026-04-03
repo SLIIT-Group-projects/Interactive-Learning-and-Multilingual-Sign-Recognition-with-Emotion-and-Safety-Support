@@ -18,6 +18,7 @@ const __dirname = dirname(__filename);
 const SOUNDS_COLLECTION = 'sounds';
 const USERS_COLLECTION = 'users';
 const NOTIFICATIONS_COLLECTION = 'notifications';
+const DEDUP_EVENTS_COLLECTION = 'dedup_events';
 // Minimum confidence threshold for saving detections (increased to reduce false positives)
 const MIN_CONFIDENCE_THRESHOLD = parseFloat(process.env.MIN_CONFIDENCE_THRESHOLD || '0.65');
 // False positive types to filter out
@@ -83,48 +84,57 @@ function updateCracklingFireVote(userId, detections = []) {
 
 async function hasRecentDuplicateSound(userId, hazardType, dedupWindowMs = SOUND_DEDUP_WINDOW_MS) {
   if (!userId || !hazardType || dedupWindowMs <= 0) return false;
-
-  try {
-    const snapshot = await db.collection(SOUNDS_COLLECTION)
-      .where('userId', '==', userId)
-      .where('type', '==', hazardType)
-      .limit(20)
-      .get();
-
-    const now = Date.now();
-    return snapshot.docs.some((doc) => {
-      const data = doc.data() || {};
-      const ts = new Date(data.timestamp || data.createdAt || 0).getTime();
-      return Number.isFinite(ts) && (now - ts) <= dedupWindowMs;
-    });
-  } catch (error) {
-    console.warn(`⚠️ Error checking duplicate sound for ${userId}/${hazardType}:`, error.message);
-    return false;
-  }
+  const dedupKey = `sound:${userId}:${hazardType}`;
+  return hasRecentDedupEvent(dedupKey, dedupWindowMs);
 }
 
 async function hasRecentDuplicateParentAlert(parentId, alertData, dedupWindowMs = PARENT_ALERT_DEDUP_WINDOW_MS) {
   if (!parentId || dedupWindowMs <= 0) return false;
+  const hazardType = alertData?.hazardType || 'unknown';
+  const childUserId = alertData?.childUserId || 'unknown';
+  const dedupKey = `parent_alert:${parentId}:${childUserId}:${hazardType}`;
+  return hasRecentDedupEvent(dedupKey, dedupWindowMs);
+}
+
+async function hasRecentDedupEvent(dedupKey, dedupWindowMs) {
+  if (!dedupKey || dedupWindowMs <= 0) return false;
 
   try {
-    const snapshot = await db.collection(NOTIFICATIONS_COLLECTION)
-      .where('parentId', '==', parentId)
-      .limit(50)
-      .get();
+    const dedupRef = db.collection(DEDUP_EVENTS_COLLECTION).doc(dedupKey);
+    const dedupDoc = await dedupRef.get();
+    if (!dedupDoc.exists) {
+      return false;
+    }
 
+    const data = dedupDoc.data() || {};
     const now = Date.now();
-    return snapshot.docs.some((doc) => {
-      const data = doc.data() || {};
-      if (data.type !== 'critical_hazard_alert') return false;
-      if ((data.hazardType || '') !== (alertData.hazardType || '')) return false;
-      if ((data.childUserId || '') !== (alertData.childUserId || '')) return false;
+    const lastSeenAtMs = Number(data.lastSeenAtMs || 0);
+    const fallbackTs = new Date(data.lastSeenAt || 0).getTime();
+    const ts = Number.isFinite(lastSeenAtMs) && lastSeenAtMs > 0 ? lastSeenAtMs : fallbackTs;
 
-      const ts = new Date(data.timestamp || data.createdAt || 0).getTime();
-      return Number.isFinite(ts) && (now - ts) <= dedupWindowMs;
-    });
+    return Number.isFinite(ts) && (now - ts) <= dedupWindowMs;
   } catch (error) {
-    console.warn(`⚠️ Error checking duplicate parent alert for ${parentId}:`, error.message);
+    console.warn(`⚠️ Error checking dedup state for key "${dedupKey}":`, error.message);
     return false;
+  }
+}
+
+async function markDedupEvent(dedupKey, details = {}) {
+  if (!dedupKey) return;
+
+  const nowMs = Date.now();
+  const payload = {
+    dedupKey,
+    lastSeenAtMs: nowMs,
+    lastSeenAt: new Date(nowMs).toISOString(),
+    updatedAt: new Date(),
+    ...details,
+  };
+
+  try {
+    await db.collection(DEDUP_EVENTS_COLLECTION).doc(dedupKey).set(payload, { merge: true });
+  } catch (error) {
+    console.warn(`⚠️ Error updating dedup state for key "${dedupKey}":`, error.message);
   }
 }
 
@@ -250,6 +260,12 @@ async function saveSoundsToDatabase(detections, context = {}, audioFileUrl = nul
         const soundDoc = createSoundDocument(soundData);
         const docRef = await db.collection(SOUNDS_COLLECTION).add(soundDoc);
         savedSoundIds.push(docRef.id);
+        await markDedupEvent(`sound:${context.userId || 'unknown'}:${hazardType}`, {
+          kind: 'sound',
+          userId: context.userId || null,
+          hazardType,
+          sourceDocId: docRef.id,
+        });
         console.log(`💾 Saved ${isCriticalAlert ? 'CRITICAL' : 'identified'} alert: ${hazardType} (confidence: ${confidence.toFixed(2)}, priority: ${priority}, ID: ${docRef.id})`);
         
         // If this is a critical alert and has a userId, notify the parent.
@@ -458,6 +474,13 @@ async function notifyParent(parentId, alertData) {
 
     // Create Firestore notification document
     const notificationRef = await db.collection(NOTIFICATIONS_COLLECTION).add(notificationData);
+    await markDedupEvent(`parent_alert:${parentId}:${alertData.childUserId || 'unknown'}:${alertData.hazardType || 'unknown'}`, {
+      kind: 'parent_alert',
+      parentId,
+      childUserId: alertData.childUserId || null,
+      hazardType: alertData.hazardType || null,
+      sourceDocId: notificationRef.id,
+    });
     console.log(`📬 Created notification ${notificationRef.id} for parent ${parentId} with location: ${locationText}`);
 
     // Send push notification if parent has token (FCM or Expo)

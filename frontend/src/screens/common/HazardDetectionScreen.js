@@ -10,7 +10,8 @@ import {
   Animated,
   Image,
   Platform,
-  Vibration
+  Vibration,
+  Modal
 } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
 import { Audio } from 'expo-av';
@@ -25,6 +26,7 @@ const PURPLE_GRADIENT = ['#5452e6ff', '#7C3AED']; // Purple gradient
 const GREEN_BUTTON = '#10B981'; // Bright green
 const ORANGE_ACCENT = '#F59E0B'; // Orange for accents
 
+
 export default function HazardDetectionScreen() {
   const { userData } = useAuth();
   const [permissionResponse, requestPermission] = Audio.usePermissions();
@@ -36,6 +38,14 @@ export default function HazardDetectionScreen() {
   const [error, setError] = useState(null);
   const [currentLocation, setCurrentLocation] = useState(null);
   const [isCriticalAlert, setIsCriticalAlert] = useState(false);
+  const [showSafetyQuestionModal, setShowSafetyQuestionModal] = useState(false);
+  const [safetyQuestionTitle, setSafetyQuestionTitle] = useState('Safety Check');
+  const [safetyQuestionMessage, setSafetyQuestionMessage] = useState('');
+  const [safetyQuestionStep, setSafetyQuestionStep] = useState(1);
+  const [safetyQuestionTotal, setSafetyQuestionTotal] = useState(3);
+  const [safetyQuestionGif, setSafetyQuestionGif] = useState(
+    'https://fonts.gstatic.com/s/e/notoemoji/latest/1f6e1_fe0f/512.gif'
+  );
   const processingIntervalRef = useRef(null);
   const recordingRef = useRef(null);
   const isListeningRef = useRef(false);
@@ -70,6 +80,7 @@ export default function HazardDetectionScreen() {
   const criticalSoundIdRef = useRef(null);
   const criticalHazardTypeRef = useRef(null);
   const safetyCheckTimeoutRef = useRef(null);
+  const safetyQuestionResolverRef = useRef(null);
   const LOCATION_FETCH_COOLDOWN_MS = 60 * 1000;
   const LOCATION_UPDATE_INTERVAL_MS = 15 * 1000;
   const SAFETY_CHECK_DELAY_MS = 15000;
@@ -196,18 +207,32 @@ export default function HazardDetectionScreen() {
     }
   };
 
-  const askYesNoQuestion = (title, message) => {
+  const getSafetyQuestionGif = (questionIndex) => {
+    // Child-friendly visuals per follow-up step.
+    if (questionIndex === 0) return 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f6e1_fe0f/512.gif';
+    if (questionIndex === 1) return 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f525/512.gif';
+    return 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f64b/512.gif';
+  };
+
+  const askYesNoQuestion = (title, message, questionIndex = 0, totalQuestions = 1) => {
     return new Promise((resolve) => {
-      Alert.alert(
-        title,
-        message,
-        [
-          { text: 'No', onPress: () => resolve(false) },
-          { text: 'Yes', onPress: () => resolve(true) },
-        ],
-        { cancelable: false }
-      );
+      safetyQuestionResolverRef.current = resolve;
+      setSafetyQuestionTitle(title);
+      setSafetyQuestionMessage(message);
+      setSafetyQuestionStep(questionIndex + 1);
+      setSafetyQuestionTotal(totalQuestions);
+      setSafetyQuestionGif(getSafetyQuestionGif(questionIndex));
+      setShowSafetyQuestionModal(true);
     });
+  };
+
+  const handleSafetyQuestionAnswer = (answer) => {
+    const resolver = safetyQuestionResolverRef.current;
+    safetyQuestionResolverRef.current = null;
+    setShowSafetyQuestionModal(false);
+    if (typeof resolver === 'function') {
+      resolver(answer);
+    }
   };
 
   const runPostCriticalSafetyCheck = async () => {
@@ -224,8 +249,9 @@ export default function HazardDetectionScreen() {
 
     try {
       const responses = [];
-      for (const question of safetyQuestions) {
-        const answer = await askYesNoQuestion('Safety Check', question);
+      for (let i = 0; i < safetyQuestions.length; i++) {
+        const question = safetyQuestions[i];
+        const answer = await askYesNoQuestion('Safety Check', question, i, safetyQuestions.length);
         responses.push({ question, answer });
       }
 
@@ -398,6 +424,10 @@ export default function HazardDetectionScreen() {
       if (safetyCheckTimeoutRef.current) {
         clearTimeout(safetyCheckTimeoutRef.current);
         safetyCheckTimeoutRef.current = null;
+      }
+      if (safetyQuestionResolverRef.current) {
+        safetyQuestionResolverRef.current(false);
+        safetyQuestionResolverRef.current = null;
       }
       // Stop any ongoing alerts
       if (hazardAlertService && typeof hazardAlertService.stopAlert === 'function') {
@@ -1053,9 +1083,21 @@ export default function HazardDetectionScreen() {
                     // ALSO use haptics on iOS for additional tactile feedback
                     if (Platform.OS === 'ios') {
                       try {
-                        const hapticsAvailable = await Haptics.isAvailableAsync();
-                        if (hapticsAvailable) {
-                          // Multiple strong haptic bursts
+                        if (typeof Haptics.isAvailableAsync === 'function') {
+                          const hapticsAvailable = await Haptics.isAvailableAsync();
+                          if (!hapticsAvailable) {
+                            console.warn('⚠️ Haptics not available, using Vibration API only');
+                          } else {
+                            await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+                            await new Promise(resolve => setTimeout(resolve, 50));
+                            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+                            await new Promise(resolve => setTimeout(resolve, 50));
+                            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+                            await new Promise(resolve => setTimeout(resolve, 50));
+                            await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+                            console.log('📳 iOS haptics triggered');
+                          }
+                        } else {
                           await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
                           await new Promise(resolve => setTimeout(resolve, 50));
                           await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
@@ -1064,8 +1106,6 @@ export default function HazardDetectionScreen() {
                           await new Promise(resolve => setTimeout(resolve, 50));
                           await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
                           console.log('📳 iOS haptics triggered');
-                        } else {
-                          console.warn('⚠️ Haptics not available, using Vibration API only');
                         }
                       } catch (hapticError) {
                         console.warn('⚠️ Haptic error (falling back to Vibration API):', hapticError);
@@ -1091,8 +1131,12 @@ export default function HazardDetectionScreen() {
                       // ALSO trigger haptics on iOS every other interval for variety
                       if (Platform.OS === 'ios') {
                         try {
-                          const hapticsAvailable = await Haptics.isAvailableAsync();
-                          if (hapticsAvailable) {
+                          if (typeof Haptics.isAvailableAsync === 'function') {
+                            const hapticsAvailable = await Haptics.isAvailableAsync();
+                            if (hapticsAvailable) {
+                              await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+                            }
+                          } else {
                             await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
                           }
                         } catch (hapticError) {
@@ -1888,6 +1932,46 @@ export default function HazardDetectionScreen() {
           </View>
         )}
 
+        {/* Child-friendly Safety Question Modal */}
+        <Modal
+          visible={showSafetyQuestionModal}
+          transparent
+          animationType="fade"
+          onRequestClose={() => handleSafetyQuestionAnswer(false)}
+        >
+          <View style={styles.safetyQuestionOverlay}>
+            <View style={styles.safetyQuestionCard}>
+              <ExpoImage
+                source={{ uri: safetyQuestionGif }}
+                style={styles.safetyQuestionGif}
+                contentFit="contain"
+              />
+              <Text style={styles.safetyQuestionTitle}>{safetyQuestionTitle}</Text>
+              <Text style={styles.safetyQuestionProgress}>
+                Question {safetyQuestionStep} of {safetyQuestionTotal}
+              </Text>
+              <Text style={styles.safetyQuestionMessage}>{safetyQuestionMessage}</Text>
+
+              <View style={styles.safetyQuestionButtonsRow}>
+                <TouchableOpacity
+                  style={[styles.safetyQuestionButton, styles.safetyQuestionNoButton]}
+                  onPress={() => handleSafetyQuestionAnswer(false)}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.safetyQuestionButtonText}>No</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.safetyQuestionButton, styles.safetyQuestionYesButton]}
+                  onPress={() => handleSafetyQuestionAnswer(true)}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.safetyQuestionButtonText}>Yes</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+
         {/* Processing Indicator */}
         {isProcessing && !isListening && (
           <View style={styles.processingIndicator}>
@@ -2498,5 +2582,72 @@ const styles = StyleSheet.create({
   errorText: {
     color: '#DC2626',
     fontSize: 14,
+  },
+  safetyQuestionOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+  safetyQuestionCard: {
+    width: '100%',
+    maxWidth: 420,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    padding: 22,
+    alignItems: 'center',
+    borderWidth: 3,
+    borderColor: '#7C3AED',
+  },
+  safetyQuestionGif: {
+    width: 110,
+    height: 110,
+    marginBottom: 12,
+  },
+  safetyQuestionTitle: {
+    fontSize: 28,
+    fontWeight: '900',
+    color: '#4C1D95',
+    textAlign: 'center',
+  },
+  safetyQuestionProgress: {
+    marginTop: 4,
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#6D28D9',
+  },
+  safetyQuestionMessage: {
+    marginTop: 12,
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#1F2937',
+    textAlign: 'center',
+    lineHeight: 30,
+  },
+  safetyQuestionButtonsRow: {
+    flexDirection: 'row',
+    width: '100%',
+    marginTop: 22,
+    gap: 14,
+  },
+  safetyQuestionButton: {
+    flex: 1,
+    borderRadius: 16,
+    paddingVertical: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  safetyQuestionYesButton: {
+    backgroundColor: '#10B981',
+  },
+  safetyQuestionNoButton: {
+    backgroundColor: '#EF4444',
+  },
+  safetyQuestionButtonText: {
+    color: '#FFFFFF',
+    fontSize: 24,
+    fontWeight: '900',
+    letterSpacing: 0.8,
   },
 });

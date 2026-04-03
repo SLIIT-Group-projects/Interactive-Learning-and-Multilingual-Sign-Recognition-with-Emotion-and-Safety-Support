@@ -27,9 +27,9 @@ import slIcon from "@/assets/icons/SL.png";
 import usaIcon from "@/assets/icons/USA.png";
 
 // For local development: 'http://localhost:5000'
-// For device testing: 'http://YOUR_COMPUTER_IP:5000' (e.g., 'http://192.168.1.9:5000')
+// For device testing: 'http://YOUR_COMPUTER_IP:5000' (e.g., 'http://192.168.13.67:5000')
 const API_BASE_URL = __DEV__
-  ? "http://192.168.1.9:5000" // Change to your computer's IP when testing on device
+  ? "http://192.168.13.67:5000" // Change to your computer's IP when testing on device
   : "https://your-production-api.com"; // Update with your production API URL
 
 export default function SignDetectionScreen() {
@@ -63,7 +63,8 @@ export default function SignDetectionScreen() {
   const [isHoldingSteady, setIsHoldingSteady] = useState(false); // User is holding sign steady
   const [detectionFeedback, setDetectionFeedback] = useState(""); // Live feedback message
   const [sentenceFinalizeTimeout, setSentenceFinalizeTimeout] = useState(null); // Timeout for sentence finalization
-  const [grammarCorrectionEnabled, setGrammarCorrectionEnabled] = useState(false); // Toggle for grammar correction
+  const [grammarCorrectionEnabled, setGrammarCorrectionEnabled] =
+    useState(false); // Toggle for grammar correction
 
   const cameraRef = useRef(null);
   const detectionIntervalRef = useRef(null);
@@ -241,15 +242,66 @@ export default function SignDetectionScreen() {
     let text = sentence.trim().replace(/\.$/, "");
 
     // Split into words
-    const words = text.split(/\s+/).map(w => w.toLowerCase());
+    const words = text.split(/\s+/).map((w) => w.toLowerCase());
     const correctedWords = [];
 
     // Common greetings that should have a comma after them
     const greetings = ["hello", "hi", "hey", "goodbye", "bye"];
     // Action verbs that don't need "are" after "you"
-    const actionVerbs = ["go", "come", "see", "know", "think", "want", "need", "like", "love", "have", "do", "get", "make", "take", "give", "say", "tell", "ask", "help", "work", "play", "eat", "drink", "sleep", "wake", "run", "walk", "sit", "stand", "look", "watch", "listen", "read", "write", "speak", "talk"];
+    const actionVerbs = [
+      "go",
+      "come",
+      "see",
+      "know",
+      "think",
+      "want",
+      "need",
+      "like",
+      "love",
+      "have",
+      "do",
+      "get",
+      "make",
+      "take",
+      "give",
+      "say",
+      "tell",
+      "ask",
+      "help",
+      "work",
+      "play",
+      "eat",
+      "drink",
+      "sleep",
+      "wake",
+      "run",
+      "walk",
+      "sit",
+      "stand",
+      "look",
+      "watch",
+      "listen",
+      "read",
+      "write",
+      "speak",
+      "talk",
+    ];
     // Auxiliary verbs that are already present
-    const auxVerbs = ["are", "is", "am", "was", "were", "will", "can", "should", "would", "could", "have", "has", "had"];
+    const auxVerbs = [
+      "are",
+      "is",
+      "am",
+      "was",
+      "were",
+      "will",
+      "can",
+      "should",
+      "would",
+      "could",
+      "have",
+      "has",
+      "had",
+    ];
 
     let skipNext = false;
     for (let i = 0; i < words.length; i++) {
@@ -276,8 +328,16 @@ export default function SignDetectionScreen() {
       // Handle "you" followed by adjective/noun (needs "are")
       else if (word === "you" && nextWord && !auxVerbs.includes(nextWord)) {
         // Check if next word is a question word (don't add "are" before question words)
-        const questionWords = ["where", "what", "when", "why", "how", "who", "which"];
-        
+        const questionWords = [
+          "where",
+          "what",
+          "when",
+          "why",
+          "how",
+          "who",
+          "which",
+        ];
+
         if (questionWords.includes(nextWord)) {
           // "you where" -> "you are where" (but this pattern is less common, usually it's "where you")
           correctedWords.push(i === 0 ? "You" : "you");
@@ -302,14 +362,18 @@ export default function SignDetectionScreen() {
 
     // Join words
     let corrected = correctedWords.join(" ");
-    
+
     // Ensure proper capitalization at the start
     if (corrected.length > 0) {
       corrected = corrected.charAt(0).toUpperCase() + corrected.slice(1);
     }
-    
+
     // Add period at the end if not present
-    if (!corrected.endsWith(".") && !corrected.endsWith("!") && !corrected.endsWith("?")) {
+    if (
+      !corrected.endsWith(".") &&
+      !corrected.endsWith("!") &&
+      !corrected.endsWith("?")
+    ) {
       corrected += ".";
     }
 
@@ -913,7 +977,7 @@ export default function SignDetectionScreen() {
       navigation.goBack();
     } else if (navigation && navigation.navigate) {
       // Try to navigate to ParentDashboard
-      navigation.navigate('ParentDashboard');
+      navigation.navigate("ParentDashboard");
     }
   };
 
@@ -922,10 +986,7 @@ export default function SignDetectionScreen() {
       <ThemedView style={styles.header}>
         {/* Back Button */}
         {navigation && (
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={handleBackPress}
-          >
+          <TouchableOpacity style={styles.backButton} onPress={handleBackPress}>
             <IconSymbol name="arrow.left" size={24} color="#374151" />
           </TouchableOpacity>
         )}
@@ -969,7 +1030,7 @@ export default function SignDetectionScreen() {
                 setApiUrl(text);
                 setConnectionStatus('unknown');
               }}
-              placeholder="Enter API URL (e.g., http://192.168.1.9:5000)"
+              placeholder="Enter API URL (e.g., http://192.168.13.67:5000)"
               placeholderTextColor="#999"
             />
             <TouchableOpacity 
@@ -1271,9 +1332,7 @@ export default function SignDetectionScreen() {
               Translated Sentence
             </ThemedText>
             <View style={styles.grammarToggleContainer}>
-              <ThemedText style={styles.grammarToggleLabel}>
-                Grammar
-              </ThemedText>
+              <ThemedText style={styles.grammarToggleLabel}>Grammar</ThemedText>
               <Switch
                 value={grammarCorrectionEnabled}
                 onValueChange={setGrammarCorrectionEnabled}

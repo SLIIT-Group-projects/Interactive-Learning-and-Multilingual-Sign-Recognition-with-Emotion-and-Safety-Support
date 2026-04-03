@@ -4,7 +4,7 @@ echo.
 echo Your IP addresses:
 ipconfig | findstr /i "IPv4"
 echo.
-echo Use this IP address in your app (e.g., http://192.168.8.151:5000)
+echo Use this IP address in your app (e.g., http://192.168.13.67:5000)
 echo.
 pause
 
