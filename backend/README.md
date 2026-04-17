@@ -257,7 +257,7 @@ When testing on a physical device or emulator, you'll need to:
    - Mac/Linux: `ifconfig` or `ip addr`
 
 2. Update the API URL in the frontend to use your IP:
-   - Example: `http://192.168.13.67:5000/predict`
+   - Example: `http://192.168.1.9:5000/predict`
 
 3. Make sure your phone/emulator and computer are on the same network.
 

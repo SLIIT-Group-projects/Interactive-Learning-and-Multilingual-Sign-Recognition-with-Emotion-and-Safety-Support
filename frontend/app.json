@@ -9,6 +9,12 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
 
+    "extra": {
+      "eas": {
+        "projectId": "signlanguageproject-eb8d8"
+      }
+    },
+
     "ios": {
       "supportsTablet": true
     },

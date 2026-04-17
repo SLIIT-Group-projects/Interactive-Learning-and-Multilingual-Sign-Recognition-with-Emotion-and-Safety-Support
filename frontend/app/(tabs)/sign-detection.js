@@ -27,9 +27,9 @@ import slIcon from "@/assets/icons/SL.png";
 import usaIcon from "@/assets/icons/USA.png";
 
 // For local development: 'http://localhost:5000'
-// For device testing: 'http://YOUR_COMPUTER_IP:5000' (e.g., 'http://192.168.13.67:5000')
+// For device testing: 'http://YOUR_COMPUTER_IP:5000' (e.g., 'http://192.168.1.9:5000')
 const API_BASE_URL = __DEV__
-  ? "http://192.168.13.67:5000" // Change to your computer's IP when testing on device
+  ? "http://192.168.1.9:5000" // Change to your computer's IP when testing on device
   : "https://your-production-api.com"; // Update with your production API URL
 
 export default function SignDetectionScreen() {
@@ -1030,7 +1030,7 @@ export default function SignDetectionScreen() {
                 setApiUrl(text);
                 setConnectionStatus('unknown');
               }}
-              placeholder="Enter API URL (e.g., http://192.168.13.67:5000)"
+              placeholder="Enter API URL (e.g., http://192.168.1.9:5000)"
               placeholderTextColor="#999"
             />
             <TouchableOpacity 

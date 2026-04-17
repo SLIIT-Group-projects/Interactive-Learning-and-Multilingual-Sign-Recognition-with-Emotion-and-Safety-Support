@@ -26,6 +26,11 @@ const PURPLE_GRADIENT = ['#5452e6ff', '#7C3AED']; // Purple gradient
 const GREEN_BUTTON = '#10B981'; // Bright green
 const ORANGE_ACCENT = '#F59E0B'; // Orange for accents
 
+const VIBRATION_PATTERNS = {
+  critical: [0, 1000, 100, 1000, 100, 1000],
+  high: [0, 500, 120, 500],
+  medium: [0, 250, 100, 250],
+};
 
 export default function HazardDetectionScreen() {
   const { userData } = useAuth();
@@ -293,6 +298,57 @@ export default function HazardDetectionScreen() {
   };
 
   // Make screen full size by hiding the navigation header
+
+  const stopAlertVibration = () => {
+  if (vibrationIntervalRef.current) {
+    clearInterval(vibrationIntervalRef.current);
+    vibrationIntervalRef.current = null;
+  }
+
+  try {
+    Vibration.cancel();
+  } catch (err) {
+    console.warn('⚠️ Error canceling vibration:', err);
+  }
+};
+
+const startAlertVibration = async (level) => {
+  try {
+    stopAlertVibration();
+
+    const pattern = VIBRATION_PATTERNS[level];
+    if (!pattern) return;
+
+    if (Platform.OS === 'android') {
+      Vibration.vibrate(pattern, level === 'critical');
+    } else {
+      // iOS does not reliably repeat vibration patterns forever,
+      // so we simulate strong repeating vibration for critical alerts.
+      if (level === 'critical') {
+
+        vibrationIntervalRef.current = setInterval(async () => {
+          try {
+            Vibration.vibrate([0, 1000, 100], false);
+            await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+          } catch (err) {
+            console.warn('⚠️ iOS vibration/haptics error:', err);
+          }
+        }, 1200);
+      } else {
+        Vibration.vibrate(pattern, false);
+
+        if (level === 'high') {
+          await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+        } else if (level === 'medium') {
+          await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('⚠️ Vibration error:', err);
+  }
+};
   useEffect(() => {
     if (navigation) {
       navigation.setOptions({ headerShown: false });
@@ -433,6 +489,7 @@ export default function HazardDetectionScreen() {
       if (hazardAlertService && typeof hazardAlertService.stopAlert === 'function') {
         hazardAlertService.stopAlert();
       }
+      stopAlertVibration();
       const currentRecording = recordingRef.current;
       if (currentRecording) {
         currentRecording.getStatusAsync()
@@ -781,8 +838,9 @@ export default function HazardDetectionScreen() {
       // Get user ID from auth context
       const userId = userData?.uid || null;
 
-      // Always attach the latest kid location (cached + throttled).
-      const locationData = await getCurrentLocationForHazard();
+      // Do not attach location by default to prevent battery drain.
+      // Location is only captured when a critical alert is triggered.
+      const locationData = null;
 
       // Get current context (time, location, userId, etc.)
       const context = {
@@ -1049,6 +1107,12 @@ export default function HazardDetectionScreen() {
                 criticalAlertRef.current = isCritical; // Update ref
                 currentAlertPriorityRef.current = priority; // Update ref
 
+                if (!isCritical && priority >= 7) {
+                  await startAlertVibration('high');
+                } else if (!isCritical && priority >= 5) {
+                  await startAlertVibration('medium');
+                }
+
                 // Start continuous vibration for critical alerts
                 if (isCritical) {
                   // Track which hazard record should be updated after the child confirms safety.
@@ -1065,89 +1129,8 @@ export default function HazardDetectionScreen() {
                     hazard.location = criticalLocation;
                   }
 
-                  // Clear any existing vibration interval
-                  if (vibrationIntervalRef.current) {
-                    clearInterval(vibrationIntervalRef.current);
-                    vibrationIntervalRef.current = null;
-                  }
-
-                  // CRITICAL: Strong vibration for deaf users - use BOTH haptics AND vibration API
-                  console.log('🚨 CRITICAL ALERT - Starting aggressive vibration pattern');
-
-                  try {
-                    // Use React Native Vibration API for maximum reliability (works on both iOS and Android)
-                    // Strong initial pattern: vibrate 800ms, pause 100ms, vibrate 800ms, pause 100ms, vibrate 800ms
-                    Vibration.vibrate([0, 800, 100, 800, 100, 800], true); // true = repeat pattern
-                    console.log('📳 Vibration API triggered with aggressive pattern');
-
-                    // ALSO use haptics on iOS for additional tactile feedback
-                    if (Platform.OS === 'ios') {
-                      try {
-                        if (typeof Haptics.isAvailableAsync === 'function') {
-                          const hapticsAvailable = await Haptics.isAvailableAsync();
-                          if (!hapticsAvailable) {
-                            console.warn('⚠️ Haptics not available, using Vibration API only');
-                          } else {
-                            await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-                            await new Promise(resolve => setTimeout(resolve, 50));
-                            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-                            await new Promise(resolve => setTimeout(resolve, 50));
-                            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-                            await new Promise(resolve => setTimeout(resolve, 50));
-                            await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-                            console.log('📳 iOS haptics triggered');
-                          }
-                        } else {
-                          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-                          await new Promise(resolve => setTimeout(resolve, 50));
-                          await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-                          await new Promise(resolve => setTimeout(resolve, 50));
-                          await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-                          await new Promise(resolve => setTimeout(resolve, 50));
-                          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-                          console.log('📳 iOS haptics triggered');
-                        }
-                      } catch (hapticError) {
-                        console.warn('⚠️ Haptic error (falling back to Vibration API):', hapticError);
-                      }
-                    }
-                  } catch (vibError) {
-                    console.error('❌ Vibration error:', vibError);
-                    // Fallback: try simple vibration
-                    try {
-                      Vibration.vibrate(1000);
-                    } catch (fallbackError) {
-                      console.error('❌ Fallback vibration also failed:', fallbackError);
-                    }
-                  }
-
-                  // Start continuous aggressive vibration pattern (every 400ms for maximum frequency)
-                  vibrationIntervalRef.current = setInterval(async () => {
-                    try {
-                      // Use Vibration API for reliable continuous feedback
-                      // Pattern: vibrate 300ms, pause 100ms (repeats every interval)
-                      Vibration.vibrate([0, 300, 100], false); // false = don't repeat (we handle repetition with interval)
-
-                      // ALSO trigger haptics on iOS every other interval for variety
-                      if (Platform.OS === 'ios') {
-                        try {
-                          if (typeof Haptics.isAvailableAsync === 'function') {
-                            const hapticsAvailable = await Haptics.isAvailableAsync();
-                            if (hapticsAvailable) {
-                              await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-                            }
-                          } else {
-                            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-                          }
-                        } catch (hapticError) {
-                          // Silently fail - Vibration API is primary
-                        }
-                      }
-                    } catch (vibError) {
-                      console.error('❌ Continuous vibration error:', vibError);
-                    }
-                  }, 400); // Very frequent: every 400ms for maximum tactile feedback
-                  console.log('🔔 Started AGGRESSIVE continuous vibration (every 400ms) for critical alert');
+                  await startAlertVibration('critical');
+                  console.log('🔔 Started strong critical vibration');
                 }
 
                 // Update last alert time
@@ -1452,19 +1435,8 @@ export default function HazardDetectionScreen() {
         hazardAlertService.stopAlert();
       }
 
-      // Clear continuous vibration if active
-      if (vibrationIntervalRef.current) {
-        clearInterval(vibrationIntervalRef.current);
-        vibrationIntervalRef.current = null;
-        console.log('🔕 Stopped continuous vibration');
-      }
-
-      // Cancel any ongoing vibration (works on both iOS and Android)
-      try {
-        Vibration.cancel();
-      } catch (cancelError) {
-        console.warn('⚠️ Error canceling vibration:', cancelError);
-      }
+      stopAlertVibration();
+      console.log('🔕 Stopped alert vibration');
 
       setAlertMessage(null);
       setIsCriticalAlert(false);
@@ -1493,20 +1465,8 @@ export default function HazardDetectionScreen() {
       hazardAlertService.stopAlert();
     }
 
-    // Clear continuous vibration if active
-    if (vibrationIntervalRef.current) {
-      clearInterval(vibrationIntervalRef.current);
-      vibrationIntervalRef.current = null;
-      console.log('🔕 Stopped continuous vibration');
-    }
-
-    // Cancel any ongoing vibration (works on both iOS and Android)
-    try {
-      Vibration.cancel();
-      console.log('🔕 Vibration canceled');
-    } catch (cancelError) {
-      console.warn('⚠️ Error canceling vibration:', cancelError);
-    }
+    stopAlertVibration();
+    console.log('🔕 Vibration canceled');
 
     // Stop flash animation
     flashAnimation.stopAnimation();

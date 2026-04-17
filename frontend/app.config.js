@@ -14,7 +14,13 @@ export default {
     ios: {
       supportsTablet: true,
     },
+    "extra": {
+      "eas": {
+        "projectId": "signlanguageproject-eb8d8"
+      }
+    },
     android: {
+      package: "com.anonymous.frontend",
       adaptiveIcon: {
         backgroundColor: "#E6F4FE",
         foregroundImage: "./assets/images/android-icon-foreground.png",
@@ -48,9 +54,9 @@ export default {
       reactCompiler: true,
     },
     // Set API URL here for real devices
-    // ✅ Updated to your IP: 192.168.13.67
+    // ✅ Updated to your IP: 192.168.1.9
     extra: {
-      apiUrl: process.env.EXPO_PUBLIC_API_URL || "http://192.168.13.67:5000",
+      apiUrl: process.env.EXPO_PUBLIC_API_URL || "http://192.168.1.9:5000",
     },
   },
 };
