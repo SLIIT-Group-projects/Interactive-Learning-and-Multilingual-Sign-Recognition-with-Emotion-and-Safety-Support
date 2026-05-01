@@ -26,11 +26,7 @@ const PURPLE_GRADIENT = ['#5452e6ff', '#7C3AED']; // Purple gradient
 const GREEN_BUTTON = '#10B981'; // Bright green
 const ORANGE_ACCENT = '#F59E0B'; // Orange for accents
 
-const VIBRATION_PATTERNS = {
-  critical: [0, 1000, 100, 1000, 100, 1000],
-  high: [0, 500, 120, 500],
-  medium: [0, 250, 100, 250],
-};
+import { VIBRATION_PATTERNS } from '../../../services/hazardAlert.service';
 
 export default function HazardDetectionScreen() {
   const { userData } = useAuth();
@@ -300,51 +296,19 @@ export default function HazardDetectionScreen() {
   // Make screen full size by hiding the navigation header
 
   const stopAlertVibration = () => {
-  if (vibrationIntervalRef.current) {
-    clearInterval(vibrationIntervalRef.current);
-    vibrationIntervalRef.current = null;
-  }
-
-  try {
-    Vibration.cancel();
-  } catch (err) {
-    console.warn('⚠️ Error canceling vibration:', err);
+  if (hazardAlertService) {
+    hazardAlertService.stopAlert();
   }
 };
 
 const startAlertVibration = async (level) => {
   try {
-    stopAlertVibration();
-
-    const pattern = VIBRATION_PATTERNS[level];
-    if (!pattern) return;
-
-    if (Platform.OS === 'android') {
-      Vibration.vibrate(pattern, level === 'critical');
-    } else {
-      // iOS does not reliably repeat vibration patterns forever,
-      // so we simulate strong repeating vibration for critical alerts.
-      if (level === 'critical') {
-
-        vibrationIntervalRef.current = setInterval(async () => {
-          try {
-            Vibration.vibrate([0, 1000, 100], false);
-            await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-          } catch (err) {
-            console.warn('⚠️ iOS vibration/haptics error:', err);
-          }
-        }, 1200);
-      } else {
-        Vibration.vibrate(pattern, false);
-
-        if (level === 'high') {
-          await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-        } else if (level === 'medium') {
-          await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-        }
-      }
-    }
+    if (!hazardAlertService) return;
+    
+    // Use the centralized service for strong, consistent vibrations
+    await hazardAlertService.startContinuousVibration(
+      level === 'critical' ? 'critical' : (level === 'high' ? 'high' : 'medium')
+    );
   } catch (err) {
     console.warn('⚠️ Vibration error:', err);
   }

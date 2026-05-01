@@ -18,6 +18,7 @@ import HazardHistoryScreen from '../screens/parent/HazardHistoryScreen';
 import ParentAlertDetailsScreen from '../screens/parent/ParentAlertDetailsScreen';
 import SignDetectionScreen from '../../app/(tabs)/sign-detection';
 import notificationService from '../../services/notification.service';
+import hazardAlertService from '../../services/hazardAlert.service';
 import { registerPushToken, setupNotificationListener } from '../services/pushNotification.service';
 
 
@@ -124,6 +125,19 @@ export default function AppNavigator({ navigationRef }) {
       unsubscribeNotifications?.();
     };
   }, [isAuthenticated, isParent, userData?.uid, navigateToHazardHistory]);
+
+  useEffect(() => {
+    if (criticalOverlayAlert) {
+      // Trigger a strong continuous vibration for the parent when a critical alert is shown
+      hazardAlertService.startContinuousVibration('critical');
+    } else {
+      hazardAlertService.stopAlert();
+    }
+
+    return () => {
+      hazardAlertService.stopAlert();
+    };
+  }, [criticalOverlayAlert]);
 
   const handleDismissCriticalOverlay = () => {
     setCriticalOverlayAlert(null);
