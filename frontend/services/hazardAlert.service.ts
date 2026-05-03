@@ -16,14 +16,14 @@ Notifications.setNotificationHandler({
  * [wait, vibrate, wait, vibrate, ...]
  */
 export const VIBRATION_PATTERNS = {
-  // Ultra-strong pulsing pattern for critical alerts (Long vibrations, tiny gaps)
-  critical: [0, 1200, 80, 1200, 80, 1200, 80, 1200],
-  // Strong double-pulse pattern for high priority
-  high: [0, 600, 120, 600, 120, 600],
-  // Standard pulse for medium priority
-  medium: [0, 400, 200, 400],
-  // Subtle pulse for low priority
-  low: [0, 200],
+  // Ultra-strong pulsing pattern for critical alerts (Longer vibrations, minimal gaps)
+  critical: [0, 2000, 50, 2000, 50, 2000, 50, 2000],
+  // Stronger double-pulse pattern for high priority
+  high: [0, 1000, 100, 1000, 100, 1000],
+  // Enhanced pulse for medium priority
+  medium: [0, 600, 150, 600],
+  // Clear single pulse for low priority
+  low: [0, 300],
 };
 
 /**
@@ -98,12 +98,16 @@ class HazardAlertService {
           Vibration.vibrate(); // Fixed 400ms on iOS
           
           if (level === 'critical') {
-            await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error); // Triple pulse
-            setTimeout(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy), 200);
-            setTimeout(() => Vibration.vibrate(), 500); // Second pulse
+            // Intense multi-pulse sequence for critical alerts
+            await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+            setTimeout(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy), 150);
+            setTimeout(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy), 300);
+            setTimeout(() => Vibration.vibrate(), 450); // Another pulse
+            setTimeout(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy), 600);
           } else if (level === 'high') {
             await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-            setTimeout(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium), 300);
+            setTimeout(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy), 250);
+            setTimeout(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium), 500);
           } else {
             await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
           }

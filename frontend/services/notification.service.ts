@@ -181,6 +181,10 @@ class NotificationService {
         callback(notifications);
       }, (error) => {
         console.error('Error in notifications snapshot:', error);
+        if (error.code === 'permission-denied') {
+          console.warn('💡 Tip: This usually means your Firestore security rules are blocking the query or a composite index is missing.');
+          console.warn('Check that your rules allow reading the "notifications" collection where parentId == your UID.');
+        }
       });
 
       return unsubscribe;

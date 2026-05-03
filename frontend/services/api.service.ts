@@ -240,6 +240,22 @@ class ApiService {
   }
 
   /**
+   * Report live location for a critical hazard alert
+   */
+  async reportCriticalLocation(soundId: string, userId: string, location: any) {
+    try {
+      const response = await this.client.post(
+        API_CONFIG.ENDPOINTS.HAZARD_LOCATION,
+        { soundId, userId, location }
+      );
+      return response.data;
+    } catch (error) {
+      console.error('❌ Error reporting critical location:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Process audio and get spectrogram metadata
    */
   async processAudio(audioUri: string) {

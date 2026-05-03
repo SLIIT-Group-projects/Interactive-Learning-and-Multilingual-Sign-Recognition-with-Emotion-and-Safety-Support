@@ -68,6 +68,7 @@ export const API_CONFIG = {
     HAZARD_DETECT_STREAM: "/api/hazard/detect-stream",
     HAZARD_SAFETY_CHECK: "/api/hazard/safety-check",
     HAZARD_PRIORITIES: "/api/hazard/priorities",
+    HAZARD_LOCATION: "/api/hazard/location",
     PLACES: "/api/places",
     SOUNDS: "/api/sounds",
   },

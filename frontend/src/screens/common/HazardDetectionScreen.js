@@ -1091,6 +1091,12 @@ const startAlertVibration = async (level) => {
                   const criticalLocation = await getCurrentLocationForHazard();
                   if (criticalLocation) {
                     hazard.location = criticalLocation;
+                    // Report location immediately to backend so parent receives it
+                    if (highestPrioritySoundId && userId) {
+                      console.log(`🚀 Reporting live location for critical alert: ${highestPrioritySoundId}`);
+                      apiService.reportCriticalLocation(highestPrioritySoundId, userId, criticalLocation)
+                        .catch(err => console.error('❌ Error reporting critical location:', err));
+                    }
                   }
 
                   await startAlertVibration('critical');

@@ -1318,4 +1318,64 @@ async function mockModelInference(spectrogramData, context) {
   return mockResults;
 }
 
+/**
+ * POST /api/hazard/location
+ * Update a hazard record with live location and notify parent
+ */
+router.post('/location', async (req, res, next) => {
+  try {
+    const { soundId, userId, location } = req.body;
+
+    if (!soundId || !userId || !location) {
+      return res.status(400).json({ error: 'soundId, userId, and location are required' });
+    }
+
+    const soundDocRef = db.collection(SOUNDS_COLLECTION).doc(soundId);
+    const soundDoc = await soundDocRef.get();
+
+    if (!soundDoc.exists) {
+      return res.status(404).json({ error: 'Sound record not found' });
+    }
+
+    // Update sound record with location
+    await soundDocRef.update({
+      location: location,
+      updatedAt: new Date(),
+    });
+
+    console.log(`📍 Updated sound ${soundId} with live location for user ${userId}`);
+
+    // Notify parent with the new location
+    const parentId = await getParentIdFromChild(userId);
+    if (parentId) {
+      const soundData = soundDoc.data();
+      let childName = 'Your child';
+      try {
+        const childDoc = await db.collection(USERS_COLLECTION).doc(userId).get();
+        if (childDoc.exists) {
+          childName = childDoc.data().name || childName;
+        }
+      } catch (nameError) {
+        console.warn('⚠️ Could not fetch child name for location update:', nameError);
+      }
+
+      await notifyParent(parentId, {
+        hazardType: soundData.type,
+        childUserId: userId,
+        childName,
+        location: location,
+        soundId: soundId,
+        priority: soundData.priority || 9,
+        confidence: soundData.confidence || 0,
+      });
+      
+      console.log(`📬 Parent notified with live location for sound ${soundId}`);
+    }
+
+    res.json({ success: true, message: 'Location updated and parent notified' });
+  } catch (error) {
+    next(error);
+  }
+});
+
 export default router;
