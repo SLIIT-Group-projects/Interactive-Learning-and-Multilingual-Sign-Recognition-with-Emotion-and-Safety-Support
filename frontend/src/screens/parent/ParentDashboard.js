@@ -1,11 +1,16 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert, Animated, Dimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { MaterialIcons } from '@expo/vector-icons';
+import { MaterialIcons, Ionicons, FontAwesome5 } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
+import { BarChart } from 'react-native-gifted-charts';
 import { useAuth } from '../../contexts/AuthContext';
 import { logoutUser } from '../../services/auth/authService';
 import { getParentChildren } from '../../services/firestore/userService';
 import notificationService from '../../../services/notification.service';
+import hazardDatabaseService from '../../../services/hazardDatabase.service';
+
+const { width } = Dimensions.get('window');
 
 const ParentDashboard = ({ navigation }) => {
   const { userData } = useAuth();
@@ -14,8 +19,31 @@ const ParentDashboard = ({ navigation }) => {
   const [loading, setLoading] = useState(true);
   const [unreadCount, setUnreadCount] = useState(0);
   
-  // Load children on mount
+  // Hazard Stats State
+  const [hazardStats, setHazardStats] = useState(null);
+  const [latestHazard, setLatestHazard] = useState(null);
+  const [chartData, setChartData] = useState([]);
+  
+  // Animations
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const fadeAnim = useRef(new Animated.Value(0)).current;
 
+  useEffect(() => {
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 800,
+      useNativeDriver: true,
+    }).start();
+
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, { toValue: 1.15, duration: 1200, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1, duration: 1200, useNativeDriver: true }),
+      ])
+    ).start();
+  }, []);
+
+  // Load children on mount
   useEffect(() => {
     const loadChildren = async () => {
       if (userData && userData.role === 'parent') {
@@ -35,7 +63,45 @@ const ParentDashboard = ({ navigation }) => {
     loadChildren();
   }, [userData]);
 
-  // Load notifications for parent
+  // Load hazard stats when selected child changes
+  useEffect(() => {
+    if (selectedChild) {
+      loadHazardData();
+    }
+  }, [selectedChild]);
+
+  const loadHazardData = async () => {
+    if (!selectedChild?.uid) return;
+    
+    try {
+      const [stats, alerts] = await Promise.all([
+        hazardDatabaseService.getHazardStats({ userId: selectedChild.uid }),
+        hazardDatabaseService.getHazardAlerts({ userId: selectedChild.uid, limit: 1 })
+      ]);
+      
+      setHazardStats(stats);
+      if (alerts.length > 0) {
+        setLatestHazard(alerts[0]);
+      } else {
+        setLatestHazard(null);
+      }
+
+      if (stats?.byType) {
+        const formattedData = Object.entries(stats.byType)
+          .map(([key, value]) => ({
+            value,
+            label: key.split('_')[0].charAt(0).toUpperCase() + key.split('_')[0].slice(1),
+            frontColor: '#F87171',
+            gradientColor: '#EF4444',
+          }))
+          .slice(0, 4);
+        setChartData(formattedData);
+      }
+    } catch (error) {
+      console.error('Error loading hazard data:', error);
+    }
+  };
+
   useEffect(() => {
     if (userData && userData.role === 'parent' && userData.uid) {
       loadNotifications();
@@ -44,7 +110,6 @@ const ParentDashboard = ({ navigation }) => {
 
   const loadNotifications = async () => {
     if (!userData?.uid) return;
-    
     try {
       const unread = await notificationService.getUnreadCount(userData.uid);
       setUnreadCount(unread);
@@ -54,278 +119,236 @@ const ParentDashboard = ({ navigation }) => {
   };
 
   const handleLogout = async () => {
-    Alert.alert(
-      'Logout',
-      'Are you sure you want to logout?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Logout',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await logoutUser();
-            } catch (error) {
-              console.error('Logout error:', error);
-            }
-          },
-        },
-      ]
-    );
+    Alert.alert('Logout', 'Are you sure you want to logout?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Logout', style: 'destructive', onPress: async () => {
+        try { await logoutUser(); } catch (error) { console.error('Logout error:', error); }
+      }},
+    ]);
   };
 
-  const handleNavigateToSignDetection = () => {
-    // Navigate to Sign Detection screen using React Navigation
-    navigation.navigate('SignDetection');
+  const formatTime = (dateString) => {
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    } catch { return '---'; }
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-blue-50">
-      <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
-        <View className="flex-1 px-6 pt-4 pb-8">
-          {/* Header Section */}
-          <View className="flex-row items-center justify-between mb-6">
-            <View className="flex-row items-center">
-              <Text className="text-3xl font-bold text-gray-800">
-                Parent Dashboard
-              </Text>
-            </View>
-            <View className="flex-row items-center">
-              <TouchableOpacity
-                onPress={() => navigation.navigate('HazardHistory')}
-                className="bg-white rounded-full p-3 shadow-md mr-3"
-              >
-                <View>
-                  <MaterialIcons name="notifications" size={24} color="#374151" />
+    <View className="flex-1 bg-slate-50">
+      <LinearGradient colors={['#6366f1', '#4f46e5']} className="h-64 absolute top-0 left-0 right-0 rounded-b-[40px]" />
+      
+      <SafeAreaView className="flex-1">
+        <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
+          <Animated.View style={{ opacity: fadeAnim }} className="px-6 pt-4 pb-12">
+            
+            {/* Header */}
+            <View className="flex-row items-center justify-between mb-8">
+              <View>
+                <Text className="text-white text-sm font-medium opacity-80">Welcome back,</Text>
+                <Text className="text-white text-3xl font-bold">
+                  {userData?.name?.split(' ')[0] || 'Parent'} 👋
+                </Text>
+              </View>
+              <View className="flex-row">
+                <TouchableOpacity
+                  onPress={() => navigation.navigate('HazardHistory')}
+                  className="bg-white/20 rounded-2xl p-3 mr-3 backdrop-blur-md"
+                >
+                  <Ionicons name="notifications-outline" size={24} color="white" />
                   {unreadCount > 0 && (
-                    <View className="absolute -top-2 -right-2 bg-red-500 rounded-full min-w-[18px] h-[18px] px-1 items-center justify-center">
-                      <Text className="text-white font-bold text-[10px]">
-                        {unreadCount > 99 ? '99+' : unreadCount}
-                      </Text>
+                    <View className="absolute top-2 right-2 bg-rose-500 rounded-full w-5 h-5 items-center justify-center border-2 border-indigo-600">
+                      <Text className="text-white font-bold text-[9px]">{unreadCount > 9 ? '9+' : unreadCount}</Text>
                     </View>
                   )}
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={handleLogout}
+                  className="bg-white/20 rounded-2xl p-3 backdrop-blur-md"
+                >
+                  <Ionicons name="log-out-outline" size={24} color="white" />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Child Selector */}
+            <View className="bg-white rounded-[32px] p-6 mb-8 shadow-xl shadow-indigo-200">
+              <View className="flex-row items-center justify-between mb-4">
+                <Text className="text-slate-400 text-xs font-bold tracking-widest uppercase">My Children</Text>
+                <TouchableOpacity
+                  onPress={() => navigation.navigate('AddChild')}
+                  className="bg-indigo-50 px-4 py-2 rounded-full flex-row items-center"
+                >
+                  <MaterialIcons name="add" size={18} color="#4f46e5" />
+                  <Text className="text-indigo-600 font-bold ml-1">Add</Text>
+                </TouchableOpacity>
+              </View>
+              
+              {loading ? (
+                <View className="h-12 items-center justify-center">
+                  <Text className="text-slate-400 italic">Loading...</Text>
                 </View>
-              </TouchableOpacity>
+              ) : children.length === 0 ? (
+                <View className="py-4 items-center">
+                  <Text className="text-slate-400">No children linked yet</Text>
+                </View>
+              ) : (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} className="flex-row">
+                  {children.map((child) => (
+                    <TouchableOpacity
+                      key={child.uid}
+                      onPress={() => setSelectedChild(child)}
+                      className={`mr-4 items-center py-2 px-6 rounded-2xl border-2 ${
+                        selectedChild?.uid === child.uid ? 'border-indigo-500 bg-indigo-50' : 'border-transparent bg-slate-50'
+                      }`}
+                    >
+                      <View className={`w-12 h-12 rounded-full items-center justify-center mb-2 ${
+                        selectedChild?.uid === child.uid ? 'bg-indigo-500' : 'bg-slate-200'
+                      }`}>
+                        <FontAwesome5 name="user-alt" size={20} color={selectedChild?.uid === child.uid ? 'white' : '#94a3b8'} />
+                      </View>
+                      <Text className={`font-bold ${selectedChild?.uid === child.uid ? 'text-indigo-600' : 'text-slate-500'}`}>
+                        {child.name}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              )}
+            </View>
+
+            {/* Quick Modules Grid */}
+            <View className="flex-row flex-wrap justify-between mb-4">
+              {/* Learning Card */}
               <TouchableOpacity
-                onPress={handleLogout}
-                className="bg-white rounded-full p-3 shadow-md"
+                onPress={() => navigation.navigate('LearningProgress')}
+                className="w-[48%] bg-white rounded-3xl p-5 mb-4 shadow-lg shadow-indigo-100"
               >
-                <MaterialIcons name="logout" size={24} color="#374151" />
+                <View className="w-12 h-12 bg-violet-100 rounded-2xl items-center justify-center mb-4">
+                  <MaterialIcons name="school" size={28} color="#8b5cf6" />
+                </View>
+                <Text className="text-slate-800 font-bold text-lg">Learning</Text>
+                <Text className="text-slate-400 text-xs">Track progress</Text>
               </TouchableOpacity>
-            </View>
-          </View>
 
-          
-          
-          {/* Child Selection */}
-          <View className="bg-white rounded-2xl p-4 mb-6 shadow-md">
-            <View className="flex-row items-center justify-between mb-3">
-              <Text className="text-sm text-gray-600">Child</Text>
+              {/* Emotion Card */}
               <TouchableOpacity
-                onPress={() => navigation.navigate('AddChild')}
-                className="bg-green-500 rounded-full px-4 py-2 flex-row items-center"
+                onPress={() => navigation.navigate('EmotionDashboard')}
+                className="w-[48%] bg-white rounded-3xl p-5 mb-4 shadow-lg shadow-indigo-100"
               >
-                <MaterialIcons name="add" size={20} color="#ffffff" style={{ marginRight: 4 }} />
-                <Text className="text-white font-semibold">Add Child</Text>
+                <View className="w-12 h-12 bg-pink-100 rounded-2xl items-center justify-center mb-4">
+                  <MaterialIcons name="favorite" size={28} color="#ec4899" />
+                </View>
+                <Text className="text-slate-800 font-bold text-lg">Emotions</Text>
+                <Text className="text-slate-400 text-xs">Behavior insights</Text>
               </TouchableOpacity>
-            </View>
-            {loading ? (
-              <Text className="text-gray-500">Loading children...</Text>
-            ) : children.length === 0 ? (
-              <View className="items-center py-4">
-                <Text className="text-gray-500">No children added yet</Text>
-              </View>
-            ) : (
-              <View>
-                <Text className="text-xl font-semibold text-gray-800">
-                  {selectedChild?.name || children[0]?.name || 'Select a child'}
-                </Text>
-                {children.length > 1 && (
-                  <View className="flex-row flex-wrap mt-3">
-                    {children.map((child) => (
-                      <TouchableOpacity
-                        key={child.id || child.uid}
-                        onPress={() => setSelectedChild(child)}
-                        className={`px-3 py-1 rounded-full mr-2 mb-2 ${
-                          selectedChild?.uid === child.uid
-                            ? 'bg-blue-500'
-                            : 'bg-gray-200'
-                        }`}
-                      >
-                        <Text
-                          className={`text-sm font-semibold ${
-                            selectedChild?.uid === child.uid
-                              ? 'text-white'
-                              : 'text-gray-600'
-                          }`}
-                        >
-                          {child.name}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                )}
-              </View>
-            )}
-          </View>
 
-          {/* Safety & Hazard Section */}
-          <View className="bg-white rounded-2xl p-4 mb-6 shadow-md">
-            <Text className="text-xl font-bold text-gray-800 mb-3">
-              Safety & Hazard Monitoring
-            </Text>
-            <View className="flex-row">
-              {/* Hazard History Button */}
+              {/* Sign Language Card */}
               <TouchableOpacity
-                onPress={() => navigation.navigate('HazardHistory')}
-                className="flex-1 bg-red-500 rounded-2xl p-4 mr-2 flex-row items-center justify-between"
-                activeOpacity={0.85}
+                onPress={() => navigation.navigate('SignDetection')}
+                className="w-[48%] bg-white rounded-3xl p-5 mb-4 shadow-lg shadow-indigo-100"
               >
-                <View className="flex-row items-center">
-                  <View className="bg-white rounded-full p-2 mr-3">
-                    <MaterialIcons name="warning" size={24} color="#ef4444" />
-                  </View>
-                  <View>
-                    <Text className="text-white font-semibold text-base">
-                      Hazard Alerts
-                    </Text>
-                    <Text className="text-red-100 text-xs">
-                      View recorded dangerous sounds
-                    </Text>
-                  </View>
+                <View className="w-12 h-12 bg-blue-100 rounded-2xl items-center justify-center mb-4">
+                  <MaterialIcons name="sign-language" size={28} color="#3b82f6" />
                 </View>
-                <MaterialIcons name="chevron-right" size={24} color="#fee2e2" />
+                <Text className="text-slate-800 font-bold text-lg">Signs</Text>
+                <Text className="text-slate-400 text-xs">Real-time tools</Text>
               </TouchableOpacity>
 
-              {/* Places Button */}
+              {/* System Settings Card */}
               <TouchableOpacity
-                onPress={() => navigation.navigate('ParentPlaces')}
-                className="flex-1 bg-indigo-500 rounded-2xl p-4 ml-2 flex-row items-center justify-between"
-                activeOpacity={0.85}
+                onPress={() => navigation.navigate('HazardDetection')}
+                className="w-[48%] bg-white rounded-3xl p-5 mb-4 shadow-lg shadow-indigo-100"
               >
-                <View className="flex-row items-center">
-                  <View className="bg-white rounded-full p-2 mr-3">
-                    <MaterialIcons name="place" size={24} color="#4f46e5" />
-                  </View>
-                  <View>
-                    <Text className="text-white font-semibold text-base">
-                      Safe Places
-                    </Text>
-                    <Text className="text-indigo-100 text-xs">
-                      Manage home, school, and more
-                    </Text>
-                  </View>
+                <View className="w-12 h-12 bg-slate-100 rounded-2xl items-center justify-center mb-4">
+                  <MaterialIcons name="settings" size={28} color="#64748b" />
                 </View>
-                <MaterialIcons name="chevron-right" size={24} color="#e0e7ff" />
+                <Text className="text-slate-800 font-bold text-lg">Alerts</Text>
+                <Text className="text-slate-400 text-xs">System settings</Text>
               </TouchableOpacity>
             </View>
 
-            
-          </View>
-
-          {/* Track Child Learning Progress */}
-          <TouchableOpacity
-            onPress={() => navigation.navigate('LearningProgress')}
-            className="bg-violet-500 rounded-2xl p-5 mb-6 shadow-lg"
-            activeOpacity={0.8}
-          >
-            <View className="flex-row items-center justify-between">
-              <View className="flex-row items-center flex-1">
-                <View className="bg-white rounded-full p-3 mr-4">
-                  <MaterialIcons name="school" size={32} color="#7c3aed" />
+            {/* Safety Snapshot Section */}
+            <View className="bg-white rounded-[32px] p-6 mb-8 shadow-xl shadow-indigo-200">
+              <View className="flex-row justify-between items-center mb-6">
+                <View>
+                  <Text className="text-slate-800 text-xl font-bold">Safety Snapshot</Text>
+                  <Text className="text-slate-400 text-sm">Real-time hazard overview</Text>
                 </View>
-                <View className="flex-1">
-                  <Text className="text-xl font-bold text-white mb-1">
-                    Track Child Learning Progress
-                  </Text>
-                  <Text className="text-sm text-violet-100">
-                    Letters learned, accuracy, weekly chart & more
-                  </Text>
+                <View className="bg-emerald-50 px-4 py-2 rounded-2xl flex-row items-center">
+                  <Animated.View style={{ transform: [{ scale: pulseAnim }] }} className="w-2.5 h-2.5 rounded-full bg-emerald-500 mr-2" />
+                  <Text className="text-emerald-600 font-bold text-xs">LIVE</Text>
                 </View>
               </View>
-              <MaterialIcons name="chevron-right" size={28} color="#ffffff" />
-            </View>
-          </TouchableOpacity>
 
-          {/* Emotion Dashboard */}
-          <TouchableOpacity
-            onPress={() => navigation.navigate('EmotionDashboard')}
-            className="bg-pink-500 rounded-2xl p-5 mb-6 shadow-lg"
-            activeOpacity={0.8}
-          >
-            <View className="flex-row items-center justify-between">
-              <View className="flex-row items-center flex-1">
-                <View className="bg-white rounded-full p-3 mr-4">
-                  <MaterialIcons name="favorite" size={32} color="#ec4899" />
+              <View className="flex-row gap-4 mb-6">
+                <View className="flex-1 bg-slate-50 rounded-3xl p-5 border border-slate-100">
+                  <Text className="text-slate-400 text-xs font-bold mb-2">LAST SOUND</Text>
+                  <Text className="text-slate-800 text-lg font-bold" numberOfLines={1}>
+                    {latestHazard ? latestHazard.type.replace('_', ' ').toUpperCase() : 'None'}
+                  </Text>
+                  <Text className="text-slate-400 text-xs mt-1">
+                    {latestHazard ? formatTime(latestHazard.timestamp) : 'Listening...'}
+                  </Text>
                 </View>
-                <View className="flex-1">
-                  <Text className="text-xl font-bold text-white mb-1">
-                    Emotion & Behavior Analysis
+                <View className="flex-1 bg-rose-50 rounded-3xl p-5 border border-rose-100">
+                  <Text className="text-rose-400 text-xs font-bold mb-2">TOTAL HAZARDS</Text>
+                  <Text className="text-rose-600 text-3xl font-black">
+                    {hazardStats?.hazards || 0}
                   </Text>
-                  <Text className="text-sm text-pink-100">
-                    Track emotions, engagement, and get insights
-                  </Text>
+                  <Text className="text-rose-400 text-xs mt-1 opacity-70">Detected today</Text>
                 </View>
               </View>
-              <MaterialIcons name="chevron-right" size={28} color="#ffffff" />
-            </View>
-          </TouchableOpacity>
-          
-          {/* Sign Detection Button */}
-          <TouchableOpacity
-            onPress={handleNavigateToSignDetection}
-            className="bg-blue-500 rounded-2xl p-5 mb-6 shadow-lg"
-            activeOpacity={0.8}
-          >
-            <View className="flex-row items-center justify-between">
-              <View className="flex-row items-center flex-1">
-                <View className="bg-white rounded-full p-3 mr-4">
-                  <MaterialIcons name="sign-language" size={32} color="#3b82f6" />
-                </View>
-                <View className="flex-1">
-                  <Text className="text-xl font-bold text-white mb-1">
-                    Sign Detection
-                  </Text>
-                  <Text className="text-sm text-blue-100">
-                    Real-time sign language recognition
-                  </Text>
-                </View>
-              </View>
-              <MaterialIcons name="arrow-forward" size={24} color="#ffffff" />
-            </View>
-          </TouchableOpacity>
 
-          {/* Hazard Detection Button */}
-          <TouchableOpacity
-            onPress={() => navigation.navigate('HazardDetection')}
-            className="bg-red-500 rounded-2xl p-5 mb-6 shadow-lg"
-            activeOpacity={0.8}
-          >
-            <View className="flex-row items-center justify-between">
-              <View className="flex-row items-center flex-1">
-                <View className="bg-white rounded-full p-3 mr-4">
-                  <MaterialIcons name="warning" size={32} color="#ef4444" />
+              {chartData.length > 0 && (
+                <View className="mb-6">
+                  <Text className="text-slate-400 text-xs font-bold mb-4">HAZARD DISTRIBUTION</Text>
+                  <View className="items-center">
+                    <BarChart
+                      data={chartData}
+                      barWidth={45}
+                      noOfSections={3}
+                      barBorderRadius={6}
+                      yAxisThickness={0}
+                      xAxisThickness={0}
+                      hideRules
+                      showGradient
+                      labelSize={10}
+                      height={120}
+                      width={width - 100}
+                      isAnimated
+                    />
+                  </View>
                 </View>
-                <View className="flex-1">
-                  <Text className="text-xl font-bold text-white mb-1">
-                    Hazard Alert System
-                  </Text>
-                  <Text className="text-sm text-red-100">
-                    Detect and identify dangerous sounds
-                  </Text>
-                </View>
-              </View>
-              <MaterialIcons name="arrow-forward" size={24} color="#ffffff" />
-            </View>
-          </TouchableOpacity>
-        </View>
-      </ScrollView>
+              )}
 
-    </SafeAreaView>
+              <View className="flex-row gap-4">
+                <TouchableOpacity
+                  onPress={() => navigation.navigate('HazardHistory')}
+                  className="flex-1 overflow-hidden rounded-2xl"
+                >
+                  <LinearGradient colors={['#f87171', '#ef4444']} className="p-4 items-center justify-center flex-row">
+                    <MaterialIcons name="history" size={20} color="white" />
+                    <Text className="text-white font-bold ml-2">History</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => navigation.navigate('ParentPlaces')}
+                  className="flex-1 overflow-hidden rounded-2xl"
+                >
+                  <LinearGradient colors={['#818cf8', '#6366f1']} className="p-4 items-center justify-center flex-row">
+                    <MaterialIcons name="place" size={20} color="white" />
+                    <Text className="text-white font-bold ml-2">Places</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+          </Animated.View>
+        </ScrollView>
+      </SafeAreaView>
+    </View>
   );
 };
-
-const styles = StyleSheet.create({});
 
 export default ParentDashboard;
 

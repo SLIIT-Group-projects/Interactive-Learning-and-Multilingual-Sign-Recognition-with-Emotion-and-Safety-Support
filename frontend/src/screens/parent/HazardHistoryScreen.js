@@ -10,6 +10,7 @@ import {
   Alert,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
+import { BarChart } from 'react-native-gifted-charts';
 import { useAuth } from '../../contexts/AuthContext';
 import { getParentChildren } from '../../services/firestore/userService';
 import hazardDatabaseService from '../../../services/hazardDatabase.service';
@@ -255,21 +256,48 @@ const HazardHistoryScreen = ({ navigation }) => {
 
         {/* Stats */}
         {stats && (
-          <View style={styles.statsRow}>
-            <View style={styles.statCard}>
-              <Text style={styles.statValue}>{stats.total}</Text>
-              <Text style={styles.statLabel}>Total Alerts</Text>
+          <View style={{ marginBottom: 16 }}>
+            <View style={styles.statsRow}>
+              <View style={styles.statCard}>
+                <Text style={styles.statValue}>{stats.total}</Text>
+                <Text style={styles.statLabel}>Total Alerts</Text>
+              </View>
+              <View style={[styles.statCard, { backgroundColor: '#fee2e2' }]}>
+                <Text style={[styles.statValue, { color: '#b91c1c' }]}>{stats.hazards}</Text>
+                <Text style={[styles.statLabel, { color: '#b91c1c' }]}>Hazards</Text>
+              </View>
+              <View style={styles.statCard}>
+                <Text style={styles.statValue}>
+                  {(stats.averageConfidence * 100).toFixed(0)}%
+                </Text>
+                <Text style={styles.statLabel}>Avg Confidence</Text>
+              </View>
             </View>
-            <View style={[styles.statCard, { backgroundColor: '#fee2e2' }]}>
-              <Text style={[styles.statValue, { color: '#b91c1c' }]}>{stats.hazards}</Text>
-              <Text style={[styles.statLabel, { color: '#b91c1c' }]}>Hazards</Text>
-            </View>
-            <View style={styles.statCard}>
-              <Text style={styles.statValue}>
-                {(stats.averageConfidence * 100).toFixed(0)}%
-              </Text>
-              <Text style={styles.statLabel}>Avg Confidence</Text>
-            </View>
+
+            {/* Added Chart visualization */}
+            {stats.byType && Object.keys(stats.byType).length > 0 && (
+              <View style={{ backgroundColor: '#ffffff', borderRadius: 16, padding: 16, marginTop: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 1 }}>
+                <Text style={{ fontSize: 14, fontWeight: '600', color: '#374151', marginBottom: 16 }}>Hazard Distribution</Text>
+                <View style={{ alignItems: 'center' }}>
+                  <BarChart
+                    data={Object.entries(stats.byType).map(([key, value]) => ({
+                      value,
+                      label: key.split('_')[0].charAt(0).toUpperCase() + key.split('_')[0].slice(1),
+                      frontColor: '#EF4444',
+                    })).slice(0, 5)}
+                    barWidth={30}
+                    noOfSections={3}
+                    barBorderRadius={4}
+                    yAxisThickness={0}
+                    xAxisThickness={0}
+                    hideRules
+                    labelSize={10}
+                    height={100}
+                    width={280}
+                  />
+                </View>
+              </View>
+            )}
           </View>
         )}
 
