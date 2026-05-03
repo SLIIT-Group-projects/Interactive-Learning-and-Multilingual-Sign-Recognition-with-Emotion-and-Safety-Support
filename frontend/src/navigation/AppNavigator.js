@@ -20,6 +20,7 @@ import SignDetectionScreen from '../../app/(tabs)/sign-detection';
 import notificationService from '../../services/notification.service';
 import hazardAlertService from '../../services/hazardAlert.service';
 import { registerPushToken, setupNotificationListener } from '../services/pushNotification.service';
+import GlobalHazardAlert from '../components/common/GlobalHazardAlert';
 
 
 const Stack = createNativeStackNavigator();
@@ -340,6 +341,7 @@ export default function AppNavigator({ navigationRef }) {
           </View>
         </View>
       </Modal>
+      <GlobalHazardAlert />
     </>
   );
 }
