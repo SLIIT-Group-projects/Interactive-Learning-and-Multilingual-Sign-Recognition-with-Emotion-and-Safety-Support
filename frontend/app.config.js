@@ -52,7 +52,7 @@ export default {
       eas: {
         projectId: "signlanguageproject-eb8d8",
       },
-      apiUrl: process.env.EXPO_PUBLIC_API_URL || "http://192.168.1.2:5000",
+      apiUrl: process.env.EXPO_PUBLIC_API_URL || "http://192.168.221.205:5000",
     },
   },
 };

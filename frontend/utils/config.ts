@@ -14,7 +14,7 @@ const ENV_USE_PHYSICAL_DEVICE = process.env.EXPO_PUBLIC_USE_PHYSICAL_DEVICE === 
 const ENV_COMPUTER_IP = process.env.EXPO_PUBLIC_COMPUTER_IP?.trim();
 const BACKEND_PORT = Number(process.env.EXPO_PUBLIC_BACKEND_PORT || "5000");
 const EXTRA_API_URL = (Constants?.expoConfig?.extra?.apiUrl || "").trim();
-const DEFAULT_LAN_IP = "192.168.1.2";
+const DEFAULT_LAN_IP = "192.168.221.205";
 
 // ============================================
 

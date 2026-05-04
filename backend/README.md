@@ -1,5 +1,3 @@
-<<<<<<< HEAD
-
 # Hazard Sound Detection Backend API
 
 Backend API for the Interactive Learning and Multilingual Sign Recognition system, specifically handling hazard sound detection for hearing-impaired children.
@@ -84,8 +82,6 @@ The server will run on `http://localhost:5000`
 ## API Endpoints
 
 ### Health Check
-
-<<<<<<< HEAD
 
 - **GET** `/health` - Check API health status
 
@@ -257,7 +253,7 @@ When testing on a physical device or emulator, you'll need to:
    - Mac/Linux: `ifconfig` or `ip addr`
 
 2. Update the API URL in the frontend to use your IP:
-   - Example: `http://192.168.1.9:5000/predict`
+   - Example: `http://192.168.221.205:5000/predict`
 
 3. Make sure your phone/emulator and computer are on the same network.
 
