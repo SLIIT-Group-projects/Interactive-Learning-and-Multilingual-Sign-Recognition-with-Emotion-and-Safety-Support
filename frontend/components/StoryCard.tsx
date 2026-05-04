@@ -1,7 +1,9 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Image } from 'expo-image';
+import { LinearGradient } from 'expo-linear-gradient';
 import type { Story } from '../data/stories';
+import { MAGIC } from '../src/theme/childMagicTheme';
 
 type Props = {
 	story: Story;
@@ -10,9 +12,9 @@ type Props = {
 
 export const StoryCard: React.FC<Props> = ({ story, onPress }) => {
 	const levelColors = {
-		Easy: { bg: '#FFFCF3', border: '#F0E6B6', text: '#7A5B00' },
-		Medium: { bg: '#F3F8FF', border: '#B6D0F0', text: '#1A4D7A' },
-		Hard: { bg: '#FFF0F0', border: '#F0B6B6', text: '#7A1A1A' },
+		Easy: { bg: MAGIC.softPurpleBg, border: MAGIC.softPurpleBorder, text: MAGIC.purple600 },
+		Medium: { bg: '#E0E7FF', border: '#C7D2FE', text: MAGIC.textPrimary },
+		Hard: { bg: MAGIC.softPinkBg, border: MAGIC.softPinkBorder, text: '#9D174D' },
 	};
 
 	const levelStyle = levelColors[story.level] || levelColors.Easy;
@@ -69,9 +71,16 @@ export const StoryCard: React.FC<Props> = ({ story, onPress }) => {
 					{story.uploadedOn && (
 						<Text style={styles.dateText}>{story.uploadedOn}</Text>
 					)}
-					<TouchableOpacity style={styles.readBtn} onPress={onPress}>
-						<Text style={styles.readBtnText}>Read</Text>
-					</TouchableOpacity>
+					<View style={styles.readBtnWrap}>
+						<LinearGradient
+							colors={MAGIC.sessionGrad}
+							start={{ x: 0, y: 0 }}
+							end={{ x: 1, y: 0 }}
+							style={styles.readBtnGrad}
+						>
+							<Text style={styles.readBtnText}>Read ✨</Text>
+						</LinearGradient>
+					</View>
 				</View>
 			</View>
 		</TouchableOpacity>
@@ -81,25 +90,27 @@ export const StoryCard: React.FC<Props> = ({ story, onPress }) => {
 const styles = StyleSheet.create({
 	card: {
 		width: '100%',
-		backgroundColor: '#fff',
-		borderRadius: 16,
-		padding: 14,
+		backgroundColor: MAGIC.cardWhite,
+		borderRadius: 32,
+		padding: 16,
 		marginBottom: 16,
 		flexDirection: 'row',
 		alignItems: 'flex-start',
-		elevation: 2,
-		shadowColor: '#000',
-		shadowOpacity: 0.08,
-		shadowRadius: 8,
-		shadowOffset: { width: 0, height: 2 },
+		borderBottomWidth: 6,
+		borderBottomColor: MAGIC.purple100,
+		elevation: 4,
+		shadowColor: '#7c3aed',
+		shadowOpacity: 0.1,
+		shadowRadius: 12,
+		shadowOffset: { width: 0, height: 6 },
 	},
 	imageContainer: {
 		width: 100,
 		height: 100,
-		borderRadius: 12,
+		borderRadius: 22,
 		overflow: 'hidden',
 		marginRight: 14,
-		backgroundColor: '#f0f0f0',
+		backgroundColor: MAGIC.purple100,
 	},
 	storyImage: {
 		width: '100%',
@@ -128,7 +139,7 @@ const styles = StyleSheet.create({
 	title: { 
 		fontSize: 16, 
 		fontWeight: '900', 
-		color: '#212121', 
+		color: MAGIC.textPrimary, 
 		flex: 1, 
 		marginRight: 8,
 		lineHeight: 22,
@@ -146,7 +157,7 @@ const styles = StyleSheet.create({
 	},
 	description: { 
 		fontSize: 13, 
-		color: '#666',
+		color: MAGIC.textMuted,
 		marginBottom: 12,
 		lineHeight: 18,
 	},
@@ -157,31 +168,33 @@ const styles = StyleSheet.create({
 		gap: 8,
 	},
 	timeBadge: {
-		backgroundColor: '#FFF9E6',
+		backgroundColor: MAGIC.softPurpleBg,
 		paddingHorizontal: 10,
-		paddingVertical: 4,
-		borderRadius: 12,
+		paddingVertical: 5,
+		borderRadius: 14,
 	},
 	timeText: { 
 		fontSize: 12, 
-		fontWeight: '700', 
-		color: '#B8860B',
+		fontWeight: '800', 
+		color: MAGIC.purple600,
 	},
 	dateText: { 
 		fontSize: 12, 
 		fontWeight: '600', 
-		color: '#07BDD6',
+		color: MAGIC.textMuted,
 	},
-	readBtn: {
+	readBtnWrap: {
 		marginLeft: 'auto',
-		backgroundColor: '#0A7EA4',
-		paddingHorizontal: 16,
+		borderRadius: 18,
+		overflow: 'hidden',
+	},
+	readBtnGrad: {
+		paddingHorizontal: 14,
 		paddingVertical: 8,
-		borderRadius: 10,
 	},
 	readBtnText: { 
 		color: '#fff', 
 		fontWeight: '800', 
-		fontSize: 13,
+		fontSize: 12,
 	},
 });

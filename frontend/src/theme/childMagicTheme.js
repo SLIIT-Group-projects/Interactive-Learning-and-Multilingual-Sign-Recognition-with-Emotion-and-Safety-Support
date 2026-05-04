@@ -1,0 +1,20 @@
+// Aligns story (and similar) screens with ChildDashboard “magic” look
+export const MAGIC = {
+  pageBg: "#FAF5FF",
+  textPrimary: "#4C1D95",
+  textMuted: "rgba(76, 29, 149, 0.65)",
+  headerGrad: ["#a855f7", "#d946ef"],
+  sessionGrad: ["#a855f7", "#d946ef"],
+  accentPink: "#EC4899",
+  cardWhite: "#FFFFFF",
+  softPinkBg: "#FCE7F3",
+  softPinkBorder: "#FBCFE8",
+  softPurpleBg: "#EDE9FE",
+  softPurpleBorder: "#E9D5FF",
+  purple100: "#F3E8FF",
+  purple200: "#E9D5FF",
+  purple400: "#C084FC",
+  purple500: "#a855f7",
+  purple600: "#9333ea",
+  violetIcon: "#8b5cf6",
+};

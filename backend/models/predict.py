@@ -382,7 +382,7 @@ def _apply_threshold(predictions, threshold, min_confidence=0.5):
     top_indices = np.argsort(predictions)[::-1]  # Sort descending
     
     # False positive types to filter out
-    FALSE_POSITIVE_TYPES = ['silence', 'background_noise', 'noise', 'static', 'white_noise', 'ambient', 'room_tone']
+    FALSE_POSITIVE_TYPES = ['silence', 'background_noise', 'noise', 'static', 'white_noise', 'ambient', 'room_tone', 'train']
     
     # Check if top prediction meets minimum confidence requirement
     top_confidence = float(predictions[top_indices[0]])

@@ -22,10 +22,38 @@ const DEDUP_EVENTS_COLLECTION = 'dedup_events';
 // Minimum confidence threshold for saving detections (increased to reduce false positives)
 const MIN_CONFIDENCE_THRESHOLD = parseFloat(process.env.MIN_CONFIDENCE_THRESHOLD || '0.65');
 // False positive types to filter out
-const FALSE_POSITIVE_TYPES = ['silence', 'background_noise', 'noise', 'static', 'white_noise', 'ambient', 'room_tone'];
+const FALSE_POSITIVE_TYPES = ['silence', 'background_noise', 'noise', 'static', 'white_noise', 'ambient', 'room_tone', 'train', 'crackling_fire'];
 // Deduplicate repeated detections/alerts (same user + hazard type within this window)
 const SOUND_DEDUP_WINDOW_MS = parseInt(process.env.SOUND_DEDUP_WINDOW_MS || '60000', 10);
 const PARENT_ALERT_DEDUP_WINDOW_MS = parseInt(process.env.PARENT_ALERT_DEDUP_WINDOW_MS || '60000', 10);
+
+// In-memory caches to reduce Firestore reads
+const dedupCache = new Map();
+const parentIdCache = new Map();
+const userDocCache = new Map();
+const CACHE_CLEANUP_INTERVAL = 3600000; // 1 hour
+
+// Periodically clean up caches to prevent memory leaks
+setInterval(() => {
+  const now = Date.now();
+  const ONE_HOUR = 3600000;
+  const TWENTY_FOUR_HOURS = 86400000;
+
+  for (const [key, value] of dedupCache.entries()) {
+    if (now - value.lastSeenAtMs > ONE_HOUR) {
+      dedupCache.delete(key);
+    }
+  }
+
+  // User caches: only remove entries not accessed in 24 hours
+  // This drastically reduces repeat reads for active users
+  for (const [key, value] of userDocCache.entries()) {
+    if (now - (value._cachedAt || 0) > TWENTY_FOUR_HOURS) {
+      userDocCache.delete(key);
+      parentIdCache.delete(key);
+    }
+  }
+}, CACHE_CLEANUP_INTERVAL);
 const CRACKLING_FIRE_CONFIRMATION_FRAMES = parseInt(process.env.CRACKLING_FIRE_CONFIRMATION_FRAMES || '5', 10);
 const cracklingFireVotesByUser = new Map();
 const PARENT_CRITICAL_MIN_CONFIDENCE = parseFloat(process.env.PARENT_CRITICAL_MIN_CONFIDENCE || '0.80');
@@ -82,10 +110,10 @@ function updateCracklingFireVote(userId, detections = []) {
   };
 }
 
-async function hasRecentDuplicateSound(userId, hazardType, dedupWindowMs = SOUND_DEDUP_WINDOW_MS) {
+async function hasRecentDuplicateSound(userId, hazardType, dedupWindowMs = SOUND_DEDUP_WINDOW_MS, isCritical = false) {
   if (!userId || !hazardType || dedupWindowMs <= 0) return false;
   const dedupKey = `sound:${userId}:${hazardType}`;
-  return hasRecentDedupEvent(dedupKey, dedupWindowMs);
+  return hasRecentDedupEvent(dedupKey, dedupWindowMs, isCritical);
 }
 
 async function hasRecentDuplicateParentAlert(parentId, alertData, dedupWindowMs = PARENT_ALERT_DEDUP_WINDOW_MS) {
@@ -93,11 +121,32 @@ async function hasRecentDuplicateParentAlert(parentId, alertData, dedupWindowMs 
   const hazardType = alertData?.hazardType || 'unknown';
   const childUserId = alertData?.childUserId || 'unknown';
   const dedupKey = `parent_alert:${parentId}:${childUserId}:${hazardType}`;
-  return hasRecentDedupEvent(dedupKey, dedupWindowMs);
+  // Parent alerts are always critical, so we always check Firestore if cache miss
+  return hasRecentDedupEvent(dedupKey, dedupWindowMs, true);
 }
 
-async function hasRecentDedupEvent(dedupKey, dedupWindowMs) {
+async function hasRecentDedupEvent(dedupKey, dedupWindowMs, alwaysCheckDb = false) {
   if (!dedupKey || dedupWindowMs <= 0) return false;
+
+  const now = Date.now();
+  
+  // Check in-memory cache first (primary reduction in reads)
+  const cachedEvent = dedupCache.get(dedupKey);
+  if (cachedEvent) {
+    const elapsed = now - cachedEvent.lastSeenAtMs;
+    if (elapsed <= dedupWindowMs) {
+      console.log(`[Cache] Found recent duplicate in memory: ${dedupKey} (${Math.round(elapsed / 1000)}s ago)`);
+      return true;
+    }
+  }
+
+  // OPTIMIZATION: If not in memory and it's NOT a critical hazard, 
+  // skip the Firestore read and treat as a new event.
+  // This saves 1 read for every "new" non-critical sound detected after a server restart or cache expiry.
+  if (!alwaysCheckDb) {
+    console.log(`[Cache] Non-critical dedup miss for ${dedupKey}, skipping DB read.`);
+    return false;
+  }
 
   try {
     const dedupRef = db.collection(DEDUP_EVENTS_COLLECTION).doc(dedupKey);
@@ -107,10 +156,14 @@ async function hasRecentDedupEvent(dedupKey, dedupWindowMs) {
     }
 
     const data = dedupDoc.data() || {};
-    const now = Date.now();
     const lastSeenAtMs = Number(data.lastSeenAtMs || 0);
     const fallbackTs = new Date(data.lastSeenAt || 0).getTime();
     const ts = Number.isFinite(lastSeenAtMs) && lastSeenAtMs > 0 ? lastSeenAtMs : fallbackTs;
+
+    // Update memory cache if found in DB
+    if (Number.isFinite(ts) && ts > 0) {
+      dedupCache.set(dedupKey, { lastSeenAtMs: ts });
+    }
 
     return Number.isFinite(ts) && (now - ts) <= dedupWindowMs;
   } catch (error) {
@@ -123,6 +176,10 @@ async function markDedupEvent(dedupKey, details = {}) {
   if (!dedupKey) return;
 
   const nowMs = Date.now();
+  
+  // Update memory cache (primary source for next checks)
+  dedupCache.set(dedupKey, { lastSeenAtMs: nowMs });
+
   const payload = {
     dedupKey,
     lastSeenAtMs: nowMs,
@@ -132,6 +189,7 @@ async function markDedupEvent(dedupKey, details = {}) {
   };
 
   try {
+    // Update Firestore as secondary source
     await db.collection(DEDUP_EVENTS_COLLECTION).doc(dedupKey).set(payload, { merge: true });
   } catch (error) {
     console.warn(`⚠️ Error updating dedup state for key "${dedupKey}":`, error.message);
@@ -192,7 +250,7 @@ async function saveSoundsToDatabase(detections, context = {}, audioFileUrl = nul
 
       // Skip duplicate records for rapid repeated detections of the same hazard.
       if (hasUserId) {
-        const isDuplicateSound = await hasRecentDuplicateSound(context.userId, hazardType);
+        const isDuplicateSound = await hasRecentDuplicateSound(context.userId, hazardType, SOUND_DEDUP_WINDOW_MS, isCriticalAlert);
         if (isDuplicateSound) {
           console.log(`⏭️ Skipping duplicate ${isCriticalAlert ? 'CRITICAL ' : ''}sound: ${hazardType} for user ${context.userId} (within ${SOUND_DEDUP_WINDOW_MS}ms window)`);
           continue;
@@ -290,12 +348,20 @@ async function saveSoundsToDatabase(detections, context = {}, audioFileUrl = nul
             const parentId = await getParentIdFromChild(context.userId);
             
             if (parentId) {
-              // Get child name for notification
+              // Get child name for notification (check cache first)
               let childName = 'Your child';
               try {
-                const childDoc = await db.collection(USERS_COLLECTION).doc(context.userId).get();
-                if (childDoc.exists) {
-                  childName = childDoc.data().name || childName;
+                let childData = userDocCache.get(context.userId);
+                if (!childData) {
+                  const childDoc = await db.collection(USERS_COLLECTION).doc(context.userId).get();
+                  if (childDoc.exists) {
+                    childData = childDoc.data();
+                    userDocCache.set(context.userId, childData);
+                  }
+                }
+                
+                if (childData) {
+                  childName = childData.name || childName;
                 }
               } catch (nameError) {
                 console.warn('⚠️ Could not fetch child name:', nameError);
@@ -341,11 +407,31 @@ async function saveSoundsToDatabase(detections, context = {}, audioFileUrl = nul
 async function getParentIdFromChild(childUserId) {
   if (!childUserId) return null;
   
+  // Check in-memory cache first
+  if (parentIdCache.has(childUserId)) {
+    return parentIdCache.get(childUserId);
+  }
+
   try {
-    const userDoc = await db.collection(USERS_COLLECTION).doc(childUserId).get();
-    if (userDoc.exists) {
-      const userData = userDoc.data();
+    // Check userDocCache first
+    let userData = userDocCache.get(childUserId);
+    
+    if (!userData) {
+      const userDoc = await db.collection(USERS_COLLECTION).doc(childUserId).get();
+      if (userDoc.exists) {
+        userData = { ...userDoc.data(), _cachedAt: Date.now() };
+        userDocCache.set(childUserId, userData);
+      }
+    }
+
+    if (userData) {
       const parentId = userData.parentId || null;
+      
+      // Update parentIdCache
+      if (parentId) {
+        parentIdCache.set(childUserId, parentId);
+      }
+      
       console.log(`👨‍👩‍👧 Found parent ${parentId} for child ${childUserId}`);
       return parentId;
     }
@@ -485,9 +571,18 @@ async function notifyParent(parentId, alertData) {
 
     // Send push notification if parent has token (FCM or Expo)
     try {
-      const parentDoc = await db.collection(USERS_COLLECTION).doc(parentId).get();
-      if (parentDoc.exists) {
-        const parentData = parentDoc.data();
+      // Check in-memory cache for parent data (FCM/Expo tokens)
+      let parentData = userDocCache.get(parentId);
+      
+      if (!parentData) {
+        const parentDoc = await db.collection(USERS_COLLECTION).doc(parentId).get();
+        if (parentDoc.exists) {
+          parentData = { ...parentDoc.data(), _cachedAt: Date.now() };
+          userDocCache.set(parentId, parentData);
+        }
+      }
+
+      if (parentData) {
         const fcmToken = parentData.fcmToken || parentData.fcmTokens?.[0];
         const expoPushToken = parentData.expoPushToken;
         
@@ -903,12 +998,13 @@ router.post('/detect', upload.single('audio'), async (req, res, next) => {
     const MIN_LOUDNESS_THRESHOLD = 0.02; // Minimum RMS loudness (normalized 0-1)
     const filteredDetections = detections.filter(detection => {
       const hazardType = (detection.type || '').toLowerCase();
+      const originalClass = (detection.original_class || detection.originalClass || '').toLowerCase();
       const loudness = detection.loudness || 0;
       const confidence = detection.confidence || 0;
       
-      // Filter out false positive types
-      if (FALSE_POSITIVE_TYPES.some(fp => hazardType.includes(fp))) {
-        console.log(`🚫 Filtering out false positive type: ${detection.type}`);
+      // Filter out false positive types (checking both mapped type and original model class)
+      if (FALSE_POSITIVE_TYPES.some(fp => hazardType.includes(fp) || originalClass.includes(fp))) {
+        console.log(`🚫 Filtering out false positive: ${hazardType} (original: ${originalClass})`);
         return false;
       }
       

@@ -14,7 +14,8 @@ const harmFactors = {
   dog_barking: { default: 1.0, night: 1.4, indoor: 0.8 },
   door_knock: { default: 0.9, night: 1.3, home: 1.0 },
   gun_shot: { default: 2.0, night: 2.0, residential: 2.0 },
-  footsteps: { default: 0.8, night: 1.5, indoor: 1.2 }
+  footsteps: { default: 0.8, night: 1.5, indoor: 1.2 },
+  train: { default: 0.0 }
 };
 
 /**
