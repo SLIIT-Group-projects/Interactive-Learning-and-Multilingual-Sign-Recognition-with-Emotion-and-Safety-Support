@@ -22,10 +22,29 @@ const DEDUP_EVENTS_COLLECTION = 'dedup_events';
 // Minimum confidence threshold for saving detections (increased to reduce false positives)
 const MIN_CONFIDENCE_THRESHOLD = parseFloat(process.env.MIN_CONFIDENCE_THRESHOLD || '0.65');
 // False positive types to filter out
-const FALSE_POSITIVE_TYPES = ['silence', 'background_noise', 'noise', 'static', 'white_noise', 'ambient', 'room_tone'];
+const FALSE_POSITIVE_TYPES = ['silence', 'background_noise', 'noise', 'static', 'white_noise', 'ambient', 'room_tone', 'train'];
 // Deduplicate repeated detections/alerts (same user + hazard type within this window)
 const SOUND_DEDUP_WINDOW_MS = parseInt(process.env.SOUND_DEDUP_WINDOW_MS || '60000', 10);
 const PARENT_ALERT_DEDUP_WINDOW_MS = parseInt(process.env.PARENT_ALERT_DEDUP_WINDOW_MS || '60000', 10);
+
+// In-memory caches to reduce Firestore reads
+const dedupCache = new Map();
+const parentIdCache = new Map();
+const parentDocCache = new Map();
+const CACHE_CLEANUP_INTERVAL = 3600000; // 1 hour
+
+// Periodically clean up dedupCache to prevent memory leaks
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, value] of dedupCache.entries()) {
+    if (now - value.lastSeenAtMs > 3600000) { // 1 hour TTL
+      dedupCache.delete(key);
+    }
+  }
+  // Clear user caches occasionally to pick up changes
+  parentIdCache.clear();
+  parentDocCache.clear();
+}, CACHE_CLEANUP_INTERVAL);
 const CRACKLING_FIRE_CONFIRMATION_FRAMES = parseInt(process.env.CRACKLING_FIRE_CONFIRMATION_FRAMES || '5', 10);
 const cracklingFireVotesByUser = new Map();
 const PARENT_CRITICAL_MIN_CONFIDENCE = parseFloat(process.env.PARENT_CRITICAL_MIN_CONFIDENCE || '0.80');
