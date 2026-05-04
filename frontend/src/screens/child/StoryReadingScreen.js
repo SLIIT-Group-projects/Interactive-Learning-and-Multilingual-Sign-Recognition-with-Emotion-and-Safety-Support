@@ -10,13 +10,15 @@ import {
   TouchableOpacity,
   Modal,
   ActivityIndicator,
-  Platform,
 } from "react-native";
 import { useRoute, useNavigation } from "@react-navigation/native";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { Image } from "expo-image";
 import * as FileSystem from "expo-file-system";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
+import { MAGIC } from "../../theme/childMagicTheme";
 import {
   API_ENDPOINTS,
   uploadFile,
@@ -851,7 +853,7 @@ export default function StoryReaderScreen() {
     if (!permission) return <Text style={styles.camHint}>Camera: checking…</Text>;
     if (permission.granted) return <Text style={styles.camHint}>Camera: ON</Text>;
     return (
-      <Text style={[styles.camHint, { color: "#FF4AB3" }]}>
+      <Text style={[styles.camHint, { color: MAGIC.accentPink }]}>
         Camera permission needed
       </Text>
     );
@@ -859,40 +861,75 @@ export default function StoryReaderScreen() {
 
   if (!story) {
     return (
-      <SafeAreaView style={styles.safe}>
-        <View style={{ padding: 16 }}>
-          <Text style={{ fontSize: 18, fontWeight: "700" }}>Story not found.</Text>
-          <Text style={{ marginTop: 8, color: "#666" }}>
-            Story ID: {storyId}
-          </Text>
-          <TouchableOpacity style={styles.startSessionBtn} onPress={() => navigation.goBack()}>
-            <Text style={styles.startSessionBtnText}>Go Back</Text>
-          </TouchableOpacity>
-        </View>
-      </SafeAreaView>
+      <View style={{ flex: 1, backgroundColor: MAGIC.pageBg }}>
+        <LinearGradient
+          colors={MAGIC.headerGrad}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.headerGradient}
+        />
+        <SafeAreaView style={{ flex: 1 }}>
+          <View style={{ paddingHorizontal: 20, paddingTop: 8 }}>
+            <TouchableOpacity
+              onPress={() => navigation.goBack()}
+              style={styles.backBtnCircle}
+            >
+              <MaterialIcons name="chevron-left" size={28} color="#FFFFFF" />
+            </TouchableOpacity>
+            <View style={styles.emptyStateCard}>
+              <Text style={styles.storyTitle}>Story not found</Text>
+              <Text style={styles.emptyStateSub}>Story ID: {storyId}</Text>
+              <TouchableOpacity
+                onPress={() => navigation.goBack()}
+                style={{ marginTop: 20, borderRadius: 20, overflow: "hidden" }}
+              >
+                <LinearGradient
+                  colors={MAGIC.sessionGrad}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.primaryGradInner}
+                >
+                  <Text style={styles.startSessionBtnText}>Go back</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </SafeAreaView>
+      </View>
     );
   }
 
   return (
-    <SafeAreaView style={styles.safe}>
-      {/* Header */}
-      <View style={styles.headerRow}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-          <MaterialIcons name="chevron-left" size={28} color="#212121" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitleText}>Story page</Text>
-        <TouchableOpacity style={styles.profileBtn}>
-          <View style={styles.profileIcon}>
-            <MaterialIcons name="person" size={18} color="#FFFFFF" />
+    <View style={{ flex: 1, backgroundColor: MAGIC.pageBg }}>
+      <LinearGradient
+        colors={MAGIC.headerGrad}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.headerGradient}
+      />
+      <SafeAreaView style={{ flex: 1 }}>
+        <View style={styles.headerRow}>
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            style={styles.backBtnCircle}
+          >
+            <MaterialIcons name="chevron-left" size={28} color="#FFFFFF" />
+          </TouchableOpacity>
+          <View style={styles.headerTitleWrap}>
+            <Text style={styles.headerKicker}>Magic reading</Text>
+            <Text style={styles.headerTitleText} numberOfLines={1}>
+              Your tale ✨
+            </Text>
           </View>
-        </TouchableOpacity>
-      </View>
+          <View style={styles.profileIcon}>
+            <MaterialCommunityIcons name="book-open-variant" size={20} color={MAGIC.purple500} />
+          </View>
+        </View>
 
-      {/* Body */}
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Hero Section with Story Image */}
-        <View style={styles.heroSection}>
-          <View style={styles.heroImageContainer}>
+        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+          <View style={styles.heroCard}>
+            <View style={styles.heroSection}>
+              <View style={styles.heroImageContainer}>
             {story.imageSource || story.imageUrl ? (
               <Image 
                 source={story.imageSource || { uri: story.imageUrl }} 
@@ -921,7 +958,8 @@ export default function StoryReaderScreen() {
               <Text style={styles.dateText}>{story.uploadedOn}</Text>
             )}
           </View>
-        </View>
+            </View>
+          </View>
 
         {!cameraOn && (
           <TouchableOpacity onPress={onToggleCamera} style={styles.showCamBtn}>
@@ -944,21 +982,31 @@ export default function StoryReaderScreen() {
         <View style={styles.sessionRow}>
           <TouchableOpacity
             onPress={sessionActive ? finishSession : startSession}
-            style={styles.startSessionBtn}
+            style={styles.startSessionBtnOuter}
             disabled={loading}
+            activeOpacity={0.88}
           >
             {loading ? (
-              <ActivityIndicator color="#fff" />
+              <View style={styles.startSessionLoading}>
+                <ActivityIndicator color="#fff" />
+              </View>
             ) : (
-              <Text style={styles.startSessionBtnText}>
-                {sessionActive ? "Finish Session" : "Start Reading Session"}
-              </Text>
+              <LinearGradient
+                colors={MAGIC.sessionGrad}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.primaryGradInner}
+              >
+                <Text style={styles.startSessionBtnText}>
+                  {sessionActive ? "Finish session" : "Start reading session"}
+                </Text>
+              </LinearGradient>
             )}
           </TouchableOpacity>
 
           <View style={[styles.statusBtn, sessionActive && styles.statusBtnActive]}>
             <Text style={styles.statusBtnText}>
-              {sessionActive ? `Active(${formatSeconds(seconds)})` : "Inactive"}
+              {sessionActive ? `Active (${formatSeconds(seconds)})` : "Inactive"}
             </Text>
           </View>
         </View>
@@ -1101,6 +1149,7 @@ export default function StoryReaderScreen() {
 
         {cameraOn && <View style={{ height: 180 }} />}
       </ScrollView>
+      </SafeAreaView>
 
       {cameraOn && (
         <View style={styles.camBox}>
@@ -1129,59 +1178,114 @@ export default function StoryReaderScreen() {
       )}
 
       {/* REMOVED POPUP MODAL - All results shown on page in real-time */}
-    </SafeAreaView>
+    </View>
   );
 }
 
-// Copy styles from app/story/[id].tsx
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#F0F8FF" },
+  headerGradient: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 200,
+    borderBottomLeftRadius: 52,
+    borderBottomRightRadius: 52,
+  },
   headerRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: "#FFFFFF",
+    paddingHorizontal: 20,
+    paddingTop: 4,
+    paddingBottom: 16,
   },
-  backBtn: {
-    width: 40,
-    height: 40,
+  backBtnCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "rgba(255,255,255,0.28)",
     alignItems: "center",
     justifyContent: "center",
+  },
+  headerTitleWrap: {
+    flex: 1,
+    alignItems: "center",
+    paddingHorizontal: 8,
+  },
+  headerKicker: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "rgba(255,255,255,0.85)",
+    letterSpacing: 0.5,
   },
   headerTitleText: {
     fontSize: 18,
-    fontWeight: "700",
-    color: "#000000",
-  },
-  profileBtn: {
-    width: 40,
-    height: 40,
-    alignItems: "center",
-    justifyContent: "center",
+    fontWeight: "900",
+    color: "#FFFFFF",
+    marginTop: 2,
   },
   profileIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: "#0A7EA4",
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "#FFFFFF",
     alignItems: "center",
     justifyContent: "center",
+    borderWidth: 3,
+    borderColor: "rgba(255,255,255,0.5)",
+    shadowColor: "#7c3aed",
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
   },
   content: {
-    padding: 16,
+    paddingHorizontal: 20,
+    paddingTop: 4,
     paddingBottom: 200,
   },
+  emptyStateCard: {
+    marginTop: 24,
+    backgroundColor: MAGIC.cardWhite,
+    borderRadius: 36,
+    padding: 24,
+    borderBottomWidth: 8,
+    borderBottomColor: MAGIC.purple100,
+    shadowColor: "#7c3aed",
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 6,
+  },
+  emptyStateSub: {
+    marginTop: 8,
+    fontSize: 14,
+    color: MAGIC.textMuted,
+    fontWeight: "600",
+  },
+  heroCard: {
+    backgroundColor: MAGIC.cardWhite,
+    borderRadius: 36,
+    padding: 16,
+    marginBottom: 16,
+    borderBottomWidth: 8,
+    borderBottomColor: MAGIC.purple100,
+    shadowColor: "#7c3aed",
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 6,
+  },
   heroSection: {
-    marginBottom: 20,
+    marginBottom: 0,
   },
   heroImageContainer: {
     width: "100%",
-    height: 240,
-    borderRadius: 16,
+    height: 220,
+    borderRadius: 28,
     overflow: "hidden",
-    marginBottom: 12,
+    marginBottom: 14,
     position: "relative",
   },
   heroImage: {
@@ -1208,41 +1312,43 @@ const styles = StyleSheet.create({
   },
   difficultyText: {
     fontSize: 12,
-    fontWeight: "700",
-    color: "#212121",
+    fontWeight: "800",
+    color: MAGIC.textPrimary,
   },
   hideCamBtnOverlay: {
     position: "absolute",
     top: 12,
     right: 12,
-    backgroundColor: "#0A7EA4",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
+    backgroundColor: MAGIC.accentPink,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
   },
   hideCamBtnText: {
     color: "#FFFFFF",
     fontSize: 12,
-    fontWeight: "700",
+    fontWeight: "800",
   },
   showCamBtn: {
-    backgroundColor: "#0A7EA4",
+    backgroundColor: MAGIC.softPinkBg,
     paddingVertical: 12,
     paddingHorizontal: 20,
-    borderRadius: 12,
+    borderRadius: 24,
     alignItems: "center",
     marginBottom: 16,
     alignSelf: "flex-start",
+    borderWidth: 2,
+    borderColor: MAGIC.softPinkBorder,
   },
   showCamBtnText: {
-    color: "#FFFFFF",
+    color: "#9D174D",
     fontSize: 14,
-    fontWeight: "700",
+    fontWeight: "800",
   },
   storyTitle: {
     fontSize: 24,
     fontWeight: "900",
-    color: "#212121",
+    color: MAGIC.textPrimary,
     marginBottom: 8,
   },
   metadataRow: {
@@ -1251,39 +1357,40 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   timeBadge: {
-    backgroundColor: "#FFF9E6",
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
+    backgroundColor: MAGIC.softPurpleBg,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
   },
   timeText: {
     fontSize: 12,
-    fontWeight: "700",
-    color: "#B8860B",
+    fontWeight: "800",
+    color: MAGIC.purple600,
   },
   dateText: {
     fontSize: 14,
-    fontWeight: "600",
-    color: "#0A7EA4",
+    fontWeight: "700",
+    color: MAGIC.textMuted,
   },
   storyTextBox: {
-    backgroundColor: "#FFFFFF",
-    borderWidth: 2,
-    borderColor: "#0A7EA4",
-    borderRadius: 12,
-    padding: 16,
+    backgroundColor: MAGIC.cardWhite,
+    borderWidth: 1,
+    borderColor: MAGIC.softPurpleBorder,
+    borderRadius: 32,
+    padding: 20,
     marginBottom: 20,
+    shadowColor: "#7c3aed",
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
   },
   storyText: {
     fontSize: 17,
     lineHeight: 28,
-    color: "#212121",
-    fontFamily: Platform.select({
-      ios: "Georgia",
-      android: "serif",
-      default: "Georgia, serif",
-    }),
-    letterSpacing: 0.3,
+    color: MAGIC.textPrimary,
+    fontWeight: "500",
+    letterSpacing: 0.2,
     textAlign: "left",
   },
   errorBox: {
@@ -1305,14 +1412,24 @@ const styles = StyleSheet.create({
     gap: 12,
     marginBottom: 20,
   },
-  startSessionBtn: {
+  startSessionBtnOuter: {
     flex: 1,
-    backgroundColor: "#0A7EA4",
-    paddingVertical: 14,
-    paddingHorizontal: 20,
-    borderRadius: 12,
+    borderRadius: 22,
+    overflow: "hidden",
+    minHeight: 52,
+  },
+  primaryGradInner: {
+    paddingVertical: 15,
+    paddingHorizontal: 16,
     alignItems: "center",
     justifyContent: "center",
+  },
+  startSessionLoading: {
+    flex: 1,
+    minHeight: 52,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: MAGIC.purple500,
   },
   startSessionBtnText: {
     color: "#FFFFFF",
@@ -1320,52 +1437,62 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
   statusBtn: {
-    backgroundColor: "#FFD700",
+    backgroundColor: MAGIC.softPinkBg,
     paddingVertical: 14,
-    paddingHorizontal: 20,
-    borderRadius: 12,
-    minWidth: 100,
+    paddingHorizontal: 16,
+    borderRadius: 22,
+    minWidth: 108,
     alignItems: "center",
     justifyContent: "center",
+    borderWidth: 2,
+    borderColor: MAGIC.softPinkBorder,
   },
   statusBtnActive: {
-    backgroundColor: "#FFD700",
+    backgroundColor: "#FBCFE8",
+    borderColor: MAGIC.accentPink,
   },
   statusBtnText: {
-    color: "#212121",
-    fontSize: 14,
-    fontWeight: "800",
+    color: "#9D174D",
+    fontSize: 13,
+    fontWeight: "900",
   },
   outputCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    padding: 16,
-    marginTop: 8,
+    backgroundColor: MAGIC.cardWhite,
+    borderRadius: 28,
+    padding: 18,
+    marginTop: 10,
+    borderBottomWidth: 6,
+    borderBottomColor: MAGIC.purple100,
+    shadowColor: "#7c3aed",
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
   },
   outputCardTitle: {
     fontSize: 18,
     fontWeight: "900",
-    color: "#212121",
+    color: MAGIC.textPrimary,
     marginBottom: 12,
   },
   outputLabel: {
     fontSize: 14,
     fontWeight: "700",
-    color: "#212121",
+    color: MAGIC.textPrimary,
     marginBottom: 8,
   },
   outputValueYellow: {
-    color: "#FF8C00",
+    color: "#C2410C",
     fontWeight: "900",
   },
   outputValueBlue: {
-    color: "#0A7EA4",
+    color: MAGIC.purple600,
     fontWeight: "900",
   },
   outputSummary: {
     marginTop: 8,
     fontSize: 13,
-    color: "#666",
+    color: MAGIC.textMuted,
     lineHeight: 20,
   },
   outputPlaceholder: {
@@ -1403,23 +1530,23 @@ const styles = StyleSheet.create({
     position: "absolute",
     left: 16,
     bottom: 16,
-    width: 160,
-    backgroundColor: "#FFFFFF",
-    borderRadius: 14,
+    width: 168,
+    backgroundColor: MAGIC.cardWhite,
+    borderRadius: 24,
     padding: 12,
-    borderWidth: 1,
-    borderColor: "#EAEAEA",
+    borderWidth: 2,
+    borderColor: MAGIC.softPurpleBorder,
     zIndex: 50,
-    shadowColor: "#000",
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 8,
+    shadowColor: "#7c3aed",
+    shadowOpacity: 0.18,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 10,
   },
   camHint: {
     fontSize: 12,
     fontWeight: "900",
-    color: "#212121",
+    color: MAGIC.textPrimary,
     marginBottom: 8,
   },
   camPreview: {
@@ -1431,29 +1558,31 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   camPermissionBtn: {
-    backgroundColor: "#0A7EA4",
+    backgroundColor: MAGIC.purple500,
     paddingVertical: 8,
     paddingHorizontal: 12,
-    borderRadius: 8,
+    borderRadius: 16,
     alignItems: "center",
     marginBottom: 8,
   },
   camPermissionBtnText: {
     color: "#FFFFFF",
     fontSize: 12,
-    fontWeight: "700",
+    fontWeight: "800",
   },
   camCloseBtn: {
-    backgroundColor: "#0A7EA4",
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 6,
+    backgroundColor: MAGIC.softPurpleBg,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 16,
     alignItems: "center",
+    borderWidth: 1,
+    borderColor: MAGIC.softPurpleBorder,
   },
   camCloseBtnText: {
-    color: "#FFFFFF",
+    color: MAGIC.purple600,
     fontSize: 11,
-    fontWeight: "700",
+    fontWeight: "800",
   },
   modalBackground: {
     flex: 1,
@@ -1504,33 +1633,33 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   behaviorContainerCard: {
-    backgroundColor: "#E3F2FD",
-    borderRadius: 16,
+    backgroundColor: MAGIC.purple100,
+    borderRadius: 24,
     padding: 20,
     marginBottom: 16,
     alignItems: "center",
-    borderWidth: 3,
-    borderColor: "#0A7EA4",
-    shadowColor: "#000",
-    shadowOpacity: 0.15,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 6,
+    borderWidth: 2,
+    borderColor: MAGIC.purple400,
+    shadowColor: "#7c3aed",
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
   },
   behaviorLabelCard: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#0A7EA4",
+    fontSize: 12,
+    fontWeight: "800",
+    color: MAGIC.textMuted,
     marginBottom: 8,
     textTransform: "uppercase",
-    letterSpacing: 1,
+    letterSpacing: 1.2,
   },
   behaviorValueCard: {
-    fontSize: 32,
+    fontSize: 28,
     fontWeight: "900",
-    color: "#0A7EA4",
+    color: MAGIC.textPrimary,
     textAlign: "center",
     marginBottom: 6,
-    letterSpacing: 0.5,
+    letterSpacing: 0.3,
   },
 });
