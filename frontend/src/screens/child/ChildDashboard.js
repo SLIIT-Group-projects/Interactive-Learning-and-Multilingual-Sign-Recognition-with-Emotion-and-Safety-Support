@@ -245,7 +245,7 @@ const ChildDashboard = ({ navigation }) => {
             {/* Sign Power - Bottom Common Stat Card */}
             <View className="bg-white rounded-[45px] p-8 shadow-2xl shadow-purple-200 border-b-8 border-purple-100 items-center overflow-hidden">
               <LinearGradient colors={['#fdf4ff', '#ffffff']} className="absolute inset-0" />
-              <MaterialCommunityIcons name="flash-circle" size={50} color="#a855f7" style={{ marginBottom: 10 }} />
+              <MaterialCommunityIcons name="lightning-bolt-circle" size={50} color="#a855f7" style={{ marginBottom: 10 }} />
               <Text className="text-purple-400 text-xs font-black uppercase tracking-widest mb-1">Weekly Sign Power</Text>
               <Text className="text-purple-900 text-4xl font-black mb-2">
                 {analytics ? (analytics.averageAccuracy || 0).toFixed(0) : '0'}%
