@@ -106,13 +106,19 @@ export default function HazardDetectionScreen() {
 
   const getAnimatedIcon = (type) => {
     switch (type) {
-      case 'fire_alarm': return 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f525/512.gif';
+      case 'fire_alarm':
+      case 'fire': 
+        return 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f525/512.gif';
       case 'smoke_alarm': return 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f4a8/512.gif';
+      case 'coughing': return 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f927/512.gif';
+      case 'sneezing': return 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f927/512.gif';
+      case 'door_knock': return 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f6aa/512.gif';
       case 'siren': return 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f6a8/512.gif';
       case 'glass_breaking': return 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f4a5/512.gif';
       case 'dog_barking': return 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f415/512.gif';
       case 'baby_crying': return 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f476/512.gif';
       case 'car_horn': return 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f697/512.gif';
+      case 'footsteps': return 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f463/512.gif';
       default: return 'https://fonts.gstatic.com/s/e/notoemoji/latest/26a0_fe0f/512.gif';
     }
   };

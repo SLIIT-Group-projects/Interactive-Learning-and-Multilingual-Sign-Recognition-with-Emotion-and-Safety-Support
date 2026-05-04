@@ -27,6 +27,7 @@ const ParentDashboard = ({ navigation }) => {
   // Animations
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
+  const loadDataTimer = useRef(null);
 
   useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -66,8 +67,15 @@ const ParentDashboard = ({ navigation }) => {
   // Load hazard stats when selected child changes
   useEffect(() => {
     if (selectedChild) {
-      loadHazardData();
+      // Debounce loading to prevent spamming Firestore when switching children quickly
+      if (loadDataTimer.current) clearTimeout(loadDataTimer.current);
+      loadDataTimer.current = setTimeout(() => {
+        loadHazardData();
+      }, 500);
     }
+    return () => {
+      if (loadDataTimer.current) clearTimeout(loadDataTimer.current);
+    };
   }, [selectedChild]);
 
   const loadHazardData = async () => {
