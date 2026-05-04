@@ -114,7 +114,7 @@ class NotificationService {
     try {
       const notifications = await this.getNotifications(parentId, {
         unreadOnly: true,
-        limit: 1000, // Get all unread
+        limit: 100, // Reduced from 1000 to save bandwidth and reads
       });
       return notifications.length;
     } catch (error) {
