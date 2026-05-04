@@ -25,6 +25,7 @@ import {
 } from "../../services/firestore/childProgressService";
 import { ALPHABET } from "../../constants/gameConstants";
 import GameResultsScreen from "./GameResultsScreen";
+import { HAND_GAME_BASE_URL } from "../../../config/api";
 
 const TIMED_QUESTIONS = 10;
 const TIMER_SECONDS = 10;
@@ -67,9 +68,7 @@ const PlayGameTimed = ({ navigation, route }) => {
   const childId = userData?.uid || null;
   const parentId = userData?.parentId || null;
 
-  const API_URL = __DEV__
-    ? "http://192.168.1.9:5000"
-    : "http://192.168.1.9:5000";
+  const API_URL = HAND_GAME_BASE_URL;
 
   // Initialize game (but don't start timer until user clicks Start)
   useEffect(() => {

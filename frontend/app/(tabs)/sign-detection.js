@@ -26,11 +26,18 @@ import stopIcon from "@/assets/icons/stop.png";
 import slIcon from "@/assets/icons/SL.png";
 import usaIcon from "@/assets/icons/USA.png";
 
-// For local development: 'http://localhost:5000'
-// For device testing: 'http://YOUR_COMPUTER_IP:5000' (e.g., 'http://192.168.1.9:5000')
+// Multilang Flask `backend/app.py` (NOT Node, NOT games api_server). Default port 5002.
+// Set EXPO_PUBLIC_MULTILANG_SIGN_API_URL in frontend/.env to override.
+const _lanIp =
+  (typeof process !== "undefined" &&
+    process.env.EXPO_PUBLIC_COMPUTER_IP?.trim()) ||
+  "192.168.1.2";
+const _multilangFromEnv =
+  typeof process !== "undefined" &&
+  process.env.EXPO_PUBLIC_MULTILANG_SIGN_API_URL?.trim();
 const API_BASE_URL = __DEV__
-  ? "http://192.168.1.9:5000" // Change to your computer's IP when testing on device
-  : "https://your-production-api.com"; // Update with your production API URL
+  ? _multilangFromEnv || `http://${_lanIp}:5002`
+  : _multilangFromEnv || "https://your-production-api.com";
 
 export default function SignDetectionScreen() {
   // Try to get navigation - will be undefined if not in React Navigation context
@@ -1030,7 +1037,7 @@ export default function SignDetectionScreen() {
                 setApiUrl(text);
                 setConnectionStatus('unknown');
               }}
-              placeholder="Enter API URL (e.g., http://192.168.1.9:5000)"
+              placeholder="Enter API URL (e.g., http://192.168.1.2:5002)"
               placeholderTextColor="#999"
             />
             <TouchableOpacity 
@@ -1059,7 +1066,7 @@ export default function SignDetectionScreen() {
                   }
                   Alert.alert(
                     '❌ Connection Failed',
-                    `${errorMsg}\n\nURL: ${apiUrl}\n\n💡 Quick Fix:\n1. Open terminal/PowerShell\n2. Go to: backend folder\n3. Run: python app.py\n4. Make sure it shows "Server ready!"\n\n💡 Also check:\n✨ Correct IP address (not localhost)\n✨ Same Wi-Fi network\n✨ Firewall not blocking port 5000`
+                    `${errorMsg}\n\nURL: ${apiUrl}\n\n💡 Quick Fix:\n1. Open terminal/PowerShell\n2. Go to: backend folder\n3. Run: python app.py (multilang server, default port 5002)\n4. Make sure it shows "Server ready!"\n\n💡 Also check:\n✨ Correct IP address (not localhost)\n✨ Same Wi-Fi network\n✨ Firewall not blocking the app port (5002 default)`
                   );
                 }
               }}

@@ -57,13 +57,23 @@ else:
 import os
 MODEL_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_PATH = os.path.join(MODEL_DIR, 'asl_model.h5')
-try:
-    model = keras.models.load_model(MODEL_PATH)
-    print(f"Model loaded successfully from {MODEL_PATH}")
-except Exception as e:
-    print(f"Error loading model: {e}")
-    print(f"Make sure asl_model.h5 exists in {MODEL_DIR}")
-    model = None
+model = None
+if not os.path.isfile(MODEL_PATH):
+    print(
+        "ASL letter model file is missing.\n"
+        f"  Expected: {MODEL_PATH}\n"
+        "  This repo does not ship asl_model.h5 — train it with the same feature pipeline as this server, "
+        "or copy a compatible .h5 file into this folder.\n"
+        "  (The BiLSTM in backend/model/asl-model/ is a different architecture and cannot be dropped in here.)"
+    )
+else:
+    try:
+        model = keras.models.load_model(MODEL_PATH)
+        print(f"Model loaded successfully from {MODEL_PATH}")
+    except Exception as e:
+        print(f"Error loading model: {e}")
+        print(f"Check that {MODEL_PATH} is a valid Keras model matching this server's input features.")
+        model = None
 
 # Class labels (must match training order)
 CLASSES = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 
@@ -524,14 +534,15 @@ if __name__ == '__main__':
     print(f"Model loaded: {model is not None}")
     print(f"Number of classes: {len(CLASSES)}")
     print("=" * 60)
-    print("\nStarting server on http://localhost:5000")
+    hand_port = int(os.environ.get("HAND_GAME_API_PORT", "5001"))
+    print(f"\nStarting hand/letter API on http://0.0.0.0:{hand_port} (set HAND_GAME_API_PORT to override)")
     print("Endpoints:")
     print("  GET  /health - Health check")
     print("  POST /predict - Predict letter from image")
     print("  POST /check - Check if prediction matches target")
     print("=" * 60)
-    
-    app.run(host='0.0.0.0', port=5000, debug=True)
+
+    app.run(host="0.0.0.0", port=hand_port, debug=True)
 
 
 

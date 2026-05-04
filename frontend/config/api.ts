@@ -3,11 +3,11 @@ import Constants from "expo-constants";
 import * as FileSystem from "expo-file-system/legacy";
 
 /**
- * Get the base URL for API calls based on the platform
- * - Android emulator: http://10.0.2.2:5000
- * - iOS simulator: http://localhost:5000
- * - Real device: http://<your-laptop-ip>:5000 (set via EXPO_PUBLIC_API_URL or default)
- * - Web: http://localhost:5000
+ * Node backend (emotion, audio, hazard, etc.) — default port 5000.
+ * Set EXPO_PUBLIC_API_URL (e.g. http://YOUR_LAN_IP:5000).
+ *
+ * Python hand-letter game server (api_server.py) — default port 5001.
+ * Set EXPO_PUBLIC_HAND_API_URL (e.g. http://YOUR_LAN_IP:5001).
  */
 export function getBaseUrl(): string {
   // Check if custom URL is set via environment variable (highest priority)
@@ -30,10 +30,10 @@ export function getBaseUrl(): string {
     // Find your IP: Windows: ipconfig | Mac/Linux: ifconfig
     // Look for IPv4 Address (Windows) or inet (Mac/Linux) - should start with 192.168. or 10.
     if (isExpoGo) {
-      const deviceUrl = process.env.EXPO_PUBLIC_API_URL || "http://192.168.1.9:5000"; // ✅ Updated to match backend port 5000
+      const deviceUrl = process.env.EXPO_PUBLIC_API_URL || "http://192.168.1.2:5000";
       console.log(`[API] Expo Go detected (real device). Using: ${deviceUrl}`);
       console.log(`[API] ⚠️ If connection fails, create .env file in frontend/ with:`);
-      console.log(`[API] EXPO_PUBLIC_API_URL=http://YOUR_COMPUTER_IP:5000`);
+      console.log(`[API] EXPO_PUBLIC_API_URL=http://YOUR_COMPUTER_IP:5000 (Node backend)`);
       console.log(`[API] Find your IP: Windows: ipconfig | Mac/Linux: ifconfig`);
       return deviceUrl;
     }
@@ -52,8 +52,7 @@ export function getBaseUrl(): string {
           "Create a .env file with: EXPO_PUBLIC_API_URL=http://<your-laptop-ip>:5000"
         );
         // Try common IPs (update if your IP is different)
-        // ✅ Updated to your IP: 192.168.1.9
-        const possibleIPs = ["192.168.1.9", "192.168.1.9"]; // ✅ Your IP: 192.168.1.9
+        const possibleIPs = ["192.168.1.2", "192.168.1.2"];
         const selectedIP = possibleIPs[0];
         console.warn(`[API] Real Android device detected. Using laptop IP: ${selectedIP}`);
         console.warn(`[API] If connection fails, update EXPO_PUBLIC_API_URL in .env file`);
@@ -76,7 +75,7 @@ export function getBaseUrl(): string {
           "⚠️ Real iOS device detected but EXPO_PUBLIC_API_URL not set. " +
           "Create a .env file with: EXPO_PUBLIC_API_URL=http://<your-laptop-ip>:5000"
         );
-        return "http://192.168.1.9:5000"; // ✅ Updated to match backend port 5000
+        return "http://192.168.1.2:5000";
       } else {
         // iOS simulator can use localhost
         return "http://localhost:5000";
@@ -91,9 +90,63 @@ export function getBaseUrl(): string {
   }
 }
 
+const HAND_GAME_DEFAULT_LAN = "192.168.1.2";
+const HAND_GAME_PORT = "5001";
+
+/**
+ * Base URL for Python games `api_server.py` (/predict, /check) — not the Node server.
+ */
+export function getHandGameBaseUrl(): string {
+  const fromEnv = process.env.EXPO_PUBLIC_HAND_API_URL?.trim();
+  if (fromEnv) {
+    return fromEnv.replace(/\/+$/, "");
+  }
+
+  if (__DEV__) {
+    const isDevice = Constants.isDevice;
+    const isExpoGo = Constants.executionEnvironment === "storeClient";
+
+    if (isExpoGo) {
+      const ip = process.env.EXPO_PUBLIC_COMPUTER_IP || HAND_GAME_DEFAULT_LAN;
+      return `http://${ip}:${HAND_GAME_PORT}`;
+    }
+
+    if (Platform.OS === "android") {
+      if (isDevice) {
+        const deviceUrl = process.env.EXPO_PUBLIC_HAND_API_URL;
+        if (deviceUrl) {
+          return deviceUrl.replace(/\/+$/, "");
+        }
+        const ip = process.env.EXPO_PUBLIC_COMPUTER_IP || HAND_GAME_DEFAULT_LAN;
+        return `http://${ip}:${HAND_GAME_PORT}`;
+      }
+      return `http://10.0.2.2:${HAND_GAME_PORT}`;
+    }
+
+    if (Platform.OS === "ios") {
+      const isRealDevice = isDevice || isExpoGo;
+      if (isRealDevice) {
+        const ip = process.env.EXPO_PUBLIC_COMPUTER_IP || HAND_GAME_DEFAULT_LAN;
+        return `http://${ip}:${HAND_GAME_PORT}`;
+      }
+      return `http://localhost:${HAND_GAME_PORT}`;
+    }
+
+    return `http://localhost:${HAND_GAME_PORT}`;
+  }
+
+  const prodHand = process.env.EXPO_PUBLIC_HAND_API_URL?.trim();
+  return prodHand
+    ? prodHand.replace(/\/+$/, "")
+    : `http://localhost:${HAND_GAME_PORT}`;
+}
+
+export const HAND_GAME_BASE_URL = getHandGameBaseUrl();
+console.log(`[API] Hand letter server (Python): ${HAND_GAME_BASE_URL}`);
+
 /**
  * For real devices, you need to use your laptop's IP address
- * Example: http://192.168.1.9:5000
+ * Example: http://192.168.1.2:5000
  * Set this via environment variable or modify the function above
  */
 export function getBaseUrlForRealDevice(ipAddress?: string): string {
