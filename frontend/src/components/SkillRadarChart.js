@@ -3,6 +3,7 @@ import {
   View,
   Text,
   Modal,
+  ScrollView,
   TouchableOpacity,
   ActivityIndicator,
   Dimensions,
@@ -152,6 +153,101 @@ const SkillRadarChart = ({ childId, visible, onClose }) => {
     return metrics;
   };
 
+  const getSkillInsightSummary = (metrics) => {
+    if (!metrics) return 'Skill insight is not available yet.';
+
+    const keys = ['accuracy', 'speed', 'consistency', 'recognition', 'reactionTime'];
+    const value = (key) => Math.max(0, Math.min(100, Number(metrics[key]) || 0));
+
+    const tier = (v) => {
+      if (v >= 85) return 'HIGH';
+      if (v < 60) return 'LOW';
+      return 'MED';
+    };
+
+    const t = {};
+    keys.forEach((key) => {
+      t[key] = tier(value(key));
+    });
+
+    const areaPhrase = (key) => {
+      const phrases = {
+        accuracy: 'accuracy',
+        speed: 'speed',
+        consistency: 'consistency',
+        recognition: 'gesture recognition',
+        reactionTime: 'reaction time',
+      };
+      return phrases[key] || key;
+    };
+
+    const formatAreaList = (arr) => {
+      const list = arr.map(areaPhrase);
+      if (list.length === 0) return '';
+      if (list.length === 1) return list[0];
+      if (list.length === 2) return `${list[0]} and ${list[1]}`;
+      return `${list.slice(0, -1).join(', ')}, and ${list[list.length - 1]}`;
+    };
+
+    // 1. Fully balanced strong
+    if (keys.every((key) => t[key] === 'HIGH')) {
+      return 'Child demonstrates strong and well-balanced performance across all learning areas.';
+    }
+
+    // 2. Speed vs accuracy (order matters)
+    if (t.speed === 'HIGH' && t.accuracy === 'LOW') {
+      return 'Child responds quickly but struggles with accuracy, indicating guess-based responses.';
+    }
+    if (t.accuracy === 'HIGH' && t.speed === 'LOW') {
+      return 'Child is accurate but slower in responding. Improving speed will enhance performance.';
+    }
+
+    // 3. Recognition vs accuracy gap
+    if (t.recognition === 'HIGH' && t.accuracy === 'LOW') {
+      return 'Child understands gestures but struggles to apply them correctly.';
+    }
+    if (t.recognition === 'LOW' && t.accuracy === 'LOW') {
+      return 'Gesture understanding is still developing, affecting overall accuracy.';
+    }
+
+    // 4. Consistency + accuracy relation
+    if (t.consistency === 'LOW' && t.accuracy === 'HIGH') {
+      return 'Child performs well but lacks consistency across sessions.';
+    }
+    if (t.consistency === 'LOW' && t.accuracy === 'LOW') {
+      return 'Performance is inconsistent and requires more structured practice.';
+    }
+
+    // 5. Speed + reaction time relation
+    if (t.speed === 'HIGH' && t.reactionTime === 'HIGH') {
+      return 'Child shows fast and responsive performance.';
+    }
+    if (t.speed === 'LOW' && t.reactionTime === 'LOW') {
+      return 'Child responds slowly, indicating delayed recognition and reaction.';
+    }
+
+    const lowKeys = keys.filter((key) => t[key] === 'LOW');
+    const highKeys = keys.filter((key) => t[key] === 'HIGH');
+
+    // 6. Multi-weakness behavior
+    if (lowKeys.length >= 3) {
+      return 'Child is currently struggling across multiple skill areas and needs guided practice.';
+    }
+    if (lowKeys.length === 2) {
+      return 'Child needs improvement in key skill areas to achieve better overall performance.';
+    }
+
+    // 7. Mixed profile (at least one HIGH and one LOW)
+    if (highKeys.length >= 1 && lowKeys.length >= 1) {
+      const strengths = formatAreaList(highKeys.slice(0, 3));
+      const weaknesses = formatAreaList(lowKeys.slice(0, 3));
+      return `Child shows strengths in ${strengths} but needs improvement in ${weaknesses}.`;
+    }
+
+    // 8. Default
+    return 'Child is developing skills steadily. Continued practice will improve overall performance.';
+  };
+
   const renderRadarChart = () => {
     if (!skillData) return null;
 
@@ -228,7 +324,7 @@ const SkillRadarChart = ({ childId, visible, onClose }) => {
           </View>
 
           {/* Content */}
-          <View className="p-4">
+          <ScrollView className="p-4" showsVerticalScrollIndicator={false}>
             {loading ? (
               <View className="items-center py-12">
                 <ActivityIndicator size="large" color="#8b5cf6" />
@@ -243,6 +339,15 @@ const SkillRadarChart = ({ childId, visible, onClose }) => {
               </View>
             ) : (
               <>
+                <View className="bg-indigo-50 rounded-xl p-3 mb-4">
+                  <Text className="text-xs font-semibold text-indigo-800 mb-1">
+                    Skill Insight Summary
+                  </Text>
+                  <Text className="text-xs text-indigo-900 leading-5">
+                    {getSkillInsightSummary(skillData)}
+                  </Text>
+                </View>
+
                 {/* Chart */}
                 <View className="items-center mb-4" style={{ minHeight: chartSize }}>
                   {renderRadarChart()}
@@ -286,9 +391,10 @@ const SkillRadarChart = ({ childId, visible, onClose }) => {
                     <Text className="text-sm font-bold text-gray-800">{skillData.reactionTime}%</Text>
                   </View>
                 </View>
+
               </>
             )}
-          </View>
+          </ScrollView>
         </View>
       </View>
     </Modal>

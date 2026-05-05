@@ -25,8 +25,8 @@ export const XP_TIMED_FAST = 20; // < 3 seconds
 export const XP_TIMED_MEDIUM = 15; // < 5 seconds
 export const XP_TIMED_BASE = 10; // >= 5 seconds
 
-/** Game IDs unlocked by level (level 1 = basic, 2 = timed, etc.) */
-export const GAME_IDS_BY_LEVEL = ['basic', 'timed', 'similar', 'speed', 'mixed'];
+/** Game IDs unlocked by level (level 1 = basic, 2 = timed, 3 = word practice) */
+export const GAME_IDS_BY_LEVEL = ['basic', 'timed', 'word'];
 
 /**
  * Get level and current level XP from total XP
@@ -80,6 +80,9 @@ export async function getChildProgress(childId) {
     const data = snap.data();
     const totalXP = data.totalXP ?? 0;
     const { level, currentLevelXP, xpForNextLevel } = getLevelFromTotalXP(totalXP);
+    // Always derive from level so new modes (e.g. word) unlock correctly after GAME_IDS_BY_LEVEL changes,
+    // even if Firestore still has legacy unlockedGames entries.
+    const unlockedGames = getUnlockedGamesForLevel(level);
     return {
       id: snap.id,
       totalXP,
@@ -89,7 +92,7 @@ export async function getChildProgress(childId) {
       gamesPlayed: data.gamesPlayed ?? 0,
       correctAnswers: data.correctAnswers ?? 0,
       streakCount: data.streakCount ?? 0,
-      unlockedGames: Array.isArray(data.unlockedGames) ? data.unlockedGames : ['basic'],
+      unlockedGames,
       updatedAt: data.updatedAt ?? null,
     };
   } catch (error) {

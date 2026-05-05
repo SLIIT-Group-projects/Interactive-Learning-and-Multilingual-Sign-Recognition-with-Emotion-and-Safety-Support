@@ -7,6 +7,24 @@ const LearningTimeCard = ({ childId }) => {
   const [loading, setLoading] = useState(false);
   const [timeStats, setTimeStats] = useState(null);
 
+  const getEngagementLevel = (weeklySessions) => {
+    if (weeklySessions >= 5) return 'Highly Engaged';
+    if (weeklySessions >= 3) return 'Moderately Engaged';
+    return 'Low Engagement';
+  };
+
+  const getEngagementInsight = (engagementLevel) => {
+    if (engagementLevel === 'Highly Engaged') {
+      return 'Child shows strong learning consistency with regular practice.';
+    }
+
+    if (engagementLevel === 'Moderately Engaged') {
+      return 'Child is practicing regularly, but increasing frequency could further improve learning.';
+    }
+
+    return 'Low engagement detected. Encourage more consistent practice sessions.';
+  };
+
   useEffect(() => {
     if (childId) {
       loadTimeStats();
@@ -111,6 +129,7 @@ const LearningTimeCard = ({ childId }) => {
         weeklyTime,
         averageSessionTime,
         totalSessions: sessions.length,
+        weeklySessionsCount: weeklySessions.length,
       });
     } catch (error) {
       console.error('Error loading time stats:', error);
@@ -132,6 +151,9 @@ const LearningTimeCard = ({ childId }) => {
   if (!timeStats) {
     return null;
   }
+
+  const engagementLevel = getEngagementLevel(timeStats.weeklySessionsCount || 0);
+  const engagementInsight = getEngagementInsight(engagementLevel);
 
   return (
     <View className="bg-white rounded-2xl p-4 mb-4 shadow-md">
@@ -177,6 +199,11 @@ const LearningTimeCard = ({ childId }) => {
             {formatTime(timeStats.totalTime)}
           </Text>
         </View>
+      </View>
+
+      <View className="mt-3 pt-3 border-t border-gray-100">
+        <Text className="text-xs font-semibold text-gray-500 mb-1">Engagement Insight</Text>
+        <Text className="text-xs text-gray-600">{engagementInsight}</Text>
       </View>
     </View>
   );

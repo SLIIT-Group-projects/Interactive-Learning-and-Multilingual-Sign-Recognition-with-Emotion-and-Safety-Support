@@ -63,7 +63,7 @@ const GameResultsScreen = ({ results, onPlayAgain, onBackToSelection }) => {
                 <View className="flex-1">
                   <Text className="text-sm text-gray-600">Correct Answers</Text>
                   <Text className="text-2xl font-bold text-gray-800">
-                    {results.correctCount} / 10
+                    {results.correctCount} / {results.totalQuestions ?? 10}
                   </Text>
                 </View>
               </View>

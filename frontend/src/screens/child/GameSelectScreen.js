@@ -53,9 +53,8 @@ const GameSelectScreen = ({ navigation }) => {
       navigation.navigate('PlayGame', { gameMode: game.id });
     } else if (game.id === 'timed') {
       navigation.navigate('PlayGameTimed', { gameMode: game.id });
-    } else {
-      // Placeholder: other modes not implemented yet
-      navigation.navigate('PlayGame', { gameMode: game.id });
+    } else if (game.id === 'word') {
+      navigation.navigate('PlayWordGame', { gameMode: game.id });
     }
   };
 

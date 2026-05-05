@@ -3,8 +3,8 @@ import {
   signInWithEmailAndPassword,
   signOut,
   onAuthStateChanged,
-} from 'firebase/auth';
-import { auth } from '../firebase/firebaseConfig';
+} from "firebase/auth";
+import { auth } from "../firebase/firebaseConfig";
 
 /**
  * Register a new user with email and password
@@ -15,13 +15,15 @@ import { auth } from '../firebase/firebaseConfig';
 export const registerUser = async (email, password) => {
   try {
     if (!auth) {
-      throw new Error('Firebase Auth not initialized. Please check your Firebase configuration and ensure Authentication is enabled in Firebase Console.');
+      throw new Error(
+        "Firebase Auth not initialized. Please check your Firebase configuration and ensure Authentication is enabled in Firebase Console.",
+      );
     }
 
     const userCredential = await createUserWithEmailAndPassword(
       auth,
       email,
-      password
+      password,
     );
 
     return {
@@ -29,13 +31,15 @@ export const registerUser = async (email, password) => {
       uid: userCredential.user.uid,
     };
   } catch (error) {
-    console.error('❌ Registration error:', error);
-    
+    console.error("❌ Registration error:", error);
+
     // Provide more helpful error messages
-    if (error.code === 'auth/configuration-not-found') {
-      throw new Error('Firebase Authentication is not enabled. Please enable it in Firebase Console: Build → Authentication → Get Started → Enable Email/Password');
+    if (error.code === "auth/configuration-not-found") {
+      throw new Error(
+        "Firebase Authentication is not enabled. Please enable it in Firebase Console: Build → Authentication → Get Started → Enable Email/Password",
+      );
     }
-    
+
     throw error;
   }
 };
@@ -49,13 +53,13 @@ export const registerUser = async (email, password) => {
 export const loginUser = async (email, password) => {
   try {
     if (!auth) {
-      throw new Error('Firebase Auth not initialized');
+      throw new Error("Firebase Auth not initialized");
     }
 
     const userCredential = await signInWithEmailAndPassword(
       auth,
       email,
-      password
+      password,
     );
 
     return {
@@ -63,7 +67,7 @@ export const loginUser = async (email, password) => {
       uid: userCredential.user.uid,
     };
   } catch (error) {
-    console.error('❌ Login error:', error);
+    console.error("❌ Login error:", error);
     throw error;
   }
 };
@@ -75,13 +79,13 @@ export const loginUser = async (email, password) => {
 export const logoutUser = async () => {
   try {
     if (!auth) {
-      throw new Error('Firebase Auth not initialized');
+      throw new Error("Firebase Auth not initialized");
     }
 
     await signOut(auth);
-    console.log('✅ User logged out successfully');
+    console.log("✅ User logged out successfully");
   } catch (error) {
-    console.error('❌ Logout error:', error);
+    console.error("❌ Logout error:", error);
     throw error;
   }
 };
@@ -110,4 +114,3 @@ export const onAuthStateChange = (callback) => {
 
   return onAuthStateChanged(auth, callback);
 };
-

@@ -1,26 +1,27 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
   TouchableOpacity,
   ScrollView,
   ActivityIndicator,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { MaterialIcons } from '@expo/vector-icons';
-import { useAuth } from '../../contexts/AuthContext';
-import { getParentChildren } from '../../services/firestore/userService';
-import { getChildGameSessions } from '../../services/firestore/gameService';
-import { collection, query, where, getDocs } from 'firebase/firestore';
-import { db } from '../../services/firebase/firebaseConfig';
-import LearningInsightCard from '../../components/LearningInsightCard';
-import ChildSelector from '../../components/ChildSelector';
-import EngagementCard from '../../components/EngagementCard';
-import WeeklyProgressChart from '../../components/WeeklyProgressChart';
-import SkillRadarChart from '../../components/SkillRadarChart';
-import LetterProgressCard from '../../components/LetterProgressCard';
-import LearningTimeCard from '../../components/LearningTimeCard';
-import ASLSkillHeatmap from '../../components/ASLSkillHeatmap';
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { MaterialIcons } from "@expo/vector-icons";
+import { useAuth } from "../../contexts/AuthContext";
+import { getParentChildren } from "../../services/firestore/userService";
+import { getChildGameSessions } from "../../services/firestore/gameService";
+import { collection, query, where, getDocs } from "firebase/firestore";
+import { db } from "../../services/firebase/firebaseConfig";
+import LearningInsightCard from "../../components/LearningInsightCard";
+import ChildSelector from "../../components/ChildSelector";
+import EngagementCard from "../../components/EngagementCard";
+import WeeklyProgressChart from "../../components/WeeklyProgressChart";
+import SkillRadarChart from "../../components/SkillRadarChart";
+import LetterProgressCard from "../../components/LetterProgressCard";
+import LearningTimeCard from "../../components/LearningTimeCard";
+import ASLSkillHeatmap from "../../components/ASLSkillHeatmap";
+import LearningTrendAnalysisCard from "../../components/LearningTrendAnalysisCard";
 
 const LearningProgressScreen = ({ navigation }) => {
   const { userData } = useAuth();
@@ -36,7 +37,7 @@ const LearningProgressScreen = ({ navigation }) => {
 
   useEffect(() => {
     const loadChildren = async () => {
-      if (userData && userData.role === 'parent') {
+      if (userData && userData.role === "parent") {
         try {
           const childrenList = await getParentChildren(userData.uid);
           setChildren(childrenList);
@@ -45,7 +46,7 @@ const LearningProgressScreen = ({ navigation }) => {
             loadLearningInsight(childrenList[0].uid);
           }
         } catch (error) {
-          console.error('Error loading children:', error);
+          console.error("Error loading children:", error);
         } finally {
           setLoading(false);
         }
@@ -72,14 +73,14 @@ const LearningProgressScreen = ({ navigation }) => {
       // Get sessions from last 7 days
       const sevenDaysAgo = new Date();
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-      
+
       // Get all game sessions for this child
       const sessions = await getChildGameSessions(childId, 100);
-      
+
       // Filter sessions from last 7 days
       const weeklySessions = sessions.filter((session) => {
-        const sessionDate = session.createdAt?.toDate 
-          ? session.createdAt.toDate() 
+        const sessionDate = session.createdAt?.toDate
+          ? session.createdAt.toDate()
           : new Date(session.createdAt);
         return sessionDate >= sevenDaysAgo;
       });
@@ -87,14 +88,17 @@ const LearningProgressScreen = ({ navigation }) => {
       // Calculate weekly accuracy
       let weeklyAccuracy = 0;
       if (weeklySessions.length > 0) {
-        const totalAccuracy = weeklySessions.reduce((sum, s) => sum + (s.accuracy || 0), 0);
+        const totalAccuracy = weeklySessions.reduce(
+          (sum, s) => sum + (s.accuracy || 0),
+          0,
+        );
         weeklyAccuracy = totalAccuracy / weeklySessions.length;
       }
 
       // Get letter performance
       const letterPerfQuery = query(
-        collection(db, 'letterPerformance'),
-        where('childId', '==', childId)
+        collection(db, "letterPerformance"),
+        where("childId", "==", childId),
       );
       const letterPerfSnapshot = await getDocs(letterPerfQuery);
 
@@ -104,7 +108,7 @@ const LearningProgressScreen = ({ navigation }) => {
         const attempts = data.attempts || 0;
         const correct = data.correct || 0;
         const accuracy = attempts > 0 ? (correct / attempts) * 100 : 0;
-        
+
         letterPerformance.push({
           letter: data.letter,
           attempts,
@@ -132,7 +136,7 @@ const LearningProgressScreen = ({ navigation }) => {
         weakLetters,
       });
     } catch (error) {
-      console.error('Error loading learning insight:', error);
+      console.error("Error loading learning insight:", error);
       setInsight(null);
     } finally {
       setInsightLoading(false);
@@ -150,14 +154,14 @@ const LearningProgressScreen = ({ navigation }) => {
       // Get sessions from last 7 days
       const sevenDaysAgo = new Date();
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-      
+
       // Get all game sessions for this child
       const sessions = await getChildGameSessions(childId, 1000);
-      
+
       // Filter sessions from last 7 days
       const weeklySessions = sessions.filter((session) => {
-        const sessionDate = session.createdAt?.toDate 
-          ? session.createdAt.toDate() 
+        const sessionDate = session.createdAt?.toDate
+          ? session.createdAt.toDate()
           : new Date(session.createdAt);
         return sessionDate >= sevenDaysAgo;
       });
@@ -165,22 +169,23 @@ const LearningProgressScreen = ({ navigation }) => {
       // Get streak count from children collection (try direct access first, then fallback)
       let streakCount = 0;
       try {
-        const { getChildProgress } = await import('../../services/firestore/childProgressService');
+        const { getChildProgress } =
+          await import("../../services/firestore/childProgressService");
         const progress = await getChildProgress(childId);
         if (progress) {
           streakCount = progress.streakCount ?? 0;
         }
       } catch (error) {
         // If permission denied, streak will remain 0
-        console.warn('Could not load streak count:', error.message);
+        console.warn("Could not load streak count:", error.message);
       }
 
       // Calculate engagement level
-      let engagementLevel = 'Low Engagement';
+      let engagementLevel = "Low Engagement";
       if (weeklySessions.length >= 5) {
-        engagementLevel = 'Highly Engaged';
+        engagementLevel = "Highly Engaged";
       } else if (weeklySessions.length >= 3) {
-        engagementLevel = 'Moderately Engaged';
+        engagementLevel = "Moderately Engaged";
       }
 
       setEngagement({
@@ -189,16 +194,15 @@ const LearningProgressScreen = ({ navigation }) => {
         engagementLevel,
       });
     } catch (error) {
-      console.error('Error loading engagement:', error);
+      console.error("Error loading engagement:", error);
       setEngagement(null);
     } finally {
       setEngagementLoading(false);
     }
   };
 
-
   return (
-    <SafeAreaView className="flex-1 bg-blue-50" edges={['top']}>
+    <SafeAreaView className="flex-1 bg-blue-50" edges={["top"]}>
       {/* Header */}
       <View className="flex-row items-center px-4 py-3 bg-white border-b border-gray-200">
         <TouchableOpacity
@@ -208,7 +212,9 @@ const LearningProgressScreen = ({ navigation }) => {
         >
           <MaterialIcons name="arrow-back" size={24} color="#374151" />
         </TouchableOpacity>
-        <Text className="text-xl font-bold text-gray-800 flex-1">Learning Progress</Text>
+        <Text className="text-xl font-bold text-gray-800 flex-1">
+          Learning Progress
+        </Text>
       </View>
 
       <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
@@ -225,13 +231,17 @@ const LearningProgressScreen = ({ navigation }) => {
           {insightLoading ? (
             <View className="bg-white rounded-2xl p-4 mb-4 shadow-md items-center">
               <ActivityIndicator size="small" color="#8b5cf6" />
-              <Text className="text-gray-600 mt-2 text-sm">Loading insights...</Text>
+              <Text className="text-gray-600 mt-2 text-sm">
+                Loading insights...
+              </Text>
             </View>
           ) : insight ? (
             <LearningInsightCard insight={insight} />
           ) : !loading && children.length > 0 ? (
             <View className="bg-white rounded-2xl p-4 mb-4 shadow-md items-center">
-              <Text className="text-gray-500 text-center text-sm">No learning data yet. Have your child play the game!</Text>
+              <Text className="text-gray-500 text-center text-sm">
+                No learning data yet. Have your child play the game!
+              </Text>
             </View>
           ) : null}
 
@@ -239,30 +249,33 @@ const LearningProgressScreen = ({ navigation }) => {
           {engagementLoading ? (
             <View className="bg-white rounded-2xl p-4 mb-4 shadow-md items-center">
               <ActivityIndicator size="small" color="#8b5cf6" />
-              <Text className="text-gray-600 mt-2 text-sm">Loading engagement...</Text>
+              <Text className="text-gray-600 mt-2 text-sm">
+                Loading engagement...
+              </Text>
             </View>
           ) : engagement ? (
             <EngagementCard engagement={engagement} />
           ) : !loading && children.length > 0 && !insightLoading ? (
             <View className="bg-white rounded-2xl p-4 mb-4 shadow-md items-center">
-              <Text className="text-gray-500 text-center text-sm">No engagement data yet</Text>
+              <Text className="text-gray-500 text-center text-sm">
+                No engagement data yet
+              </Text>
             </View>
           ) : null}
 
-          {/* Letter Progress Card */}
+          {/* Learning Trend Analysis Section */}
           {selectedChild && (
-            <LetterProgressCard childId={selectedChild.uid} />
+            <LearningTrendAnalysisCard childId={selectedChild.uid} />
           )}
+
+          {/* Letter Progress Card */}
+          {selectedChild && <LetterProgressCard childId={selectedChild.uid} />}
 
           {/* ASL Skill Heatmap */}
-          {selectedChild && (
-            <ASLSkillHeatmap childId={selectedChild.uid} />
-          )}
+          {selectedChild && <ASLSkillHeatmap childId={selectedChild.uid} />}
 
           {/* Learning Time Card */}
-          {selectedChild && (
-            <LearningTimeCard childId={selectedChild.uid} />
-          )}
+          {selectedChild && <LearningTimeCard childId={selectedChild.uid} />}
 
           {/* Chart Buttons - Side by Side */}
           {selectedChild && (
@@ -275,12 +288,19 @@ const LearningProgressScreen = ({ navigation }) => {
               >
                 <View className="items-center">
                   <View className="bg-purple-100 rounded-full p-2 mb-2">
-                    <MaterialIcons name="show-chart" size={20} color="#7c3aed" />
+                    <MaterialIcons
+                      name="show-chart"
+                      size={20}
+                      color="#7c3aed"
+                    />
                   </View>
                   <Text className="text-sm font-bold text-gray-800 text-center mb-1">
                     Weekly Progress
                   </Text>
-                  <Text className="text-xs text-gray-500 text-center" style={{ marginTop: 2 }}>
+                  <Text
+                    className="text-xs text-gray-500 text-center"
+                    style={{ marginTop: 2 }}
+                  >
                     4 weeks trend
                   </Text>
                 </View>
@@ -299,7 +319,10 @@ const LearningProgressScreen = ({ navigation }) => {
                   <Text className="text-sm font-bold text-gray-800 text-center mb-1">
                     Skill Radar
                   </Text>
-                  <Text className="text-xs text-gray-500 text-center" style={{ marginTop: 2 }}>
+                  <Text
+                    className="text-xs text-gray-500 text-center"
+                    style={{ marginTop: 2 }}
+                  >
                     Skill metrics
                   </Text>
                 </View>

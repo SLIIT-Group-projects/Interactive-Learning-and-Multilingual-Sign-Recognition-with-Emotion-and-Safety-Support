@@ -10,6 +10,7 @@ import EmotionDashboardScreen from '../screens/parent/EmotionDashboardScreen';
 import { ChildDashboard, LearnSigns, PlayGame } from '../screens/child';
 import GameSelectScreen from '../screens/child/GameSelectScreen';
 import PlayGameTimed from '../screens/child/PlayGameTimed';
+import PlayWordGame from '../screens/child/PlayWordGame';
 import StoriesListScreen from '../screens/child/StoriesListScreen';
 import StoryReadingScreen from '../screens/child/StoryReadingScreen';
 import { HazardDetectionScreen } from '../screens/common';
@@ -278,6 +279,7 @@ export default function AppNavigator({ navigationRef }) {
             <Stack.Screen name="LearnSigns" component={LearnSigns} />
             <Stack.Screen name="PlayGame" component={PlayGame} />
             <Stack.Screen name="PlayGameTimed" component={PlayGameTimed} />
+            <Stack.Screen name="PlayWordGame" component={PlayWordGame} />
             <Stack.Screen name="StoriesList" component={StoriesListScreen} />
             <Stack.Screen name="StoryReading" component={StoryReadingScreen} />
             <Stack.Screen name="HazardDetection" component={HazardDetectionScreen} />

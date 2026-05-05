@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -8,15 +8,15 @@ import {
   Alert,
   ActivityIndicator,
   ScrollView,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { MaterialIcons } from '@expo/vector-icons';
-import { useAuth } from '../../contexts/AuthContext';
-import { loginUser } from '../../services/auth/authService';
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { MaterialIcons } from "@expo/vector-icons";
+import { useAuth } from "../../contexts/AuthContext";
+import { loginUser } from "../../services/auth/authService";
 
 const LoginScreen = ({ navigation }) => {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const { isAuthenticated, isParent, isChild, userData } = useAuth();
 
@@ -27,13 +27,13 @@ const LoginScreen = ({ navigation }) => {
         // Navigate to Parent Dashboard
         navigation.reset({
           index: 0,
-          routes: [{ name: 'ParentDashboard' }],
+          routes: [{ name: "ParentDashboard" }],
         });
       } else if (isChild) {
         // Navigate to Child Dashboard
         navigation.reset({
           index: 0,
-          routes: [{ name: 'ChildDashboard' }],
+          routes: [{ name: "ChildDashboard" }],
         });
       }
     }
@@ -41,7 +41,7 @@ const LoginScreen = ({ navigation }) => {
 
   const handleLogin = async () => {
     if (!email || !password) {
-      Alert.alert('Error', 'Please fill in all fields');
+      Alert.alert("Error", "Please fill in all fields");
       return;
     }
 
@@ -50,23 +50,23 @@ const LoginScreen = ({ navigation }) => {
       // Login with Firebase Auth
       // AuthContext will automatically fetch user document and update state
       await loginUser(email, password);
-      console.log('✅ Login successful');
+      console.log("✅ Login successful");
       // Navigation will happen automatically via useEffect when auth state updates
     } catch (error) {
-      console.error('Login error:', error);
-      let errorMessage = 'Failed to login. Please try again.';
+      console.error("Login error:", error);
+      let errorMessage = "Failed to login. Please try again.";
 
-      if (error.code === 'auth/user-not-found') {
-        errorMessage = 'No account found with this email.';
-      } else if (error.code === 'auth/wrong-password') {
-        errorMessage = 'Incorrect password.';
-      } else if (error.code === 'auth/invalid-email') {
-        errorMessage = 'Invalid email address.';
-      } else if (error.code === 'auth/too-many-requests') {
-        errorMessage = 'Too many failed attempts. Please try again later.';
+      if (error.code === "auth/user-not-found") {
+        errorMessage = "No account found with this email.";
+      } else if (error.code === "auth/wrong-password") {
+        errorMessage = "Incorrect password.";
+      } else if (error.code === "auth/invalid-email") {
+        errorMessage = "Invalid email address.";
+      } else if (error.code === "auth/too-many-requests") {
+        errorMessage = "Too many failed attempts. Please try again later.";
       }
 
-      Alert.alert('Login Error', errorMessage);
+      Alert.alert("Login Error", errorMessage);
     } finally {
       setLoading(false);
     }
@@ -79,7 +79,12 @@ const LoginScreen = ({ navigation }) => {
         keyboardShouldPersistTaps="handled"
       >
         <View className="items-center mb-8">
-          <MaterialIcons name="waving-hand" size={64} color="#8b5cf6" style={{ marginBottom: 16 }} />
+          <MaterialIcons
+            name="waving-hand"
+            size={64}
+            color="#8b5cf6"
+            style={{ marginBottom: 16 }}
+          />
           <Text className="text-4xl font-bold text-gray-800 mb-2">
             Welcome Back!
           </Text>
@@ -134,7 +139,7 @@ const LoginScreen = ({ navigation }) => {
         <View className="items-center">
           <Text className="text-gray-600 mb-2">Don't have an account?</Text>
           <TouchableOpacity
-            onPress={() => navigation.navigate('Register')}
+            onPress={() => navigation.navigate("Register")}
             className="p-2"
           >
             <Text className="text-purple-600 font-bold text-lg">
@@ -150,23 +155,23 @@ const LoginScreen = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flexGrow: 1,
-    justifyContent: 'center',
+    justifyContent: "center",
     padding: 24,
   },
   input: {
     borderWidth: 2,
-    borderColor: '#e5e7eb',
+    borderColor: "#e5e7eb",
     borderRadius: 12,
     padding: 16,
     fontSize: 16,
-    backgroundColor: '#f9fafb',
+    backgroundColor: "#f9fafb",
   },
   button: {
-    backgroundColor: '#8b5cf6',
+    backgroundColor: "#8b5cf6",
     borderRadius: 16,
     padding: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     minHeight: 60,
   },
   buttonDisabled: {
@@ -175,4 +180,3 @@ const styles = StyleSheet.create({
 });
 
 export default LoginScreen;
-
