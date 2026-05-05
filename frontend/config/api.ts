@@ -30,7 +30,8 @@ export function getBaseUrl(): string {
     // Find your IP: Windows: ipconfig | Mac/Linux: ifconfig
     // Look for IPv4 Address (Windows) or inet (Mac/Linux) - should start with 192.168. or 10.
     if (isExpoGo) {
-      const deviceUrl = process.env.EXPO_PUBLIC_API_URL || "http://192.168.1.2:5000";
+      const deviceUrl =
+        process.env.EXPO_PUBLIC_API_URL || "http://192.168.221.205:5000";
       console.log(`[API] Expo Go detected (real device). Using: ${deviceUrl}`);
       console.log(`[API] ⚠️ If connection fails, create .env file in frontend/ with:`);
       console.log(`[API] EXPO_PUBLIC_API_URL=http://YOUR_COMPUTER_IP:5000 (Node backend)`);
@@ -52,7 +53,7 @@ export function getBaseUrl(): string {
           "Create a .env file with: EXPO_PUBLIC_API_URL=http://<your-laptop-ip>:5000"
         );
         // Try common IPs (update if your IP is different)
-        const possibleIPs = ["192.168.1.2", "192.168.1.2"];
+        const possibleIPs = ["192.168.221.205", "192.168.221.205"];
         const selectedIP = possibleIPs[0];
         console.warn(`[API] Real Android device detected. Using laptop IP: ${selectedIP}`);
         console.warn(`[API] If connection fails, update EXPO_PUBLIC_API_URL in .env file`);
@@ -75,7 +76,7 @@ export function getBaseUrl(): string {
           "⚠️ Real iOS device detected but EXPO_PUBLIC_API_URL not set. " +
           "Create a .env file with: EXPO_PUBLIC_API_URL=http://<your-laptop-ip>:5000"
         );
-        return "http://192.168.1.2:5000";
+        return "http://192.168.221.205:5000";
       } else {
         // iOS simulator can use localhost
         return "http://localhost:5000";
@@ -90,7 +91,7 @@ export function getBaseUrl(): string {
   }
 }
 
-const HAND_GAME_DEFAULT_LAN = "192.168.1.2";
+const HAND_GAME_DEFAULT_LAN = "192.168.221.205";
 const HAND_GAME_PORT = "5001";
 
 /**
@@ -146,7 +147,7 @@ console.log(`[API] Hand letter server (Python): ${HAND_GAME_BASE_URL}`);
 
 /**
  * For real devices, you need to use your laptop's IP address
- * Example: http://192.168.1.2:5000
+ * Example: http://192.168.221.205:5000
  * Set this via environment variable or modify the function above
  */
 export function getBaseUrlForRealDevice(ipAddress?: string): string {

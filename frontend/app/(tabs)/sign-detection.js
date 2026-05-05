@@ -31,7 +31,7 @@ import usaIcon from "@/assets/icons/USA.png";
 const _lanIp =
   (typeof process !== "undefined" &&
     process.env.EXPO_PUBLIC_COMPUTER_IP?.trim()) ||
-  "192.168.1.2";
+  "192.168.221.205";
 const _multilangFromEnv =
   typeof process !== "undefined" &&
   process.env.EXPO_PUBLIC_MULTILANG_SIGN_API_URL?.trim();
@@ -1037,7 +1037,7 @@ export default function SignDetectionScreen() {
                 setApiUrl(text);
                 setConnectionStatus('unknown');
               }}
-              placeholder="Enter API URL (e.g., http://192.168.1.2:5002)"
+              placeholder="Enter API URL (e.g., http://192.168.221.205:5002)"
               placeholderTextColor="#999"
             />
             <TouchableOpacity 

@@ -104,7 +104,7 @@ app
     console.log(
       `🌐 Network access (Android emulator): http://10.0.2.2:${PORT}/health`,
     );
-    console.log(`🌐 Network access example: http://192.168.1.9:${PORT}/health`);
+    console.log(`🌐 Network access example: http://192.168.221.205:${PORT}/health`);
     console.log(`🌍 Environment: ${process.env.NODE_ENV || "development"}`);
     console.log(`📁 Upload directory: ${config.UPLOAD_DIR}`);
     console.log(`🐍 Python command: ${config.PYTHON_CMD}`);
